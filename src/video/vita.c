@@ -109,6 +109,7 @@ typedef struct {
 static bool active_video_thread = true;
 static bool active_pacer_thread = false;
 static indicator_status poor_net_indicator = {0};
+static bool decode_thread_logged = false;
 
 uint32_t frame_count = 0;
 uint32_t need_drop = 0;
@@ -300,6 +301,7 @@ static void vita_cleanup() {
 static int vita_setup(int videoFormat, int width, int height, int redrawRate, void* context, int drFlags) {
   int ret;
   printf("vita video setup\n");
+  decode_thread_logged = false;
 
   if (video_status == NOT_INIT) {
     // INIT_GS
@@ -442,6 +444,12 @@ cleanup:
 }
 
 static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
+  if (!decode_thread_logged) {
+    // With CAPABILITY_DIRECT_SUBMIT this runs on common-c's VideoRecv thread
+    vita_debug_log_thread("video decode");
+    decode_thread_logged = true;
+  }
+
   SceAvcdecAu au = {0};
   SceAvcdecArrayPicture array_picture = {0};
   struct SceAvcdecPicture picture = {0};

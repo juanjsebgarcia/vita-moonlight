@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <psp2/kernel/threadmgr.h>
 #include <psp2/rtc.h>
 #include <stdlib.h>
 #include "../src/gui/mdns_log.h"
@@ -87,3 +88,23 @@ void vita_debug_log(const char *s, ...) {
   pthread_mutex_unlock(&print_mutex);
 }
 
+
+// Logs the calling thread's scheduling state, to check which priority and cores
+// the streaming threads really end up with
+void vita_debug_log_thread(const char *label) {
+  if (!config.save_debug_log) {
+    return;
+  }
+
+  SceKernelThreadInfo info = {0};
+  info.size = sizeof(info);
+  int ret = sceKernelGetThreadInfo(sceKernelGetThreadId(), &info);
+  if (ret < 0) {
+    vita_debug_log("[THREAD] %s: sceKernelGetThreadInfo failed 0x%x", label, ret);
+    return;
+  }
+
+  vita_debug_log("[THREAD] %s (%s): priority init 0x%x current 0x%x, affinity init 0x%x current 0x%x, cpu %d",
+                 label, info.name, info.initPriority, info.currentPriority,
+                 info.initCpuAffinityMask, info.currentCpuAffinityMask, info.currentCpuId);
+}

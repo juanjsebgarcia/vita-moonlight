@@ -179,6 +179,7 @@ int main(int argc, char* argv[]) {
   config.log_file = fopen(log_path, "w");
 
   load_all_known_devices();
+  vita_debug_log_thread("main");
 
   gui_loop();
 }

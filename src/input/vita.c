@@ -892,10 +892,15 @@ inline void vitainput_process(void) {
 }
 
 static uint8_t active_input_thread = 0;
+static bool input_thread_logged = false;
 
 int vitainput_thread(SceSize args, void *argp) {
   while (1) {
     if (active_input_thread) {
+      if (!input_thread_logged) {
+        vita_debug_log_thread("input");
+        input_thread_logged = true;
+      }
       // Paced by the blocking controller read inside
       vitainput_process();
     } else {
@@ -1038,6 +1043,7 @@ void vitainput_start(void) {
   if(config.enable_psbutton_capture)
     lock_psbutton();
 
+  input_thread_logged = false;
   active_input_thread = true;
   active_motion_threads = true;
 }
