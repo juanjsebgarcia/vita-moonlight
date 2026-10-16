@@ -479,6 +479,28 @@ void display_alert(char *message, char *button_captions[], int buttons_count,
   }
 }
 
+void display_help(const char *title, const char *message) {
+  // Larger than the standard alert, so a few sentences fit without crowding
+  menu_geom geom = make_geom_centered(600, 320);
+  char text[0x1000];
+  snprintf(text, sizeof(text), "%s\n\n%s", title, message);
+  char *captions[1] = {"Close"};
+
+  while (true) {
+    ui_start();
+    draw_alert(text, geom, captions, 1);
+
+    // Ignore the triangle press that opened this until it is released
+    int buttons = read_buttons();
+    if ((buttons & SCE_CTRL_HOLD) == 0 &&
+        (buttons & (config.btn_confirm | config.btn_cancel | SCE_CTRL_TRIANGLE))) {
+      return;
+    }
+
+    ui_end();
+  }
+}
+
 void display_error(char *format, ...) {
   char buf[0x1000];
 

@@ -523,8 +523,159 @@ static int move_idx_in_array(char *array[], int count, char *find, int index_dis
 }
 
 
+// Number of rows in the settings menu, so the help can look up a row's title
+static int settings_menu_count = 0;
+
+// Plain-language help for each setting, shown with triangle. Written for the
+// player, not the developer: what it does, and when to change it.
+static const char *settings_help_text(int id) {
+  switch (id) {
+    case SETTINGS_RESOLUTION:
+      return "The picture size your PC sends. The Vita's screen is 960x544, so 960x544 or 960x540 "
+             "looks sharpest for the least Wi-Fi. Bigger sizes look about the same on the Vita but "
+             "need more bandwidth. Can't be changed while a game is streaming.";
+    case SETTINGS_FPS:
+      return "Frames per second your PC sends. 60 is the smoothest. Try 30 if the stream stutters "
+             "or your Wi-Fi is weak: it needs about half the data. 24 suits films.";
+    case SETTINGS_BITRATE:
+      return "How much video is sent each second, in kilobits (10000 = 10 Mbps). Higher looks "
+             "sharper but needs a stronger Wi-Fi signal. The Vita's Wi-Fi is happiest at around "
+             "5000 to 10000. Lower it if the picture goes blocky or the stream stutters.";
+    case SETTINGS_SOPS:
+      return "Lets GeForce Experience change your game's own graphics settings to suit the stream. "
+             "Only does anything with NVIDIA GeForce Experience; Sunshine ignores it. Turn it off "
+             "if your in-game settings keep changing by themselves.";
+    case SETTINGS_ENABLE_FRAME_INVAL:
+      return "Fixes glitches from lost video faster, without waiting for a whole new picture. "
+             "Needs support from your PC. If you see corrupted video that doesn't clear up, "
+             "turn this off.";
+    case SETTINGS_ENABLE_STREAM_OPTIMIZE:
+      return "Tunes the stream for playing over the internet, away from home. Leave it off on "
+             "your home network, where it only adds overhead.";
+    case SETTINGS_ENABLE_VITA_VBLANK_WAIT:
+      return "V-Sync. Waits for the screen to finish a refresh before showing the next frame. "
+             "Stops lines tearing across the picture, but can add up to a frame of input lag. "
+             "Off feels snappier, on looks cleaner.";
+    case SETTINGS_CENTER_REGION_ONLY:
+      return "When the stream's shape doesn't match the Vita's screen, for example a 4:3 or "
+             "ultrawide game, zoom in and crop the edges to fill the screen instead of showing "
+             "black bars. You may lose some of the picture at the edges.";
+    case SETTINGS_ENABLE_FRAME_PACER:
+      return "Throws away extra frames when more arrive than your FPS setting. It can cause a "
+             "small hitch every few seconds, so off is recommended.";
+    case SETTINGS_PACKET_SIZE:
+      return "How big each chunk of video sent over Wi-Fi is. 1392 sends fewer chunks per frame, "
+             "which can be smoother on a good connection. If the video breaks up or won't start, "
+             "go back to 1024.";
+    case SETTINGS_DIRECT_DECODE:
+      return "For troubleshooting only. Uses the older way of handling video, which stutters more "
+             "on a busy Wi-Fi network. Leave it off unless you want to compare the two.";
+    case SETTINGS_LOCAL_AUDIO:
+      return "Also plays the game's sound on your PC's speakers. Off keeps the PC quiet and sends "
+             "the sound only to the Vita.";
+    case SETTINGS_DISABLE_POWERSAVE:
+      return "Stops the Vita dimming its screen or going to sleep while you stream, even when you "
+             "aren't pressing anything, such as during a cutscene.";
+    case SETTINGS_BOOST_CLOCKS:
+      return "Runs the Vita's processor and graphics at full speed while streaming, for smoother "
+             "video and sound. Uses more battery. Turn it off to save battery if your streams "
+             "already run smoothly.";
+    case SETTINGS_JP_LAYOUT:
+      return "Swaps X and O in Moonlight's own menus, so O confirms and X goes back, like on "
+             "Japanese consoles. Doesn't change any buttons in your games.";
+    case SETTINGS_SHOW_FPS:
+      return "Shows stream information on screen. fps: just the frame rate. full: frame rate, "
+             "bitrate, lost frames, delays and Wi-Fi signal, to help track down stutter or lag. "
+             "Use left and right to change.";
+    case SETTINGS_INPUT_SYNC:
+      return "Reads your buttons in step with the Vita's controls, which saves battery without "
+             "adding lag. If touch controls feel slower than before, turn it off.";
+    case SETTINGS_ENABLE_MOTION_CONTROLS:
+      return "Sends the Vita's motion sensor to your PC, for games with gyro aiming or motion "
+             "controls. Needs a PC host that supports motion, such as Sunshine.";
+    case SETTINGS_ENABLE_DOUBLE_TAP_SPRINT:
+      return "Push the left stick fully forward twice, quickly, to hold sprint (a left stick "
+             "click). Handy because the Vita's sticks can't be clicked. A running icon shows "
+             "while it's active.";
+    case SETTINGS_DOUBLE_TAP_SPRINT_STEP_TIME:
+      return "How quickly the two pushes must come for double tap to sprint, in milliseconds. "
+             "Raise it if sprint won't start, lower it if it starts by accident.";
+    case SETTINGS_CONTROLLER_TYPE:
+      return "Which controller your PC thinks is connected: PlayStation or Xbox. Games show "
+             "button prompts to match.";
+    case SETTINGS_SWAP_SHOULDER_BUTTONS:
+      return "Off: L and R are L1 and R1, and the top corners of the rear touchpad are L2 and R2. "
+             "On: L and R become L2 and R2, which suits shooters where you aim and fire with the "
+             "triggers, and the rear corners become L1 and R1.";
+    case SETTINGS_MOUSE_ACCEL:
+      return "How fast the mouse cursor moves when you use the front screen as a trackpad. "
+             "Higher moves the cursor further for the same swipe.";
+    case SETTINGS_ENABLE_PSBUTTON_CAPTURE:
+      return "Press the PS button once to send it to your PC, which opens things like Steam's "
+             "overlay. Press it twice quickly to go to the Vita's home screen as usual.";
+    case SETTINGS_BACK_DEADZONE:
+      return "Strips around the edges of the rear touchpad that are ignored, so holding the Vita "
+             "doesn't press L2, R2, L3 or R3 by accident.";
+    case SETTINGS_ENABLE_SPECIAL_KEYS:
+      return "Turns the corners of the front screen into buttons, such as top-left for the pause "
+             "menu. Choose what each corner does in Touchscreen special keys.";
+    case SETTINGS_SPECIAL_KEYS:
+      return "Choose what each corner of the front screen does, such as opening the pause menu or "
+             "pressing the PS button. Only works when Enable touchscreen special keys is on.";
+    case SETTINGS_TOUCH_MODE_SELECT:
+      return "How the front screen works in games. Off: a trackpad for the mouse. DS4 Touchpad: "
+             "a PlayStation controller touchpad. Mouse Absolute: the cursor jumps to your finger. "
+             "Tablet: full multi-touch (Sunshine).";
+    case SETTINGS_KEYBOARD_LAYOUT:
+      return "The language layout of the on-screen keyboard, which you open with START + LEFT "
+             "while streaming.";
+  }
+  return NULL;
+}
+
+static void show_settings_help(const menu_entry *menu, int id) {
+  const char *title = "";
+  for (int i = 0; i < settings_menu_count; i++) {
+    if (menu[i].id == id && !menu[i].disabled) {
+      title = menu[i].name;
+      break;
+    }
+  }
+
+  char text[1024];
+  // These two include a path on the memory card, which depends on where the config lives
+  if (id == SETTINGS_SAVE_DEBUG_LOG) {
+    snprintf(text, sizeof(text),
+             "Saves a detailed log to %smoonlight.log for tracking down problems. It slows "
+             "streaming down, so only turn it on when something's wrong, and turn it off again "
+             "afterwards.", config.key_dir);
+  } else if (id == SETTINGS_ENABLE_MAPPING) {
+    snprintf(text, sizeof(text),
+             "Use your own button layout from a file at %smappings/vita.conf instead of the "
+             "default. There's an example file in the project's GitHub repository.",
+             config.key_dir);
+  } else {
+    const char *help = settings_help_text(id);
+    snprintf(text, sizeof(text), "%s", help ? help : "No help for this setting yet.");
+  }
+  display_help(title, text);
+}
+
+// Drawn under the settings box, so the help is discoverable without taking a row
+static void settings_draw(void) {
+  const char *hint = "\xe2\x96\xb3 Help";
+  int width = vita2d_font_text_width(font, 18, hint);
+  // The settings menu uses the default 600x400 box, centred on the 960x544 screen
+  vita2d_font_draw_text(font, 480 + 300 - width, 272 + 200 + 26, 0xffffffff, 18, hint);
+}
+
 static int settings_loop(int id, void *context, const input_data *input) {
   menu_entry *menu = context;
+
+  if ((input->buttons & SCE_CTRL_TRIANGLE) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+    show_settings_help(menu, id);
+    return 0;
+  }
   bool did_change = 0;
   bool left = (input->buttons & SCE_CTRL_LEFT) && (input->buttons & SCE_CTRL_HOLD) == 0;
   bool right = (input->buttons & SCE_CTRL_RIGHT) && (input->buttons & SCE_CTRL_HOLD) == 0;
@@ -953,8 +1104,13 @@ static int settings_loop(int id, void *context, const input_data *input) {
   }
   settings_loop_setup = 0;
 
+// A value whose setting has no row is skipped, rather than written onto row 0
 #define MENU_REPLACE(ID, MESSAGE) \
-    strcpy(menu[SETTINGS_VIEW_IDX[(ID)]].subname, (MESSAGE))
+    do { \
+      if (SETTINGS_VIEW_IDX[(ID)] > 0) { \
+        strcpy(menu[SETTINGS_VIEW_IDX[(ID)]].subname, (MESSAGE)); \
+      } \
+    } while (0)
 
   sprintf(current, "%dx%d", config.stream.width, config.stream.height);
   MENU_REPLACE(SETTINGS_VIEW_RESOLUTION, current);
@@ -1069,10 +1225,12 @@ static int settings_back(void *context) {
 // Eliminado: hotkeys_menu y referencias, ya que los atajos ahora son fijos
 
 int ui_settings_menu() {
-  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (37 today). Each
+  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (35 today). Each
   // entry is about 1 KB of the main thread stack, so do not oversize it
   menu_entry menu[44];
   int idx = 0;
+  // Rows are re-numbered on every build; 0 means the setting has no row
+  memset(SETTINGS_VIEW_IDX, 0, sizeof(SETTINGS_VIEW_IDX));
 #define MENU_CATEGORY(NAME) \
   do { \
     menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true }; \
@@ -1098,6 +1256,7 @@ int ui_settings_menu() {
   MENU_ENTRY(SETTINGS_ENABLE_FRAME_INVAL, SETTINGS_VIEW_ENABLE_FRAME_INVAL, "Enable reference frame invalidation", "");
   MENU_ENTRY(SETTINGS_ENABLE_STREAM_OPTIMIZE, SETTINGS_VIEW_ENABLE_STREAM_OPTIMIZE, "Enable stream optimization", "");
   MENU_ENTRY(SETTINGS_ENABLE_VITA_VBLANK_WAIT, SETTINGS_VIEW_ENABLE_VITA_VBLANK_WAIT, "Enable VITA vblank", "");
+  MENU_ENTRY(SETTINGS_CENTER_REGION_ONLY, SETTINGS_VIEW_CENTER_REGION_ONLY, "Fill screen (crop edges)", "");
 
 
   MENU_ENTRY(SETTINGS_ENABLE_FRAME_PACER, SETTINGS_VIEW_ENABLE_FRAME_PACER, "Enable frame pacer", "");
@@ -1107,7 +1266,6 @@ int ui_settings_menu() {
 
   MENU_CATEGORY("System");
   MENU_ENTRY(SETTINGS_SAVE_DEBUG_LOG, SETTINGS_VIEW_SAVE_DEBUG_LOG, "Enable debug log", "");
-  MENU_MESSAGE("Slows streaming, enable only to diagnose problems.");
   MENU_ENTRY(SETTINGS_DISABLE_POWERSAVE, SETTINGS_VIEW_DISABLE_POWERSAVE, "Disable power save", "");
   MENU_ENTRY(SETTINGS_BOOST_CLOCKS, SETTINGS_VIEW_BOOST_CLOCKS, "Boost CPU/GPU clocks while streaming", "");
   MENU_ENTRY(SETTINGS_JP_LAYOUT, SETTINGS_VIEW_JP_LAYOUT, "Swap X & O for Moonlight", "");
@@ -1123,13 +1281,6 @@ int ui_settings_menu() {
   MENU_ENTRY(SETTINGS_SWAP_SHOULDER_BUTTONS, SETTINGS_VIEW_SWAP_SHOULDER_BUTTONS, "Swap R1/L1 <-> R2/L2", "");
   MENU_ENTRY(SETTINGS_MOUSE_ACCEL, SETTINGS_VIEW_MOUSE_ACCEL, "Mouse acceleration", ICON_LEFT_RIGHT_ARROWS);
   MENU_ENTRY(SETTINGS_ENABLE_MAPPING, SETTINGS_VIEW_ENABLE_MAPPING, "Enable mapping file", "");
-  char mapping_location_msg[256];
-  snprintf(mapping_location_msg, sizeof(mapping_location_msg), "Located at %svita.conf", config.key_dir);
-  menu[idx] = (menu_entry) { .name = "", .disabled = true };
-  strncpy(menu[idx].subname, mapping_location_msg, sizeof(menu[idx].subname) - 1);
-  menu[idx].subname[sizeof(menu[idx].subname) - 1] = '\0';
-  idx++;
-  MENU_MESSAGE("Example in github repo.");
   MENU_ENTRY(SETTINGS_ENABLE_PSBUTTON_CAPTURE, SETTINGS_VIEW_ENABLE_PSBUTTON_CAPTURE, "Enable PS button capture", "");
   MENU_ENTRY(SETTINGS_BACK_DEADZONE, SETTINGS_VIEW_BACK_DEADZONE, "Back touchscreen deadzone", "");
   MENU_ENTRY(SETTINGS_ENABLE_SPECIAL_KEYS, SETTINGS_VIEW_ENABLE_SPECIAL_KEYS, "Enable touchscreen special keys", "");
@@ -1165,7 +1316,8 @@ int ui_settings_menu() {
 
   settings_loop_setup = 1;
   assert(idx < 48);
-  int ret = display_menu(menu, idx, NULL, &settings_loop, &settings_back, NULL, &menu);
+  settings_menu_count = idx;
+  int ret = display_menu(menu, idx, NULL, &settings_loop, &settings_back, &settings_draw, &menu);
   return ret;
 }
 
