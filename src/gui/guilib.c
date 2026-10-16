@@ -254,6 +254,88 @@ static void draw_thick_line(float x0, float y0, float x1, float y1, unsigned int
   vita2d_draw_line(x0, y0 + 1, x1, y1 + 1, color);
 }
 
+static void fill_triangle(float x0, float y0, float x1, float y1, float x2, float y2, unsigned int color) {
+  // Vertices must live in vita2d's per-frame GPU pool
+  vita2d_color_vertex *v = vita2d_pool_memalign(3 * sizeof(vita2d_color_vertex), sizeof(vita2d_color_vertex));
+  if (v == NULL) {
+    return;
+  }
+  float xs[3] = {x0, x1, x2};
+  float ys[3] = {y0, y1, y2};
+  for (int i = 0; i < 3; i++) {
+    v[i].x = xs[i];
+    v[i].y = ys[i];
+    v[i].z = 0.5f;
+    v[i].color = color;
+  }
+  vita2d_draw_array(SCE_GXM_PRIMITIVE_TRIANGLES, v, 3);
+}
+
+static void draw_outline_rect(float x, float y, float w, float h, unsigned int color) {
+  draw_thick_line(x, y, x + w, y, color);
+  draw_thick_line(x + w, y, x + w, y + h, color);
+  draw_thick_line(x + w, y + h, x, y + h, color);
+  draw_thick_line(x, y + h, x, y, color);
+}
+
+static void draw_outline_circle(float cx, float cy, float radius, unsigned int color) {
+  for (int i = 0; i < CIRCLE_SEGMENTS; i++) {
+    float a0 = (float)i / CIRCLE_SEGMENTS * 2.0f * (float)M_PI;
+    float a1 = (float)(i + 1) / CIRCLE_SEGMENTS * 2.0f * (float)M_PI;
+    draw_thick_line(cx + radius * cosf(a0), cy + radius * sinf(a0),
+                    cx + radius * cosf(a1), cy + radius * sinf(a1), color);
+  }
+}
+
+// Centres a short label in a box, using a font size that fits its height
+static void draw_label(const char *label, float cx, float top, float height, unsigned int color) {
+  int font_size = (int)(height * 0.62f);
+  if (font_size < 8) {
+    font_size = 8;
+  }
+  int width = vita2d_font_text_width(font, font_size, label);
+  // y is the baseline, so drop it by roughly half the cap height below the middle
+  float baseline = top + height / 2.0f + font_size * 0.36f;
+  vita2d_font_draw_text(font, (int)(cx - width / 2.0f), (int)baseline, color, font_size, label);
+}
+
+// Width of a labelled pill for this label at this height
+static int pill_width(const char *label, int size) {
+  int font_size = (int)(size * 0.62f);
+  if (font_size < 8) {
+    font_size = 8;
+  }
+  int width = vita2d_font_text_width(font, font_size, label) + size / 2 + 4;
+  return width > size ? width : size;
+}
+
+static int draw_pill(const char *label, int x, float top, int size, unsigned int color) {
+  int width = pill_width(label, size);
+  draw_outline_rect(x, top, width, size, color);
+  draw_label(label, x + width / 2.0f, top, size, color);
+  return width;
+}
+
+static void draw_dpad(int x, float top, int size, int highlight) {
+  unsigned int dim = RGBA8(0xDD, 0xDD, 0xDD, 0x60);
+  unsigned int bright = RGBA8(0xFF, 0xFF, 0xFF, 0xFF);
+  float arm = size / 3.0f;
+  float cx = x + size / 2.0f;
+  float cy = top + size / 2.0f;
+  // The plus shape, then each arm as a triangle pointing outwards
+  vita2d_draw_rectangle(x + arm, top + arm, arm, arm, highlight == BUTTON_GLYPH_DPAD ? bright : dim);
+  struct { int glyph; float tx, ty, ax, ay, bx, by; } arms[4] = {
+    {BUTTON_GLYPH_DPAD_UP, cx, top, x + arm, top + arm, x + 2 * arm, top + arm},
+    {BUTTON_GLYPH_DPAD_DOWN, cx, top + size, x + arm, top + 2 * arm, x + 2 * arm, top + 2 * arm},
+    {BUTTON_GLYPH_DPAD_LEFT, x, cy, x + arm, top + arm, x + arm, top + 2 * arm},
+    {BUTTON_GLYPH_DPAD_RIGHT, x + size, cy, x + 2 * arm, top + arm, x + 2 * arm, top + 2 * arm},
+  };
+  for (int i = 0; i < 4; i++) {
+    bool lit = highlight == BUTTON_GLYPH_DPAD || highlight == arms[i].glyph;
+    fill_triangle(arms[i].tx, arms[i].ty, arms[i].ax, arms[i].ay, arms[i].bx, arms[i].by, lit ? bright : dim);
+  }
+}
+
 int draw_button_glyph(int glyph, int x, int y, int size) {
   // y is the text baseline; the symbol sits on it, a little below the cap height
   float top = y - size;
@@ -261,6 +343,66 @@ int draw_button_glyph(int glyph, int x, int y, int size) {
   float left = x;
   float right = x + size;
   float middle = x + size / 2.0f;
+  float radius = size / 2.0f;
+  float cy = top + radius;
+  unsigned int grey = RGBA8(0xE8, 0xE8, 0xE8, 0xFF);
+
+  switch (glyph) {
+    case BUTTON_GLYPH_DPAD:
+    case BUTTON_GLYPH_DPAD_UP:
+    case BUTTON_GLYPH_DPAD_DOWN:
+    case BUTTON_GLYPH_DPAD_LEFT:
+    case BUTTON_GLYPH_DPAD_RIGHT:
+      draw_dpad(x, top, size, glyph);
+      return size;
+    case BUTTON_GLYPH_L:
+      return draw_pill("L", x, top, size, grey);
+    case BUTTON_GLYPH_R:
+      return draw_pill("R", x, top, size, grey);
+    case BUTTON_GLYPH_L2:
+      return draw_pill("L2", x, top, size, grey);
+    case BUTTON_GLYPH_R2:
+      return draw_pill("R2", x, top, size, grey);
+    case BUTTON_GLYPH_START:
+      return draw_pill("START", x, top, size, grey);
+    case BUTTON_GLYPH_SELECT:
+      return draw_pill("SELECT", x, top, size, grey);
+    case BUTTON_GLYPH_PS:
+      draw_outline_circle(middle, cy, radius, grey);
+      draw_label("PS", middle, top, size, grey);
+      return size;
+    case BUTTON_GLYPH_LEFT_STICK:
+    case BUTTON_GLYPH_RIGHT_STICK:
+      // An outer ring with the stick's cap in the middle
+      draw_outline_circle(middle, cy, radius, grey);
+      vita2d_draw_fill_circle(middle, cy, radius * 0.45f, grey);
+      return size;
+    case BUTTON_GLYPH_L3:
+      draw_outline_circle(middle, cy, radius, grey);
+      draw_label("L3", middle, top, size, grey);
+      return size;
+    case BUTTON_GLYPH_R3:
+      draw_outline_circle(middle, cy, radius, grey);
+      draw_label("R3", middle, top, size, grey);
+      return size;
+    case BUTTON_GLYPH_FRONT_TOUCH: {
+      // A landscape screen with a fingertip on it
+      float w = size * 1.5f;
+      draw_outline_rect(x, top + size * 0.15f, w, size * 0.7f, grey);
+      vita2d_draw_fill_circle(x + w * 0.6f, top + size * 0.5f, size * 0.14f, grey);
+      return (int)w + 1;
+    }
+    case BUTTON_GLYPH_REAR_TOUCH: {
+      // The same pad, split into the four corner zones the rear touch uses
+      float w = size * 1.5f;
+      float pad_top = top + size * 0.15f;
+      float pad_h = size * 0.7f;
+      draw_outline_rect(x, pad_top, w, pad_h, grey);
+      vita2d_draw_line(x + w / 2, pad_top, x + w / 2, pad_top + pad_h, grey);
+      vita2d_draw_line(x, pad_top + pad_h / 2, x + w, pad_top + pad_h / 2, grey);
+      return (int)w + 1;
+    }
+  }
 
   switch (glyph) {
     case BUTTON_GLYPH_TRIANGLE: {
@@ -284,18 +426,9 @@ int draw_button_glyph(int glyph, int x, int y, int size) {
       draw_thick_line(right, top, left, bottom, blue);
       break;
     }
-    case BUTTON_GLYPH_CIRCLE: {
-      unsigned int red = RGBA8(0xFF, 0x70, 0x70, 0xFF);
-      float radius = size / 2.0f;
-      float cy = top + radius;
-      for (int i = 0; i < CIRCLE_SEGMENTS; i++) {
-        float a0 = (float)i / CIRCLE_SEGMENTS * 2.0f * (float)M_PI;
-        float a1 = (float)(i + 1) / CIRCLE_SEGMENTS * 2.0f * (float)M_PI;
-        draw_thick_line(middle + radius * cosf(a0), cy + radius * sinf(a0),
-                        middle + radius * cosf(a1), cy + radius * sinf(a1), red);
-      }
+    case BUTTON_GLYPH_CIRCLE:
+      draw_outline_circle(middle, cy, radius, RGBA8(0xFF, 0x70, 0x70, 0xFF));
       break;
-    }
   }
   return size;
 }
