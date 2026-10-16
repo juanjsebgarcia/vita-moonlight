@@ -10,6 +10,7 @@
 #include "../video/vita.h"
 #include "../debug.h"
 #include "../stats.h"
+#include "../connection.h"
 #include "../input/touchabsolute.h"
 
 #include <assert.h>
@@ -496,6 +497,16 @@ enum {
 };
 
 static int SETTINGS_VIEW_IDX[SETTINGS_VIEW_MAX_COUNT];
+
+// Writes a setting's value into its row. Row 0 is never a setting, so 0 means
+// the setting has no row in this menu (hidden mid-stream, or not listed) and
+// the value is skipped rather than written over the first row.
+#define SET_ROW_VALUE(VIEW, VALUE) \
+  do { \
+    if (SETTINGS_VIEW_IDX[(VIEW)] > 0) { \
+      strcpy(menu[SETTINGS_VIEW_IDX[(VIEW)]].subname, (VALUE)); \
+    } \
+  } while (0)
 // Variable global para swap de botones
 bool swap_shoulder_buttons = false;
 // Variable global para modo táctil exclusivo
@@ -697,12 +708,12 @@ static int settings_loop(int id, void *context, const input_data *input) {
   if (id == SETTINGS_TOUCH_MODE_SELECT) {
     if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
       static const char* mode_names[] = {"Off", "DS4 Touchpad", "Mouse Absolute", "Tablet (Sunshine)"};
-      strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_TOUCH_MODE_SELECT]].subname, mode_names[config.touchscreen_mode]);
+      SET_ROW_VALUE(SETTINGS_VIEW_TOUCH_MODE_SELECT, mode_names[config.touchscreen_mode]);
       return 0;
     }
     config.touchscreen_mode = (config.touchscreen_mode + 1) % 4;
     static const char* mode_names[] = {"Off", "DS4 Touchpad", "Mouse Absolute", "Tablet (Sunshine)"};
-    strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_TOUCH_MODE_SELECT]].subname, mode_names[config.touchscreen_mode]);
+    SET_ROW_VALUE(SETTINGS_VIEW_TOUCH_MODE_SELECT, mode_names[config.touchscreen_mode]);
     // Solo activar touchabsolute_enable en modo Mouse Absolute
     touchabsolute_enable(config.touchscreen_mode == 2);
     did_change = 1;
@@ -716,13 +727,13 @@ static int settings_loop(int id, void *context, const input_data *input) {
       swap_shoulder_buttons = !swap_shoulder_buttons;
       config.swap_shoulder_buttons = swap_shoulder_buttons;
       did_change = 1;
-      strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_SWAP_SHOULDER_BUTTONS]].subname, swap_shoulder_buttons ? "yes" : "no");
+      SET_ROW_VALUE(SETTINGS_VIEW_SWAP_SHOULDER_BUTTONS, swap_shoulder_buttons ? "yes" : "no");
       // Exclusividad: desactivar mapping si swap está activo
       if (swap_shoulder_buttons) {
         if (config.mapping) {
           free(config.mapping);
           config.mapping = NULL;
-          strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_ENABLE_MAPPING]].subname, "no");
+          SET_ROW_VALUE(SETTINGS_VIEW_ENABLE_MAPPING, "no");
         }
       }
       break;
@@ -735,14 +746,14 @@ static int settings_loop(int id, void *context, const input_data *input) {
       if (config.mapping) {
         free(config.mapping);
         config.mapping = NULL;
-        strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_ENABLE_MAPPING]].subname, "no");
+        SET_ROW_VALUE(SETTINGS_VIEW_ENABLE_MAPPING, "no");
       } else {
         config.mapping = strdup("mappings/vita.conf");
-        strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_ENABLE_MAPPING]].subname, "yes");
+        SET_ROW_VALUE(SETTINGS_VIEW_ENABLE_MAPPING, "yes");
         // Si se activa mapping, desactivar swap
         swap_shoulder_buttons = 0;
         config.swap_shoulder_buttons = 0;
-        strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_SWAP_SHOULDER_BUTTONS]].subname, "no");
+        SET_ROW_VALUE(SETTINGS_VIEW_SWAP_SHOULDER_BUTTONS, "no");
       }
       break;
     }
@@ -780,7 +791,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
         char options[64];
         int current_idx = get_controller_type_index(config.controller_type);
         snprintf(options, sizeof(options), "%s", controller_type_names[current_idx]);
-        strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_CONTROLLER_TYPE]].subname, options);
+        SET_ROW_VALUE(SETTINGS_VIEW_CONTROLLER_TYPE, options);
         break;
       }
       if (left) {
@@ -796,7 +807,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
       char options[64];
       int current_idx = get_controller_type_index(config.controller_type);
       snprintf(options, sizeof(options), "%s", controller_type_names[current_idx]);
-      strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_CONTROLLER_TYPE]].subname, options);
+      SET_ROW_VALUE(SETTINGS_VIEW_CONTROLLER_TYPE, options);
       // Guarda la configuración inmediatamente
       ui_settings_save_config();
       break;
@@ -1115,13 +1126,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
   }
   settings_loop_setup = 0;
 
-// A value whose setting has no row is skipped, rather than written onto row 0
-#define MENU_REPLACE(ID, MESSAGE) \
-    do { \
-      if (SETTINGS_VIEW_IDX[(ID)] > 0) { \
-        strcpy(menu[SETTINGS_VIEW_IDX[(ID)]].subname, (MESSAGE)); \
-      } \
-    } while (0)
+#define MENU_REPLACE(ID, MESSAGE) SET_ROW_VALUE((ID), (MESSAGE))
 
   sprintf(current, "%dx%d", config.stream.width, config.stream.height);
   MENU_REPLACE(SETTINGS_VIEW_RESOLUTION, current);
@@ -1216,7 +1221,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
 
   // Eliminar subnames antiguos de modos táctiles
   static const char* mode_names[] = {"Off", "DS4 Touchpad", "Mouse Absolute", "Tablet (Sunshine)"};
-  strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_TOUCH_MODE_SELECT]].subname, mode_names[config.touchscreen_mode]);
+  SET_ROW_VALUE(SETTINGS_VIEW_TOUCH_MODE_SELECT, mode_names[config.touchscreen_mode]);
   // No actualizar subnames de absolute_mouse ni touchscreen_mode boolean
   // ...resto de actualizaciones de subname...
   return 0;
@@ -1242,6 +1247,11 @@ int ui_settings_menu() {
   int idx = 0;
   // Rows are re-numbered on every build; 0 means the setting has no row
   memset(SETTINGS_VIEW_IDX, 0, sizeof(SETTINGS_VIEW_IDX));
+  // Mid-stream, only list settings that take effect on resume. The rest (such as
+  // resolution, bitrate or controller type) are agreed with the PC when a stream
+  // starts, so they come back once it ends.
+  int stream_status = connection_get_status();
+  bool streaming = stream_status == LI_CONNECTED || stream_status == LI_MINIMIZED;
 #define MENU_CATEGORY(NAME) \
   do { \
     menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true }; \
@@ -1253,27 +1263,36 @@ int ui_settings_menu() {
     SETTINGS_VIEW_IDX[(TAG)] = idx; \
     idx++; \
   } while(0)
+#define MENU_ENTRY_BETWEEN_STREAMS(ID, TAG, NAME, SUFFIX) \
+  do { \
+    if (!streaming) { \
+      MENU_ENTRY((ID), (TAG), (NAME), (SUFFIX)); \
+    } \
+  } while (0)
 #define MENU_MESSAGE(MESSAGE) \
   do { \
     menu[idx] = (menu_entry) { .name = "", .disabled = true, .subname = (MESSAGE) }; \
     idx++; \
   } while(0)
 
+  if (streaming) {
+    MENU_MESSAGE("Settings that need a new stream return once this one ends.");
+  }
   MENU_CATEGORY("Stream");
-  MENU_ENTRY(SETTINGS_RESOLUTION, SETTINGS_VIEW_RESOLUTION, "Resolution", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY(SETTINGS_FPS, SETTINGS_VIEW_FPS, "FPS", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY(SETTINGS_BITRATE, SETTINGS_VIEW_BITRATE, "Bitrate", "");
-  MENU_ENTRY(SETTINGS_SOPS, SETTINGS_VIEW_SOPS, "Change graphical game settings for performance", "");
-  MENU_ENTRY(SETTINGS_ENABLE_FRAME_INVAL, SETTINGS_VIEW_ENABLE_FRAME_INVAL, "Enable reference frame invalidation", "");
-  MENU_ENTRY(SETTINGS_ENABLE_STREAM_OPTIMIZE, SETTINGS_VIEW_ENABLE_STREAM_OPTIMIZE, "Enable stream optimization", "");
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_RESOLUTION, SETTINGS_VIEW_RESOLUTION, "Resolution", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_FPS, SETTINGS_VIEW_FPS, "FPS", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE, SETTINGS_VIEW_BITRATE, "Bitrate", "");
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_SOPS, SETTINGS_VIEW_SOPS, "Change graphical game settings for performance", "");
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_FRAME_INVAL, SETTINGS_VIEW_ENABLE_FRAME_INVAL, "Enable reference frame invalidation", "");
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_STREAM_OPTIMIZE, SETTINGS_VIEW_ENABLE_STREAM_OPTIMIZE, "Enable stream optimization", "");
   MENU_ENTRY(SETTINGS_ENABLE_VITA_VBLANK_WAIT, SETTINGS_VIEW_ENABLE_VITA_VBLANK_WAIT, "Enable VITA vblank", "");
-  MENU_ENTRY(SETTINGS_CENTER_REGION_ONLY, SETTINGS_VIEW_CENTER_REGION_ONLY, "Fill screen (crop edges)", "");
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_CENTER_REGION_ONLY, SETTINGS_VIEW_CENTER_REGION_ONLY, "Fill screen (crop edges)", "");
 
 
   MENU_ENTRY(SETTINGS_ENABLE_FRAME_PACER, SETTINGS_VIEW_ENABLE_FRAME_PACER, "Enable frame pacer", "");
-  MENU_ENTRY(SETTINGS_PACKET_SIZE, SETTINGS_VIEW_PACKET_SIZE, "Video packet size", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY(SETTINGS_DIRECT_DECODE, SETTINGS_VIEW_DIRECT_DECODE, "Decode on network thread (legacy)", "");
-  MENU_ENTRY(SETTINGS_LOCAL_AUDIO, SETTINGS_VIEW_LOCAL_AUDIO, "Enable local audio", "");
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_PACKET_SIZE, SETTINGS_VIEW_PACKET_SIZE, "Video packet size", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_DIRECT_DECODE, SETTINGS_VIEW_DIRECT_DECODE, "Decode on network thread (legacy)", "");
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_LOCAL_AUDIO, SETTINGS_VIEW_LOCAL_AUDIO, "Enable local audio", "");
 
   MENU_CATEGORY("System");
   MENU_ENTRY(SETTINGS_SAVE_DEBUG_LOG, SETTINGS_VIEW_SAVE_DEBUG_LOG, "Enable debug log", "");
@@ -1285,10 +1304,10 @@ int ui_settings_menu() {
   MENU_CATEGORY("Input");
 
   MENU_ENTRY(SETTINGS_INPUT_SYNC, SETTINGS_VIEW_INPUT_SYNC, "Sync input to controller sampling", "");
-  MENU_ENTRY(SETTINGS_ENABLE_MOTION_CONTROLS, SETTINGS_VIEW_ENABLE_MOTION_CONTROLS, "Enable Gyroscope reporting", "");
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_MOTION_CONTROLS, SETTINGS_VIEW_ENABLE_MOTION_CONTROLS, "Enable Gyroscope reporting", "");
   MENU_ENTRY(SETTINGS_ENABLE_DOUBLE_TAP_SPRINT, SETTINGS_VIEW_ENABLE_DOUBLE_TAP_SPRINT, "Enable double tap to sprint", "");
   MENU_ENTRY(SETTINGS_DOUBLE_TAP_SPRINT_STEP_TIME, SETTINGS_VIEW_DOUBLE_TAP_SPRINT_STEP_TIME, "Sprint double tap time", "");
-  MENU_ENTRY(SETTINGS_CONTROLLER_TYPE, SETTINGS_VIEW_CONTROLLER_TYPE, "Controller type", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_CONTROLLER_TYPE, SETTINGS_VIEW_CONTROLLER_TYPE, "Controller type", ICON_LEFT_RIGHT_ARROWS);
   MENU_ENTRY(SETTINGS_SWAP_SHOULDER_BUTTONS, SETTINGS_VIEW_SWAP_SHOULDER_BUTTONS, "Swap R1/L1 <-> R2/L2", "");
   MENU_ENTRY(SETTINGS_MOUSE_ACCEL, SETTINGS_VIEW_MOUSE_ACCEL, "Mouse acceleration", ICON_LEFT_RIGHT_ARROWS);
   MENU_ENTRY(SETTINGS_ENABLE_MAPPING, SETTINGS_VIEW_ENABLE_MAPPING, "Enable mapping file", "");
@@ -1306,23 +1325,23 @@ int ui_settings_menu() {
   char current[256];
   // Resolution
   sprintf(current, "%dx%d", config.stream.width, config.stream.height);
-  strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_RESOLUTION]].subname, current);
+  SET_ROW_VALUE(SETTINGS_VIEW_RESOLUTION, current);
   // FPS
   sprintf(current, "%d", config.stream.fps);
-  strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_FPS]].subname, current);
+  SET_ROW_VALUE(SETTINGS_VIEW_FPS, current);
   // Bitrate
   sprintf(current, "%d", config.stream.bitrate);
-  strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE]].subname, current);
+  SET_ROW_VALUE(SETTINGS_VIEW_BITRATE, current);
   // Controller type
   int current_idx = get_controller_type_index(config.controller_type);
   snprintf(current, sizeof(current), "%s", controller_type_names[current_idx]);
-  strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_CONTROLLER_TYPE]].subname, current);
+  SET_ROW_VALUE(SETTINGS_VIEW_CONTROLLER_TYPE, current);
   // Swap shoulder buttons
   swap_shoulder_buttons = config.swap_shoulder_buttons;
-  strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_SWAP_SHOULDER_BUTTONS]].subname, swap_shoulder_buttons ? "yes" : "no");
+  SET_ROW_VALUE(SETTINGS_VIEW_SWAP_SHOULDER_BUTTONS, swap_shoulder_buttons ? "yes" : "no");
   // Touchscreen mode
   static const char* mode_names[] = {"Off", "DS4 Touchpad", "Mouse Absolute", "Tablet (Sunshine)"};
-  strcpy(menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_TOUCH_MODE_SELECT]].subname, mode_names[config.touchscreen_mode]);
+  SET_ROW_VALUE(SETTINGS_VIEW_TOUCH_MODE_SELECT, mode_names[config.touchscreen_mode]);
   // Puedes agregar aquí más inicializaciones si quieres que otras opciones también muestren su valor actual al abrir el menú
 
   settings_loop_setup = 1;

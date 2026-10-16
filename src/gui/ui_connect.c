@@ -126,7 +126,8 @@ void ui_connect_stream(int appId) {
 enum {
   CONNECT_PAIRUNPAIR = 13,
   CONNECT_DISCONNECT,
-  CONNECT_QUITAPP
+  CONNECT_QUITAPP,
+  CONNECT_SETTINGS
 };
 
 #define QUIT_RELOAD 2
@@ -150,6 +151,11 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
   int ret;
 
   switch (id) {
+    case CONNECT_SETTINGS:
+      // Settings that apply to a running stream take effect on Resume, which
+      // reloads the input and power settings and restarts output
+      ui_settings_menu();
+      return 0;
     case CONNECT_PAIRUNPAIR:
       if (server.paired) {
         flash_message("Unpairing...");
@@ -365,6 +371,7 @@ int ui_connected_menu() {
 
       MENU_CATEGORY(current_status);
       MENU_ENTRY(server.currentGame, "Resume");
+      MENU_ENTRY(CONNECT_SETTINGS, "Settings");
       MENU_ENTRY(CONNECT_QUITAPP, "Quit");
     }
 
