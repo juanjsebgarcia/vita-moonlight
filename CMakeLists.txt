@@ -60,6 +60,7 @@ add_executable(${PROJECT_NAME}.elf
 	src/main.c
 	src/platform.c
 	src/stats.c
+	src/bench.c
 	src/util.c
 	src/device.c
 	src/check_dir.c
