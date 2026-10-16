@@ -38,6 +38,10 @@ extern char* strdup(const char*);
 #define DEFAULT_CONFIG_DIR "/.config"
 #define DEFAULT_CACHE_DIR "/.cache"
 
+#define DEFAULT_PACKET_SIZE 1024
+#define MIN_PACKET_SIZE 256
+#define MAX_PACKET_SIZE 1392
+
 #define write_config_string(fd, key, value) fprintf(fd, "%s = %s\n", key, value)
 #define write_config_int(fd, key, value) fprintf(fd, "%s = %d\n", key, value)
 #define write_config_hex(fd, key, value) fprintf(fd, "%s = %X\n", key, value)
@@ -104,6 +108,8 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->stream.fps = INT(value);
     } else if (strcmp(name, "bitrate") == 0) {
       config->stream.bitrate = INT(value);
+    } else if (strcmp(name, "packetsize") == 0) {
+      config->stream.packetSize = INT(value);
     } else if (strcmp(name, "sops") == 0) {
       config->sops = BOOL(value);
     } else if (strcmp(name, "localaudio") == 0) {
@@ -185,7 +191,7 @@ void config_save(const char* filename, PCONFIGURATION config) {
     write_config_int(fd, "fps", config->stream.fps);
   if (config->stream.bitrate != -1)
     write_config_int(fd, "bitrate", config->stream.bitrate);
-  if (config->stream.packetSize != 1024)
+  if (config->stream.packetSize != DEFAULT_PACKET_SIZE)
     write_config_int(fd, "packetsize", config->stream.packetSize);
   if (!config->sops)
     write_config_bool(fd, "sops", config->sops);
@@ -256,7 +262,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->stream.height = 720;
   config->stream.fps = 60;
   config->stream.bitrate = -1;
-  config->stream.packetSize = 1024;
+  config->stream.packetSize = DEFAULT_PACKET_SIZE;
   config->stream.streamingRemotely = 0;
   config->stream.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
   config->stream.supportedVideoFormats = VIDEO_FORMAT_H264;
@@ -344,6 +350,12 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
       config->stream.bitrate = 10000;
     else
       config->stream.bitrate = 5000;
+  }
+
+  // Larger packets would be IP-fragmented on a standard 1500-byte MTU
+  if (config->stream.packetSize < MIN_PACKET_SIZE || config->stream.packetSize > MAX_PACKET_SIZE) {
+    vita_debug_log("packetsize %d out of range, using %d", config->stream.packetSize, DEFAULT_PACKET_SIZE);
+    config->stream.packetSize = DEFAULT_PACKET_SIZE;
   }
 
   if (inputAdded) {
