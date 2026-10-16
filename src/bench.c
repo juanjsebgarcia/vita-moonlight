@@ -84,6 +84,8 @@ static struct {
   uint32_t frames_received, frames_rendered, frames_lost, idr_frames;
   uint64_t bytes;
   uint32_t ticks_read, ticks_unreadable, ticks_repeated, ticks_skipped, ticks_backwards;
+  // Total forward ticks between frames, to work out the page's tick rate
+  uint32_t ticks_advanced;
   int last_tick;
   bool have_tick;
   int last_frame_number;
@@ -228,6 +230,7 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
           state.ticks_repeated++;
         } else if (step < (1 << (FRAME_BITS - 1))) {
           state.ticks_skipped += step - 1;
+          state.ticks_advanced += step;
         } else {
           state.ticks_backwards++;
         }
@@ -279,6 +282,7 @@ static void reset_measurements(void) {
   state.bytes = 0;
   state.ticks_read = state.ticks_unreadable = state.ticks_repeated = 0;
   state.ticks_skipped = state.ticks_backwards = 0;
+  state.ticks_advanced = 0;
   state.have_tick = false;
   state.last_frame_number = 0;
   state.last_marker = -1;
@@ -293,6 +297,49 @@ static void send_key(short key) {
   LiSendKeyboardEvent(key, KEY_ACTION_DOWN, 0);
   sceKernelDelayThread(KEY_HOLD_US);
   LiSendKeyboardEvent(key, KEY_ACTION_UP, 0);
+}
+
+enum {
+  INPUT_KEY,
+  INPUT_MOUSE,
+  INPUT_GAMEPAD,
+};
+
+// Which input path the timed presses use, so they can be compared: a key goes
+// through the host's keyboard injection, a click through its mouse, and a
+// button through its virtual gamepad
+static int bench_input_type(void) {
+  if (config.bench_input && strcmp(config.bench_input, "mouse") == 0) {
+    return INPUT_MOUSE;
+  }
+  if (config.bench_input && strcmp(config.bench_input, "gamepad") == 0) {
+    return INPUT_GAMEPAD;
+  }
+  return INPUT_KEY;
+}
+
+static const char *bench_input_name(int type) {
+  return type == INPUT_MOUSE ? "mouse" : type == INPUT_GAMEPAD ? "gamepad" : "key";
+}
+
+static void press_down(int type) {
+  if (type == INPUT_MOUSE) {
+    LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_LEFT);
+  } else if (type == INPUT_GAMEPAD) {
+    LiSendMultiControllerEvent(0, 1, A_FLAG, 0, 0, 0, 0, 0, 0);
+  } else {
+    LiSendKeyboardEvent(VK_SPACE, KEY_ACTION_DOWN, 0);
+  }
+}
+
+static void press_up(int type) {
+  if (type == INPUT_MOUSE) {
+    LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT);
+  } else if (type == INPUT_GAMEPAD) {
+    LiSendMultiControllerEvent(0, 1, 0, 0, 0, 0, 0, 0, 0);
+  } else {
+    LiSendKeyboardEvent(VK_SPACE, KEY_ACTION_UP, 0);
+  }
 }
 
 // For unattended runs only, which have no host menu to start from: the host
@@ -421,8 +468,15 @@ static void write_report(FILE *f, const char *started, const char *host, const c
           state.frames_received, state.frames_rendered,
           seconds > 0 ? state.frames_received / seconds : 0, summary->fps_rendered,
           state.frames_lost, state.idr_frames);
-  fprintf(f, "  \"page\": {\"ticks_read\": %u, \"unreadable\": %u, \"repeated\": %u, \"skipped\": %u, \"backwards\": %u},\n",
-          state.ticks_read, state.ticks_unreadable, state.ticks_repeated, state.ticks_skipped, state.ticks_backwards);
+  // The page ticks at its own rate (60 by default), so a slower stream skips
+  // ticks even when nothing is lost. Work out how many, and report the rest.
+  float tick_rate = seconds > 0 ? state.ticks_advanced / seconds : 0;
+  float expected_skips = tick_rate > config.stream.fps ? (tick_rate - config.stream.fps) * seconds : 0;
+  float beyond_rate = state.ticks_skipped > expected_skips ? state.ticks_skipped - expected_skips : 0;
+  fprintf(f, "  \"page\": {\"ticks_read\": %u, \"unreadable\": %u, \"repeated\": %u, \"skipped\": %u, "
+             "\"backwards\": %u, \"tick_rate\": %.2f, \"expected_skips_from_rate\": %.0f, \"skipped_beyond_rate\": %.0f},\n",
+          state.ticks_read, state.ticks_unreadable, state.ticks_repeated, state.ticks_skipped, state.ticks_backwards,
+          tick_rate, expected_skips, beyond_rate);
   fprintf(f, "  \"bitrate_mbps\": %.2f,\n", seconds > 0 ? state.bytes * 8 / seconds / 1000000.0f : 0);
 
   // Latency estimate: the per-frame pipeline plus half the round trip
@@ -435,9 +489,9 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   summary->input_lag_p50 = series_percentile(&state.input_lag_ms, 0.5f);
   summary->input_lag_p95 = series_percentile(&state.input_lag_ms, 0.95f);
   float lag_min = state.input_lag_ms.count ? state.input_lag_ms.values[0] : 0;
-  fprintf(f, "  \"input_lag_ms\": {\"presses\": %u, \"seen\": %u, \"missed\": %u, \"p50\": %.2f, \"p95\": %.2f, "
+  fprintf(f, "  \"input_lag_ms\": {\"input\": \"%s\", \"presses\": %u, \"seen\": %u, \"missed\": %u, \"p50\": %.2f, \"p95\": %.2f, "
              "\"min\": %.2f, \"max\": %.2f},\n",
-          state.presses_sent, state.presses_seen, state.presses_missed,
+          bench_input_name(bench_input_type()), state.presses_sent, state.presses_seen, state.presses_missed,
           summary->input_lag_p50, summary->input_lag_p95, lag_min, series_max(&state.input_lag_ms));
 
   write_timing(f, "network_ms", &state.network_ms, false);
@@ -552,6 +606,7 @@ int vitabench_run(bool automated) {
   sceKernelDelayThread(RESET_SETTLE_US);
   reset_measurements();
 
+  int input_type = bench_input_type();
   phase = PHASE_MEASURING;
   uint64_t start = LiGetMicroseconds();
   uint64_t end = start + (uint64_t)config.bench_seconds * 1000000;
@@ -577,14 +632,14 @@ int vitabench_run(bool automated) {
       pthread_mutex_unlock(&bench_mutex);
       if (!waiting) {
         uint64_t sent = LiGetMicroseconds();
-        LiSendKeyboardEvent(VK_SPACE, KEY_ACTION_DOWN, 0);
+        press_down(input_type);
         pthread_mutex_lock(&bench_mutex);
         state.press_sent_us = sent;
         state.awaiting_marker = true;
         state.presses_sent++;
         pthread_mutex_unlock(&bench_mutex);
         sceKernelDelayThread(KEY_HOLD_US);
-        LiSendKeyboardEvent(VK_SPACE, KEY_ACTION_UP, 0);
+        press_up(input_type);
       }
       next_press += PRESS_INTERVAL_US;
     }
