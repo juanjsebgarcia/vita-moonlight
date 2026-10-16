@@ -34,7 +34,10 @@ add_definitions(-DVERSION_MAJOR=${VERSION_MAJOR})
 add_definitions(-DVERSION_MINOR=${VERSION_MINOR})
 add_definitions(-DVERSION_PATCH=${VERSION_PATCH})
 
-set(CMAKE_C_FLAGS "-Wl,-q -g -std=c99 -D__vita__")
+# This replaces CMAKE_C_FLAGS outright and no CMAKE_BUILD_TYPE is used, so the
+# optimisation level must be set here or everything is built at -O0
+set(VITA_OPT_LEVEL "-O2" CACHE STRING "Optimisation flag for all C sources, e.g. -O0 for debugging")
+set(CMAKE_C_FLAGS "-Wl,-q -g ${VITA_OPT_LEVEL} -std=c99 -D__vita__")
 
 
 
