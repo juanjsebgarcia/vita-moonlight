@@ -47,6 +47,9 @@ static const float CURSOR_TARGET_X[2] = {0.930f, 0.965f};
 #define CURSOR_BOX_H 0.035f
 // Absolute mouse positions are sent on this scale
 #define MOUSE_REFERENCE 10000
+// Without the page's reference blocks (cursor mode on a plain dark screen),
+// the pointer counts as present above this luminance
+#define CURSOR_FIXED_THRESHOLD 160
 #define FRAME_BITS 16
 #define TICK_MASK ((1 << FRAME_BITS) - 1)
 
@@ -244,11 +247,14 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
     marker = probe(pixels, stride_bytes, region_x1, region_y1, region_x2, region_y2,
                    MARKER_CX, MARKER_CY) > threshold;
   }
+  // Cursor mode works on the page or on any dark screen, such as a black
+  // window on the Desktop, so it doesn't need the reference blocks
   bool cursor_at[2] = {false, false};
-  if (readable && active_input == INPUT_CURSOR) {
+  if (active_input == INPUT_CURSOR) {
+    int cursor_threshold = readable ? threshold : CURSOR_FIXED_THRESHOLD;
     for (int i = 0; i < 2; i++) {
       cursor_at[i] = probe_box_max(pixels, stride_bytes, region_x1, region_y1, region_x2, region_y2,
-                                   CURSOR_TARGET_X[i], CURSOR_TARGET_Y, CURSOR_BOX_W, CURSOR_BOX_H) > threshold;
+                                   CURSOR_TARGET_X[i], CURSOR_TARGET_Y, CURSOR_BOX_W, CURSOR_BOX_H) > cursor_threshold;
     }
   }
 
@@ -292,16 +298,7 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
       state.last_tick = tick;
       state.have_tick = true;
 
-      if (active_input == INPUT_CURSOR) {
-        // The pointer showing at the new target, and gone from the old one
-        int target = state.cursor_target;
-        if (state.awaiting_marker && cursor_at[target] && !cursor_at[1 - target]) {
-          state.awaiting_marker = false;
-          state.lag_send_us = state.press_sent_us;
-          state.lag_pending = true;
-          state.presses_seen++;
-        }
-      } else if (marker && state.last_marker == 0 && state.awaiting_marker) {
+      if (active_input != INPUT_CURSOR && marker && state.last_marker == 0 && state.awaiting_marker) {
         // The marker turning white after a press means the press got through
         state.awaiting_marker = false;
         state.lag_send_us = state.press_sent_us;
@@ -311,6 +308,17 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
       state.last_marker = marker;
     } else {
       state.ticks_unreadable++;
+    }
+
+    if (active_input == INPUT_CURSOR) {
+      // The pointer showing at the new target, and gone from the old one
+      int target = state.cursor_target;
+      if (state.awaiting_marker && cursor_at[target] && !cursor_at[1 - target]) {
+        state.awaiting_marker = false;
+        state.lag_send_us = state.press_sent_us;
+        state.lag_pending = true;
+        state.presses_seen++;
+      }
     }
   }
   pthread_mutex_unlock(&bench_mutex);
@@ -669,18 +677,23 @@ int vitabench_run(bool automated) {
     snprintf(error, sizeof(error), "The stream didn't start within %llu s", CONNECT_TIMEOUT_US / 1000000);
     goto done;
   }
-  if (!wait_for(page_is_visible, PAGE_TIMEOUT_US)) {
-    snprintf(error, sizeof(error), "The benchmark page didn't appear within %llu s. Is %s showing bench.html?",
-             PAGE_TIMEOUT_US / 1000000, app_name);
-    goto done;
+  int input_type = bench_input_type();
+  if (input_type == INPUT_CURSOR) {
+    // The pointer test needs only a dark screen, not the page, so don't wait
+    // for the page or reset it; just let the stream settle
+    sceKernelDelayThread(RESET_SETTLE_US * 2);
+  } else {
+    if (!wait_for(page_is_visible, PAGE_TIMEOUT_US)) {
+      snprintf(error, sizeof(error), "The benchmark page didn't appear within %llu s. Is %s showing bench.html?",
+               PAGE_TIMEOUT_US / 1000000, app_name);
+      goto done;
+    }
+    // Restart the page's animation, so every run shows the same pictures
+    send_key(VK_R);
+    sceKernelDelayThread(RESET_SETTLE_US);
   }
-
-  // Restart the page's animation, so every run shows the same pictures
-  send_key(VK_R);
-  sceKernelDelayThread(RESET_SETTLE_US);
   reset_measurements();
 
-  int input_type = bench_input_type();
   active_input = input_type;
   if (input_type == INPUT_CURSOR) {
     // Park the pointer on the first target before timing moves away from it
