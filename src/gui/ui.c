@@ -159,7 +159,7 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
     }
     case HOST_MANAGE_DELETE: {
       char msg[320];
-      snprintf(msg, sizeof(msg), "Delete host?\nAre you sure you want to delete %s?", info->name);
+      snprintf(msg, sizeof(msg), "Delete host?\nAre you sure you want to delete %s?", device_label(info));
       int res = display_confirm(msg);
       if (res) {
         vita_debug_log("[UI] Host management: delete %s", info->name);
@@ -193,19 +193,18 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
     case HOST_MANAGE_CHANGE_NAME: {
       vita_debug_log("[UI] Menú gestión: cambiar nombre %s", info->name);
       char new_name[256] = "";
-      if (ime_dialog_string(new_name, "Enter new name:", info->name) == 0 && strlen(new_name) > 0) {
-        // Guardar el nombre anterior para eliminar el archivo viejo
-        char old_name[256];
-        strncpy(old_name, info->name, sizeof(old_name)-1);
-        old_name[sizeof(old_name)-1] = '\0';
-        strncpy(info->name, new_name, sizeof(info->name)-1);
-        info->name[sizeof(info->name)-1] = '\0';
-        save_device_info(info);
-        // Eliminar el archivo antiguo si el nombre cambió
-        if (strcmp(old_name, new_name) != 0) {
-          remove_device(old_name);
+      if (ime_dialog_string(new_name, "Enter new name:", device_label(info)) == 0 && strlen(new_name) > 0) {
+        // Only the label changes. The host's name stays as its identity: the
+        // folder holding its pairing keys, and how mDNS and DNS find it.
+        // Entering the original name clears the label.
+        if (strcmp(new_name, info->name) == 0) {
+          info->display_name[0] = '\0';
+        } else {
+          strncpy(info->display_name, new_name, sizeof(info->display_name) - 1);
+          info->display_name[sizeof(info->display_name) - 1] = '\0';
         }
-        flash_message("Name updated: %s", new_name);
+        save_device_info(info);
+        flash_message("Name updated: %s", device_label(info));
       } else {
         flash_message("Name change cancelled");
       }
@@ -230,7 +229,7 @@ void ui_host_manage_menu(device_info_t *info) {
   menu_entry menu[12];
   int idx = 0;
   char title[256];
-  snprintf(title, sizeof(title), "Host: %s", info->name);
+  snprintf(title, sizeof(title), "Host: %s", device_label(info));
   // Mensaje principal
   menu[idx++] = (menu_entry){ .name = "Host management", .disabled = true, .color = 0xFFFFFFFF };
   menu[idx++] = (menu_entry){ .name = title, .disabled = true, .color = 0xFF00AAFF };
@@ -495,7 +494,7 @@ int ui_main_menu() {
         // const char* color_str = ""; // No usado
         // bool ip_changed = (st.current_ip[0] && strcmp(cur->internal, st.current_ip) != 0); // No usado
         // bool ip_pending = (pending_ip_update_idx == i && pending_ip_update[0] != '\0'); // No usado
-        MENU_ENTRY(MAIN_MENU_CONNECT_PAIRED + i, cur->name, false);
+        MENU_ENTRY(MAIN_MENU_CONNECT_PAIRED + i, (char *)device_label(cur), false);
         int real_idx = idx - 1;
         menu[real_idx].is_host_entry = true;
         // Si hay cambio de IP pendiente para este host, forzar amarillo y saltar el resto

@@ -77,6 +77,10 @@ device_info_t* find_device(const char *name) {
   return NULL;
 }
 
+const char *device_label(const device_info_t *info) {
+  return info->display_name[0] != '\0' ? info->display_name : info->name;
+}
+
 device_info_t* find_device_by_address(const char *address) {
   if (address == NULL)
     return NULL;
@@ -110,6 +114,9 @@ static int device_ini_handle(void *out, const char *section, const char *name,
     info->port = INT(value);
   } else if (strcmp(name, "prefer_external") == 0) {
     info->prefer_external = BOOL(value);
+  } else if (strcmp(name, "display_name") == 0) {
+    strncpy(info->display_name, value, sizeof(info->display_name) - 1);
+    info->display_name[sizeof(info->display_name) - 1] = '\0';
   }
   return 1;
 }
@@ -152,6 +159,8 @@ device_info_t* append_device(device_info_t *info) {
   p->mac[17] = '\0';
   p->port = info->port;
   p->prefer_external = info->prefer_external;
+  strncpy(p->display_name, info->display_name, sizeof(p->display_name) - 1);
+  p->display_name[sizeof(p->display_name) - 1] = '\0';
   vita_debug_log("append_device: device %s is added to the list\n", p->name);
 
   known_devices.count++;
@@ -259,6 +268,10 @@ void save_device_info(const device_info_t *info) {
 
   vita_debug_log("save_device_info: prefer_external = %s\n", info->prefer_external ? "true" : "false");
   write_bool(fd, "prefer_external", info->prefer_external);
+
+  if (info->display_name[0] != '\0') {
+    write_string(fd, "display_name", info->display_name);
+  }
 
   fclose(fd);
   vita_debug_log("save_device_info: file closed\n");
