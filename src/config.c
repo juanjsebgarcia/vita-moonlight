@@ -296,7 +296,9 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->input_sync_to_controller = true;
   config->jp_layout = false;
   config->stats_overlay = STATS_OVERLAY_OFF;
-  config->enable_frame_pacer = true;
+  // Off by default: it counts frames in ~1 s windows and drops any excess, so jitter
+  // around 60 fps periodically discards a decoded frame and causes a visible hitch
+  config->enable_frame_pacer = false;
   config->center_region_only = false;
 
   config->enable_front_touchzones = false;
