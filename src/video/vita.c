@@ -118,6 +118,13 @@ static bool active_pacer_thread = false;
 static indicator_status poor_net_indicator = {0};
 static bool decode_thread_logged = false;
 
+// A reminder of how to reach the menu, shown at the start of each stream
+#define STREAM_HINT_DURATION_US 5000000
+#define STREAM_HINT_FADE_US 1000000
+static const char *STREAM_HINT_TEXT = "Press START + L + R for the menu and to quit";
+// When the first frame of this stream was drawn, or 0 before that
+static uint64_t stream_hint_start_us = 0;
+
 uint32_t frame_count = 0;
 uint32_t need_drop = 0;
 uint32_t curr_fps[2] = {0, 0};
@@ -316,6 +323,7 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
   int ret;
   printf("vita video setup\n");
   decode_thread_logged = false;
+  stream_hint_start_us = 0;
   vitastats_reset();
 
   if (video_status == NOT_INIT) {
@@ -597,7 +605,34 @@ void draw_fps() {
   vitastats_draw();
 }
 
+static void draw_stream_hint(void) {
+  uint64_t now = LiGetMicroseconds();
+  if (stream_hint_start_us == 0) {
+    stream_hint_start_us = now;
+  }
+  uint64_t shown_for = now - stream_hint_start_us;
+  if (shown_for >= STREAM_HINT_DURATION_US) {
+    return;
+  }
+
+  // Fade out over the last second
+  uint64_t remaining = STREAM_HINT_DURATION_US - shown_for;
+  float opacity = remaining < STREAM_HINT_FADE_US ? (float)remaining / STREAM_HINT_FADE_US : 1.0f;
+
+  const int font_size = 20;
+  int text_width = vita2d_font_text_width(font, font_size, STREAM_HINT_TEXT);
+  int box_width = text_width + 32;
+  int box_height = 36;
+  int box_x = (SCREEN_WIDTH - box_width) / 2;
+  int box_y = SCREEN_HEIGHT - box_height - 24;
+  vita2d_draw_rectangle(box_x, box_y, box_width, box_height, RGBA8(0, 0, 0, (uint8_t)(0xB0 * opacity)));
+  vita2d_font_draw_text(font, box_x + 16, box_y + 25, RGBA8(0xFF, 0xFF, 0xFF, (uint8_t)(0xFF * opacity)),
+                        font_size, STREAM_HINT_TEXT);
+}
+
 void draw_indicators() {
+  draw_stream_hint();
+
   if (poor_net_indicator.activated) {
     vita2d_font_draw_text(font, 40, 500, RGBA8(0xFF, 0xFF, 0xFF, poor_net_indicator.alpha), 64, ICON_NETWORK);
     poor_net_indicator.alpha += (0x4 * (poor_net_indicator.plus ? 1 : -1));
