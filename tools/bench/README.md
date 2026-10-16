@@ -109,6 +109,91 @@ What to look for in the readings:
 
 The block sizes, at least 0.045 of the width by 0.06 of the height (about 43x32 pixels at 960x540), survive H.264 compression and chroma subsampling comfortably.
 
-## Status
+## Running a benchmark on the Vita
 
-The page is done. The Vita side, a hidden developer mode that runs a benchmark against this page and writes a report, is in progress. See `docs/DEVELOPMENT.md` for how builds are deployed to a Vita for testing.
+The Vita side lives behind a hidden **developer mode**, so it stays out of normal players' way.
+
+### From the Vita
+
+1. In **Settings**, hold **L** and **R** and press **△**. A message confirms that developer options are shown. They appear in a **Developer** section at the end of Settings. The same combination, or **Hide developer options**, hides them again.
+2. Connect to the computer as usual, so you're on its menu with the app list, then open **Settings** from that menu. The benchmark runs against whichever computer you're connected to.
+3. Under **Developer**, **Run benchmark** shows what it will use, for example "Moonlight Bench on DESKTOP-RYZEN".
+   - **Finding the app:** it looks in the computer's app list for an exact, case-insensitive match on `bench_app` ("Moonlight Bench" by default), then for any app with "bench" in its name.
+   - **If there isn't one,** it says so instead of streaming.
+
+   **Benchmark duration** sets how long it measures (30, 60, 120 or 300 s).
+4. Press ✕ on **Run benchmark**. The Vita:
+   1. starts the app and waits up to 45 s for the page to appear (it checks the reference blocks)
+   2. presses R to reset the page
+   3. measures for the set duration, pressing Space about once a second to time input lag
+   4. ends the stream, quits the app on the computer, and shows a summary
+
+**Reports** go to `ux0:data/moonlight/reports/` as `bench-<date>-<time>.json`, with a copy of the latest as `last-bench.json`.
+
+### Unattended, comparing settings
+
+`tools/bench/run.sh` runs the benchmark with no one at the Vita, and compares variants:
+
+```sh
+export VITA_IP=192.168.1.50
+tools/bench/run.sh base legacy:direct_decode=true big:packetsize=1392
+tools/bench/run.sh --seconds 120 --rounds 3 --host DESKTOP-RYZEN base pacer:enable_frame_pacer=true
+```
+
+Each variant is `LABEL`, or `LABEL:key=value,key=value` where the keys are `moonlight.conf` settings. A plain `LABEL` uses your current settings.
+
+For each run, the script:
+1. **Writes the variant's settings.** It writes `moonlight.conf` with the variant's keys plus `bench_autorun = true`.
+2. **Runs it.** It launches Moonlight, which runs the benchmark straight away against `--host` (or the first paired computer), writes the report and exits.
+3. **Saves the report** into `build/bench/<time>/`.
+
+Variants run in turn, round after round, so changing Wi-Fi conditions affect them all alike. At the end, `compare.py` prints a table (also saved as `summary.md`) with the mean for each variant and the min-max spread across rounds. **Your original `moonlight.conf` is backed up first and restored at the end, even if a run fails.**
+
+It needs `tools/vita.sh` and the Vita setup in `docs/DEVELOPMENT.md`, with the computer awake and Sunshine running.
+
+#### Settings worth comparing
+
+| Key | Values | What it changes |
+|---|---|---|
+| `bitrate` | kbps, e.g. `5000`, `10000`, `15000` | Video bitrate |
+| `width`, `height` | e.g. `960`/`544`, `1280`/`720` | Stream resolution (the host must support it) |
+| `fps` | `30`, `60` | Stream frame rate |
+| `packetsize` | `1024`, `1392` | Video packet size |
+| `direct_decode` | `true`, `false` | Legacy decode on the network thread |
+| `input_sync_to_controller` | `true`, `false` | Input reads paced to the controller, or 2 ms polling |
+| `boost_clocks` | `true`, `false` | CPU, bus and GPU clocks raised while streaming |
+| `enable_frame_pacer` | `true`, `false` | The frame pacer |
+| `enable_vita_vblank_wait` | `true`, `false` | V-Sync |
+| `stats_overlay` | `0`, `1`, `2` | Overlay off, fps or full (its drawing cost counts in the results) |
+
+To compare **builds** rather than settings, deploy each build with `tools/vita.sh push` and run the same variant against it, with a different label.
+
+### Report contents
+
+| Field | Meaning |
+|---|---|
+| `ok`, `error` | Whether the run completed, and why not |
+| `label`, `started`, `host`, `app`, `seconds`, `version` | What ran, where and for how long |
+| `settings` | The settings that matter for performance |
+| `frames` | Frames received and drawn, fps, frames lost on the network, IDR frames |
+| `page` | From the barcode: ticks read, unreadable frames, `repeated` (the same picture twice), `skipped` (pictures the Vita never got: lost by the host or the network) |
+| `input_lag_ms` | Presses sent, seen and missed; p50, p95, min and max from sending a key to the first frame on screen with the marker lit |
+| `latency_estimate_ms` | Host time + receive + queue + decode + render per frame, plus half the round trip (see the stats overlay) |
+| `network_ms`, `queue_ms`, `decode_ms`, `render_ms` | p50, p95 and max for each stage |
+| `bitrate_mbps`, `rtt_ms`, `wifi` | Measured bitrate, round trip, and Wi-Fi signal and channel |
+
+**Input lag is the most direct measure**: it's timed entirely on the Vita's clock and covers the whole loop. Its precision is one frame, since the marker shows up in whichever frame the page draws next.
+
+### Settings used by the benchmark
+
+These live in `moonlight.conf`, and the menu sets the first two:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `developer_mode` | `false` | Show the Developer section |
+| `bench_seconds` | `60` | Seconds to measure (10 to 600) |
+| `bench_app` | `Moonlight Bench` | Preferred benchmark app name |
+| `bench_host` | empty | Unattended runs only: the paired computer to use (empty means the first paired one) |
+| `bench_label` | empty | Copied into the report, e.g. a variant name |
+| `bench_autorun` | `false` | Run once at launch and exit; cleared before the run starts |
+| `bench_quit_app` | `true` | Quit the app on the computer when the run ends |
