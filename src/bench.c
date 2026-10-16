@@ -23,6 +23,7 @@
 #include "gui/guilib.h"
 #include "gui/ui_connect.h"
 
+#include <enet/enet.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,6 +109,8 @@ typedef struct {
   int lum_target;      // brightest pixel at the expected spot in that frame
   int lum_other;       // and at the other spot (cursor mode)
   float lag_ms;        // send to on screen, or -1 if never seen
+  float to_enet_ms;    // our input call to common-c handing the packet to ENet, or -1
+  float to_wire_ms;    // our input call to the datagram being sent, or -1
 } press_record;
 
 static pthread_mutex_t bench_mutex;
@@ -193,6 +196,63 @@ static float series_max(series *s) {
     }
   }
   return max;
+}
+
+// Timing the Vita's own send path. The linker wraps two ENet calls (see
+// --wrap in CMakeLists.txt), so without touching moonlight-common-c or ENet
+// we can see when an input packet is handed to ENet, and when the next
+// datagram goes onto the network. Inputs use their own ENet channels, so
+// anything on the keyboard channel or above is input.
+#define FIRST_INPUT_CHANNEL 0x02
+enum {
+  SEND_PROBE_IDLE,
+  SEND_PROBE_WAITING_ENET,
+  SEND_PROBE_WAITING_WIRE,
+  SEND_PROBE_DONE,
+};
+static volatile int send_probe = SEND_PROBE_IDLE;
+static volatile uint64_t send_call_us, send_enet_us, send_wire_us;
+static series send_to_enet_ms, send_to_wire_ms;
+
+int __real_enet_peer_send(ENetPeer *peer, enet_uint8 channel, ENetPacket *packet);
+int __wrap_enet_peer_send(ENetPeer *peer, enet_uint8 channel, ENetPacket *packet) {
+  if (send_probe == SEND_PROBE_WAITING_ENET && channel >= FIRST_INPUT_CHANNEL) {
+    send_enet_us = LiGetMicroseconds();
+    send_probe = SEND_PROBE_WAITING_WIRE;
+  }
+  return __real_enet_peer_send(peer, channel, packet);
+}
+
+int __real_enet_socket_send(ENetSocket socket, const ENetAddress *address, const ENetAddress *local,
+                            const ENetBuffer *buffers, size_t count);
+int __wrap_enet_socket_send(ENetSocket socket, const ENetAddress *address, const ENetAddress *local,
+                            const ENetBuffer *buffers, size_t count) {
+  int ret = __real_enet_socket_send(socket, address, local, buffers, count);
+  if (send_probe == SEND_PROBE_WAITING_WIRE && ret > 0) {
+    send_wire_us = LiGetMicroseconds();
+    send_probe = SEND_PROBE_DONE;
+  }
+  return ret;
+}
+
+// Called with bench_mutex held before each press, and once at the end, to
+// file the previous press's send timings
+static void finish_send_probe(void) {
+  if (state.presses_sent == 0 || state.presses_sent > state.press_capacity) {
+    send_probe = SEND_PROBE_IDLE;
+    return;
+  }
+  press_record *r = &state.presses[state.presses_sent - 1];
+  int probe = send_probe;
+  if (probe == SEND_PROBE_WAITING_WIRE || probe == SEND_PROBE_DONE) {
+    r->to_enet_ms = (send_enet_us - send_call_us) / 1000.0f;
+    series_add(&send_to_enet_ms, r->to_enet_ms);
+  }
+  if (probe == SEND_PROBE_DONE) {
+    r->to_wire_ms = (send_wire_us - send_call_us) / 1000.0f;
+    series_add(&send_to_wire_ms, r->to_wire_ms);
+  }
+  send_probe = SEND_PROBE_IDLE;
 }
 
 bool vitabench_init(void) {
@@ -400,6 +460,8 @@ static void reset_measurements(void) {
   state.awaiting_marker = false;
   state.lag_pending = false;
   state.presses_sent = state.presses_seen = state.presses_missed = 0;
+  send_to_enet_ms.count = send_to_wire_ms.count = 0;
+  send_probe = SEND_PROBE_IDLE;
   pthread_mutex_unlock(&bench_mutex);
 }
 
@@ -620,6 +682,13 @@ static void write_report(FILE *f, const char *started, const char *host, const c
           bench_input_name(bench_input_type()), state.presses_sent, state.presses_seen, state.presses_missed,
           summary->input_lag_p50, summary->input_lag_p95, lag_min, series_max(&state.input_lag_ms));
 
+  // The Vita's own send path for the timed presses
+  fprintf(f, "  \"send_ms\": {\"samples\": %d, \"to_enet_p50\": %.2f, \"to_enet_p95\": %.2f, "
+             "\"to_wire_p50\": %.2f, \"to_wire_p95\": %.2f, \"to_wire_max\": %.2f},\n",
+          send_to_wire_ms.count,
+          series_percentile(&send_to_enet_ms, 0.5f), series_percentile(&send_to_enet_ms, 0.95f),
+          series_percentile(&send_to_wire_ms, 0.5f), series_percentile(&send_to_wire_ms, 0.95f),
+          series_max(&send_to_wire_ms));
   write_timing(f, "network_ms", &state.network_ms, false);
   write_timing(f, "queue_ms", &state.queue_ms, false);
   write_timing(f, "decode_ms", &state.decode_ms, false);
@@ -631,8 +700,10 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   int recorded = state.presses_sent < (uint32_t)state.press_capacity ? (int)state.presses_sent : state.press_capacity;
   for (int i = 0; i < recorded; i++) {
     const press_record *r = &state.presses[i];
-    fprintf(f, "%s\n    {\"target\": %d, \"sent_frame\": %d, \"seen_frame\": %d, \"lum\": [%d, %d], \"lag_ms\": %.2f}",
-            i ? "," : "", r->target, r->sent_frame, r->seen_frame, r->lum_target, r->lum_other, r->lag_ms);
+    fprintf(f, "%s\n    {\"target\": %d, \"sent_frame\": %d, \"seen_frame\": %d, \"lum\": [%d, %d], "
+               "\"to_enet_ms\": %.2f, \"to_wire_ms\": %.2f, \"lag_ms\": %.2f}",
+            i ? "," : "", r->target, r->sent_frame, r->seen_frame, r->lum_target, r->lum_other,
+            r->to_enet_ms, r->to_wire_ms, r->lag_ms);
   }
   fprintf(f, "\n  ],\n");
   fprintf(f, "  \"wifi\": {\"rssi_avg_percent\": %d, \"rssi_min_percent\": %d, \"channel\": %d}\n",
@@ -689,6 +760,8 @@ int vitabench_run(bool automated) {
   series_init(&state.render_ms, capacity);
   series_init(&state.pipeline_ms, capacity);
   series_init(&state.input_lag_ms, config.bench_seconds + 5);
+  series_init(&send_to_enet_ms, config.bench_seconds + 8);
+  series_init(&send_to_wire_ms, config.bench_seconds + 8);
   state.press_capacity = config.bench_seconds + 8;
   state.presses = calloc(state.press_capacity, sizeof(press_record));
   if (state.presses == NULL) {
@@ -794,13 +867,17 @@ int vitabench_run(bool automated) {
       pthread_mutex_unlock(&bench_mutex);
       if (!waiting) {
         pthread_mutex_lock(&bench_mutex);
+        finish_send_probe();
         state.press_sent_us = LiGetMicroseconds();
+        send_call_us = state.press_sent_us;
+        send_probe = SEND_PROBE_WAITING_ENET;
         press_down(input_type);
         state.awaiting_marker = true;
         if (state.presses_sent < state.press_capacity) {
           state.presses[state.presses_sent] = (press_record){
             .target = state.cursor_target, .sent_frame = state.newest_frame,
             .seen_frame = -1, .lum_target = -1, .lum_other = -1, .lag_ms = -1,
+            .to_enet_ms = -1, .to_wire_ms = -1,
           };
         }
         state.presses_sent++;
@@ -817,6 +894,7 @@ int vitabench_run(bool automated) {
 done:
   phase = PHASE_IDLE;
   pthread_mutex_lock(&bench_mutex);
+  finish_send_probe();
   if (state.awaiting_marker) {
     state.presses_missed++;
     state.awaiting_marker = false;
@@ -846,6 +924,8 @@ done:
   series_free(&state.render_ms);
   series_free(&state.pipeline_ms);
   series_free(&state.input_lag_ms);
+  series_free(&send_to_enet_ms);
+  series_free(&send_to_wire_ms);
   free(state.presses);
   state.presses = NULL;
   state.press_capacity = 0;
