@@ -45,9 +45,10 @@ require_vita() {
     || die "nothing listening on $VITA_IP:$FTP_PORT; is vitacompanion loaded and the Vita awake?"
 }
 
-# vitacompanion takes one command per connection, terminated by a newline
+# vitacompanion takes one command per connection, terminated by a newline, and
+# replies with a line of text. `help` lists the commands it supports.
 vita_cmd() {
-  printf '%s\n' "$1" | nc -w 2 "$VITA_IP" "$CMD_PORT" >/dev/null || true
+  printf '%s\n' "$1" | nc -w 3 "$VITA_IP" "$CMD_PORT" || true
 }
 
 ftp_url() {
@@ -75,14 +76,22 @@ cmd_build() {
 
 cmd_kill() {
   require_vita
-  vita_cmd "destroy"
-  # Give the app time to exit before its files are replaced
-  sleep 1
+  local reply
+  reply="$(vita_cmd "quit $TITLE_ID")"
+  # vitacompanion reports an error when the app is not running, which is fine here
+  case "$reply" in
+    *"cannot quit"*) ;;
+    *[Ee]rror*) echo "vitacompanion: $reply" >&2 ;;
+  esac
 }
 
 cmd_launch() {
   require_vita
-  vita_cmd "launch $TITLE_ID"
+  local reply
+  reply="$(vita_cmd "launch $TITLE_ID")"
+  case "$reply" in
+    *[Ee]rror*) die "vitacompanion: $reply" ;;
+  esac
 }
 
 cmd_push() {
@@ -92,9 +101,18 @@ cmd_push() {
   curl -sf --max-time 10 "$(ftp_url "ux0:/app/$TITLE_ID/")" >/dev/null \
     || die "ux0:app/$TITLE_ID is not installed; install build/moonlight.vpk once with VitaShell"
   cmd_kill
-  curl -sf --max-time 60 -T "$eboot" "$(ftp_url "ux0:/app/$TITLE_ID/eboot.bin")"
-  echo "uploaded $(wc -c < "$eboot" | tr -d ' ') bytes"
-  cmd_launch
+  # The Vita refuses the write (FTP 550) while the app still has eboot.bin
+  # open, so retry for a few seconds while it exits
+  local attempt err
+  for attempt in 1 2 3 4 5 6 7 8; do
+    if err="$(curl -sS --max-time 60 -T "$eboot" "$(ftp_url "ux0:/app/$TITLE_ID/eboot.bin")" 2>&1)"; then
+      echo "uploaded $(wc -c < "$eboot" | tr -d ' ') bytes"
+      cmd_launch
+      return 0
+    fi
+    sleep 1
+  done
+  die "upload failed: $err"
 }
 
 cmd_log() {
