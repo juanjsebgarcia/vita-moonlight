@@ -61,6 +61,8 @@ typedef struct _CONFIGURATION {
   struct special_keys special_keys;
   bool disable_powersave;
   bool boost_clocks;
+  bool direct_decode; // decode on common-c's receive thread, as before the decode thread
+  bool input_sync_to_controller; // pace input reads to controller samples instead of 2 ms polling
   bool jp_layout;
   int stats_overlay; // STATS_OVERLAY_* from stats.h
   bool enable_frame_pacer;

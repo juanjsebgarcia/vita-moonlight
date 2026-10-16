@@ -123,6 +123,10 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->disable_powersave = BOOL(value);
     } else if (strcmp(name, "boost_clocks") == 0) {
       config->boost_clocks = BOOL(value);
+    } else if (strcmp(name, "direct_decode") == 0) {
+      config->direct_decode = BOOL(value);
+    } else if (strcmp(name, "input_sync_to_controller") == 0) {
+      config->input_sync_to_controller = BOOL(value);
     } else if (strcmp(name, "jp_layout") == 0) {
       config->jp_layout = BOOL(value);
     } else if (strcmp(name, "stats_overlay") == 0) {
@@ -212,6 +216,8 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_bool(fd, "center_region_only", config->center_region_only);
   write_config_bool(fd, "disable_powersave", config->disable_powersave);
   write_config_bool(fd, "boost_clocks", config->boost_clocks);
+  write_config_bool(fd, "direct_decode", config->direct_decode);
+  write_config_bool(fd, "input_sync_to_controller", config->input_sync_to_controller);
   write_config_bool(fd, "jp_layout", config->jp_layout);
   write_config_int(fd, "stats_overlay", config->stats_overlay);
   write_config_bool(fd, "save_debug_log", config->save_debug_log);
@@ -286,6 +292,8 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->save_debug_log = false;
   config->disable_powersave = true;
   config->boost_clocks = true;
+  config->direct_decode = false;
+  config->input_sync_to_controller = true;
   config->jp_layout = false;
   config->stats_overlay = STATS_OVERLAY_OFF;
   config->enable_frame_pacer = true;

@@ -449,7 +449,10 @@ enum {
   SETTINGS_MOUSE_ACCEL,
   SETTINGS_KEYBOARD_LAYOUT,
   SETTINGS_TOUCH_MODE_SELECT, // Nuevo: selección de modo táctil exclusivo
-  SETTINGS_BOOST_CLOCKS
+  SETTINGS_BOOST_CLOCKS,
+  SETTINGS_DIRECT_DECODE,
+  SETTINGS_INPUT_SYNC,
+  SETTINGS_PACKET_SIZE
 };
 
 enum {
@@ -484,6 +487,9 @@ enum {
   SETTINGS_VIEW_KEYBOARD_LAYOUT,
   SETTINGS_VIEW_TOUCH_MODE_SELECT, // Vista para modo táctil exclusivo
   SETTINGS_VIEW_BOOST_CLOCKS,
+  SETTINGS_VIEW_DIRECT_DECODE,
+  SETTINGS_VIEW_INPUT_SYNC,
+  SETTINGS_VIEW_PACKET_SIZE,
 
   SETTINGS_VIEW_MAX_COUNT,
 };
@@ -835,6 +841,44 @@ static int settings_loop(int id, void *context, const input_data *input) {
       did_change = 1;
       config.enable_frame_pacer = !config.enable_frame_pacer;
       break;
+    case SETTINGS_DIRECT_DECODE:
+      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+        break;
+      }
+      did_change = 1;
+      config.direct_decode = !config.direct_decode;
+      break;
+    case SETTINGS_INPUT_SYNC:
+      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+        break;
+      }
+      did_change = 1;
+      config.input_sync_to_controller = !config.input_sync_to_controller;
+      break;
+    case SETTINGS_PACKET_SIZE: {
+      // 1024 is the safe default; 1392 is the largest that fits a 1500-byte MTU
+      static const int packet_sizes[] = {1024, 1392};
+      const int packet_size_count = sizeof(packet_sizes) / sizeof(packet_sizes[0]);
+      int step = 0;
+      if (left) {
+        step = -1;
+      } else if (right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0)) {
+        step = 1;
+      } else {
+        break;
+      }
+      int current_idx = -1;
+      for (int i = 0; i < packet_size_count; i++) {
+        if (packet_sizes[i] == config.stream.packetSize) {
+          current_idx = i;
+        }
+      }
+      // A custom value from the config file moves to the first preset
+      int next_idx = current_idx < 0 ? 0 : (current_idx + step + packet_size_count) % packet_size_count;
+      config.stream.packetSize = packet_sizes[next_idx];
+      did_change = 1;
+      break;
+    }
     case SETTINGS_CENTER_REGION_ONLY:
       if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
         break;
@@ -968,6 +1012,15 @@ static int settings_loop(int id, void *context, const input_data *input) {
   sprintf(current, "%s", config.enable_frame_pacer ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_ENABLE_FRAME_PACER, current);
 
+  sprintf(current, "%s", config.direct_decode ? "yes" : "no");
+  MENU_REPLACE(SETTINGS_VIEW_DIRECT_DECODE, current);
+
+  sprintf(current, "%s", config.input_sync_to_controller ? "yes" : "no");
+  MENU_REPLACE(SETTINGS_VIEW_INPUT_SYNC, current);
+
+  sprintf(current, "%d bytes", config.stream.packetSize);
+  MENU_REPLACE(SETTINGS_VIEW_PACKET_SIZE, current);
+
   sprintf(current, "%s", config.center_region_only ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_CENTER_REGION_ONLY, current);
 
@@ -1015,9 +1068,9 @@ static int settings_back(void *context) {
 // Eliminado: hotkeys_menu y referencias, ya que los atajos ahora son fijos
 
 int ui_settings_menu() {
-  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (34 today). Each
+  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (37 today). Each
   // entry is about 1 KB of the main thread stack, so do not oversize it
-  menu_entry menu[40];
+  menu_entry menu[44];
   int idx = 0;
 #define MENU_CATEGORY(NAME) \
   do { \
@@ -1047,6 +1100,8 @@ int ui_settings_menu() {
 
 
   MENU_ENTRY(SETTINGS_ENABLE_FRAME_PACER, SETTINGS_VIEW_ENABLE_FRAME_PACER, "Enable frame pacer", "");
+  MENU_ENTRY(SETTINGS_PACKET_SIZE, SETTINGS_VIEW_PACKET_SIZE, "Video packet size", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY(SETTINGS_DIRECT_DECODE, SETTINGS_VIEW_DIRECT_DECODE, "Decode on network thread (legacy)", "");
   MENU_ENTRY(SETTINGS_LOCAL_AUDIO, SETTINGS_VIEW_LOCAL_AUDIO, "Enable local audio", "");
 
   MENU_CATEGORY("System");
@@ -1059,6 +1114,7 @@ int ui_settings_menu() {
 
   MENU_CATEGORY("Input");
 
+  MENU_ENTRY(SETTINGS_INPUT_SYNC, SETTINGS_VIEW_INPUT_SYNC, "Sync input to controller sampling", "");
   MENU_ENTRY(SETTINGS_ENABLE_MOTION_CONTROLS, SETTINGS_VIEW_ENABLE_MOTION_CONTROLS, "Enable Gyroscope reporting", "");
   MENU_ENTRY(SETTINGS_ENABLE_DOUBLE_TAP_SPRINT, SETTINGS_VIEW_ENABLE_DOUBLE_TAP_SPRINT, "Enable double tap to sprint", "");
   MENU_ENTRY(SETTINGS_DOUBLE_TAP_SPRINT_STEP_TIME, SETTINGS_VIEW_DOUBLE_TAP_SPRINT_STEP_TIME, "Sprint double tap time", "");

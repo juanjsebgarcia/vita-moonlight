@@ -470,7 +470,7 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   vitastats_frame_received(decodeUnit, submit_us);
 
   if (!decode_thread_logged) {
-    // Runs on common-c's VideoDec thread
+    // Runs on common-c's VideoDec thread, or VideoRecv with config.direct_decode
     vita_debug_log_thread("video decode");
     decode_thread_logged = true;
   }
@@ -640,8 +640,9 @@ DECODER_RENDERER_CALLBACKS decoder_callbacks_vita = {
   .setup = vita_setup,
   .cleanup = vita_cleanup,
   .submitDecodeUnit = vita_submit_decode_unit,
-  // No CAPABILITY_DIRECT_SUBMIT: common-c then runs submitDecodeUnit on its own
-  // VideoDec thread behind a frame queue, so the blocking decode, GPU wait and
-  // buffer swap never stop VideoRecv from draining the socket
+  // No CAPABILITY_DIRECT_SUBMIT by default: common-c then runs submitDecodeUnit on
+  // its own VideoDec thread behind a frame queue, so the blocking decode, GPU wait
+  // and buffer swap never stop VideoRecv from draining the socket. ui_connect.c
+  // sets the flag when config.direct_decode asks for the old behaviour.
   .capabilities = CAPABILITY_SLICES_PER_FRAME(2)
 };
