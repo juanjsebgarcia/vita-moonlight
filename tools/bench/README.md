@@ -147,6 +147,8 @@ For each run, the script:
 2. **Runs it.** It launches Moonlight, which runs the benchmark straight away against `--host` (or the first paired computer), writes the report and exits.
 3. **Saves the report** into `build/bench/<time>/`.
 
+Every run turns the stats overlay and debug log off, since both cost time themselves, unless the variant sets `stats_overlay` or `save_debug_log`.
+
 Variants run in turn, round after round, so changing Wi-Fi conditions affect them all alike. At the end, `compare.py` prints a table (also saved as `summary.md`) with the mean for each variant and the min-max spread across rounds. **Your original `moonlight.conf` is backed up first and restored at the end, even if a run fails.**
 
 It needs `tools/vita.sh` and the Vita setup in `docs/DEVELOPMENT.md`, with the computer awake and Sunshine running.
@@ -164,7 +166,8 @@ It needs `tools/vita.sh` and the Vita setup in `docs/DEVELOPMENT.md`, with the c
 | `boost_clocks` | `true`, `false` | CPU, bus and GPU clocks raised while streaming |
 | `enable_frame_pacer` | `true`, `false` | The frame pacer |
 | `enable_vita_vblank_wait` | `true`, `false` | V-Sync |
-| `stats_overlay` | `0`, `1`, `2` | Overlay off, fps or full (its drawing cost counts in the results) |
+| `stats_overlay` | `0`, `1`, `2` | Overlay off, fps or full (its drawing cost counts in the results; off by default in `run.sh`) |
+| `bench_input` | `key`, `mouse`, `gamepad` | What the timed presses send: Space, a left click or gamepad A. Each takes a different route through the host, so comparing them shows where input delay comes from: `tools/bench/run.sh key:bench_input=key mouse:bench_input=mouse pad:bench_input=gamepad` |
 
 To compare **builds** rather than settings, deploy each build with `tools/vita.sh push` and run the same variant against it, with a different label.
 
@@ -176,11 +179,13 @@ To compare **builds** rather than settings, deploy each build with `tools/vita.s
 | `label`, `started`, `host`, `app`, `seconds`, `version` | What ran, where and for how long |
 | `settings` | The settings that matter for performance |
 | `frames` | Frames received and drawn, fps, frames lost on the network, IDR frames |
-| `page` | From the barcode: ticks read, unreadable frames, `repeated` (the same picture twice), `skipped` (pictures the Vita never got: lost by the host or the network) |
+| `page` | From the barcode: ticks read, unreadable frames, `repeated` (the same picture twice), `skipped` (ticks the Vita never saw), the measured `tick_rate`, `expected_skips_from_rate`, and `skipped_beyond_rate` |
 | `input_lag_ms` | Presses sent, seen and missed; p50, p95, min and max from sending a key to the first frame on screen with the marker lit |
 | `latency_estimate_ms` | Host time + receive + queue + decode + render per frame, plus half the round trip (see the stats overlay) |
 | `network_ms`, `queue_ms`, `decode_ms`, `render_ms` | p50, p95 and max for each stage |
 | `bitrate_mbps`, `rtt_ms`, `wifi` | Measured bitrate, round trip, and Wi-Fi signal and channel |
+
+**Skipped ticks need the rate taken into account.** The page ticks at its own rate (60 per second unless `?fps=` says otherwise). So a stream slower than that skips ticks with nothing lost: a 50 fps stream skips about 10 a second. `expected_skips_from_rate` is that gap, and `skipped_beyond_rate` is what's left, meaning pictures lost on the network or dropped by the host. Compare it with `frames.lost_network` to tell which.
 
 **Input lag is the most direct measure**: it's timed entirely on the Vita's clock and covers the whole loop. Its precision is one frame, since the marker shows up in whichever frame the page draws next.
 
@@ -197,3 +202,4 @@ These live in `moonlight.conf`, and the menu sets the first two:
 | `bench_label` | empty | Copied into the report, e.g. a variant name |
 | `bench_autorun` | `false` | Run once at launch and exit; cleared before the run starts |
 | `bench_quit_app` | `true` | Quit the app on the computer when the run ends |
+| `bench_input` | `key` | What the timed presses send: `key`, `mouse` or `gamepad` |
