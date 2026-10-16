@@ -64,6 +64,9 @@ enum {
 
 #define AV_INPUT_BUFFER_PADDING_SIZE 64
 
+// gs_sps_fix writes at most 128 bytes of rewritten SPS NAL after the start code
+#define SPS_FIXUP_MAX_GROWTH 128
+
 static char* decoder_buffer = NULL;
 
 static size_t decoder_buffer_size = 0;
@@ -457,10 +460,12 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
 
   //ensure_buf_size((void *)&decoder_buffer, &decoder_buffer_size, decodeUnit->fullLength + 64);
 
-  if (decoder_buffer_size < (decodeUnit->fullLength + AV_INPUT_BUFFER_PADDING_SIZE)) {
-    printf("Reallocating decoder buffer to %u bytes", (size_t)decodeUnit->fullLength + AV_INPUT_BUFFER_PADDING_SIZE);
-    decoder_buffer = realloc(decoder_buffer, decodeUnit->fullLength + AV_INPUT_BUFFER_PADDING_SIZE);
-    decoder_buffer_size = decodeUnit->fullLength+AV_INPUT_BUFFER_PADDING_SIZE;
+  // The SPS rewrite below can grow the unit, so leave room for it on top of the padding
+  size_t required_size = decodeUnit->fullLength + SPS_FIXUP_MAX_GROWTH + AV_INPUT_BUFFER_PADDING_SIZE;
+  if (decoder_buffer_size < required_size) {
+    printf("Reallocating decoder buffer to %u bytes", required_size);
+    decoder_buffer = realloc(decoder_buffer, required_size);
+    decoder_buffer_size = required_size;
     if (decoder_buffer == NULL) {
       printf("Out of memory! could not reallocate buffer!!");
       exit(1);
@@ -486,7 +491,8 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   }
 
   au.es.pBuf = decoder_buffer;
-  au.es.size = decodeUnit->fullLength;
+  // Use the assembled length, not fullLength, since gs_sps_fix may have resized the SPS
+  au.es.size = length;
   au.dts.lower = 0xFFFFFFFF;
   au.dts.upper = 0xFFFFFFFF;
   au.pts.lower = 0xFFFFFFFF;
