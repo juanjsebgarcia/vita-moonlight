@@ -15,7 +15,7 @@ project(moonlight)
 include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
 # NOTE: To update the version shown in the UI and VPK, edit the following lines:
 #   set(VERSION_MAJOR "0")
-#   set(VERSION_MINOR "11")
+#   set(VERSION_MINOR "13")
 #   set(VERSION_PATCH "2")
 #
 set(TITLE_ID "XYZZ00002")
@@ -24,17 +24,25 @@ set(VERSION_MAJOR "0")
 set(VERSION_MINOR "13")
 set(VERSION_PATCH "2")
 
-execute_process(COMMAND
-	python -c "print('%02d.%02d' % (${VERSION_MAJOR}, ${VERSION_MINOR}))"
-	OUTPUT_VARIABLE APP_VER
-)
-string(REPLACE "\n" "" APP_VER "${APP_VER}")
+# APP_VER is MM.mm, zero-padded. Built in CMake because a bare `python` is not
+# available everywhere, and a failed call silently left APP_VER empty
+foreach(part MAJOR MINOR)
+	if(VERSION_${part} LESS 10)
+		set(APP_VER_${part} "0${VERSION_${part}}")
+	else()
+		set(APP_VER_${part} "${VERSION_${part}}")
+	endif()
+endforeach()
+set(APP_VER "${APP_VER_MAJOR}.${APP_VER_MINOR}")
 
 add_definitions(-DVERSION_MAJOR=${VERSION_MAJOR})
 add_definitions(-DVERSION_MINOR=${VERSION_MINOR})
 add_definitions(-DVERSION_PATCH=${VERSION_PATCH})
 
-set(CMAKE_C_FLAGS "-Wl,-q -g -std=gnu99 -D__vita__")
+# This replaces CMAKE_C_FLAGS outright and no CMAKE_BUILD_TYPE is used, so the
+# optimisation level must be set here or everything is built at -O0
+set(VITA_OPT_LEVEL "-O2" CACHE STRING "Optimisation flag for all C sources, e.g. -O0 for debugging")
+set(CMAKE_C_FLAGS "-Wl,-q -g ${VITA_OPT_LEVEL} -std=gnu99 -D__vita__")
 
 
 
@@ -86,54 +94,6 @@ add_executable(${PROJECT_NAME}.elf
 	libgamestream/mkcert.c
 	libgamestream/sps.c
 	libgamestream/xml.c
-
-	third_party/libuuid/src/clear.c
-	third_party/libuuid/src/compare.c
-	third_party/libuuid/src/copy.c
-	third_party/libuuid/src/gen_uuid.c
-	third_party/libuuid/src/isnull.c
-	third_party/libuuid/src/pack.c
-	third_party/libuuid/src/parse.c
-	third_party/libuuid/src/unpack.c
-	third_party/libuuid/src/unparse.c
-
-	third_party/h264bitstream/h264_nal.c
-	third_party/h264bitstream/h264_sei.c
-	third_party/h264bitstream/h264_stream.c
-
-	third_party/moonlight-common-c/src/AudioStream.c
-	third_party/moonlight-common-c/src/ByteBuffer.c
-	third_party/moonlight-common-c/src/Connection.c
-	third_party/moonlight-common-c/src/ConnectionTester.c
-	third_party/moonlight-common-c/src/ControlStream.c
-	third_party/moonlight-common-c/src/FakeCallbacks.c
-	third_party/moonlight-common-c/src/InputStream.c
-	third_party/moonlight-common-c/src/LinkedBlockingQueue.c
-	third_party/moonlight-common-c/src/Misc.c
-	third_party/moonlight-common-c/src/Platform.c
-	third_party/moonlight-common-c/src/PlatformCrypto.c
-	third_party/moonlight-common-c/src/PlatformSockets.c
-	third_party/moonlight-common-c/src/RecorderCallbacks.c
-	third_party/moonlight-common-c/src/RtpAudioQueue.c
-	third_party/moonlight-common-c/src/RtpVideoQueue.c
-	third_party/moonlight-common-c/src/RtspConnection.c
-	third_party/moonlight-common-c/src/RtspParser.c
-	third_party/moonlight-common-c/src/SdpGenerator.c
-	third_party/moonlight-common-c/src/SimpleStun.c
-	third_party/moonlight-common-c/src/VideoDepacketizer.c
-	third_party/moonlight-common-c/src/VideoStream.c
-	third_party/moonlight-common-c/reedsolomon/rs.c
-
-	third_party/enet/callbacks.c
-	third_party/enet/compress.c
-	third_party/enet/host.c
-	third_party/enet/list.c
-	third_party/enet/packet.c
-	third_party/enet/peer.c
-	third_party/enet/protocol.c
-	third_party/enet/unix.c
-
-	third_party/inih/ini.c
 
 	src/keyboardsystem.c
 	src/input/keyboardkeys.c
