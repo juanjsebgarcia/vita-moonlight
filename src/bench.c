@@ -98,6 +98,17 @@ typedef struct {
   int capacity;
 } series;
 
+// What happened to one timed press, written into the report so odd results
+// can be traced frame by frame
+typedef struct {
+  int target;          // cursor mode: the target the pointer was sent to
+  int sent_frame;      // last frame number decoded when the press was sent
+  int seen_frame;      // frame where it was detected, or -1
+  int lum_target;      // brightest pixel at the expected spot in that frame
+  int lum_other;       // and at the other spot (cursor mode)
+  float lag_ms;        // send to on screen, or -1 if never seen
+} press_record;
+
 static pthread_mutex_t bench_mutex;
 static volatile int phase = PHASE_IDLE;
 
@@ -127,6 +138,11 @@ static struct {
   uint32_t presses_sent, presses_seen, presses_missed;
   // Cursor mode: which target the pointer was last sent to
   int cursor_target;
+  // Every press, in order; presses_sent is the count
+  press_record *presses;
+  int press_capacity;
+  // The latest frame number decoded, measuring or not
+  int newest_frame;
 } state;
 
 // The input type for the run in progress, read by the decode thread
@@ -250,16 +266,19 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
   // Cursor mode works on the page or on any dark screen, such as a black
   // window on the Desktop, so it doesn't need the reference blocks
   bool cursor_at[2] = {false, false};
+  int cursor_lum[2] = {0, 0};
   if (active_input == INPUT_CURSOR) {
     int cursor_threshold = readable ? threshold : CURSOR_FIXED_THRESHOLD;
     for (int i = 0; i < 2; i++) {
-      cursor_at[i] = probe_box_max(pixels, stride_bytes, region_x1, region_y1, region_x2, region_y2,
-                                   CURSOR_TARGET_X[i], CURSOR_TARGET_Y, CURSOR_BOX_W, CURSOR_BOX_H) > cursor_threshold;
+      cursor_lum[i] = probe_box_max(pixels, stride_bytes, region_x1, region_y1, region_x2, region_y2,
+                                    CURSOR_TARGET_X[i], CURSOR_TARGET_Y, CURSOR_BOX_W, CURSOR_BOX_H);
+      cursor_at[i] = cursor_lum[i] > cursor_threshold;
     }
   }
 
   pthread_mutex_lock(&bench_mutex);
   state.page_visible = readable;
+  state.newest_frame = du->frameNumber;
   if (phase == PHASE_MEASURING) {
     state.frames_received++;
     state.bytes += du->fullLength;
@@ -304,6 +323,11 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
         state.lag_send_us = state.press_sent_us;
         state.lag_pending = true;
         state.presses_seen++;
+        if (state.presses_sent > 0 && state.presses_sent <= state.press_capacity) {
+          press_record *r = &state.presses[state.presses_sent - 1];
+          r->seen_frame = du->frameNumber;
+          r->lum_target = 255 * marker;
+        }
       }
       state.last_marker = marker;
     } else {
@@ -318,6 +342,12 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
         state.lag_send_us = state.press_sent_us;
         state.lag_pending = true;
         state.presses_seen++;
+        if (state.presses_sent > 0 && state.presses_sent <= state.press_capacity) {
+          press_record *r = &state.presses[state.presses_sent - 1];
+          r->seen_frame = du->frameNumber;
+          r->lum_target = cursor_lum[target];
+          r->lum_other = cursor_lum[1 - target];
+        }
       }
     }
   }
@@ -339,7 +369,11 @@ void vitabench_frame_rendered(uint64_t rendered_us) {
   // Input lag ends when the frame showing the marker is on screen. A frame
   // dropped by the pacer is completed by the next one that is shown.
   if (state.lag_pending) {
-    series_add(&state.input_lag_ms, (rendered_us - state.lag_send_us) / 1000.0f);
+    float lag_ms = (rendered_us - state.lag_send_us) / 1000.0f;
+    series_add(&state.input_lag_ms, lag_ms);
+    if (state.presses_sent > 0 && state.presses_sent <= state.press_capacity) {
+      state.presses[state.presses_sent - 1].lag_ms = lag_ms;
+    }
     state.lag_pending = false;
   }
   pthread_mutex_unlock(&bench_mutex);
@@ -580,6 +614,15 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   write_timing(f, "render_ms", &state.render_ms, false);
   fprintf(f, "  \"rtt_ms\": {\"avg\": %.2f, \"max\": %u},\n",
           link->rtt_samples ? link->rtt_sum / link->rtt_samples : 0.0, link->rtt_max);
+  // Each press, so a strange result can be traced frame by frame
+  fprintf(f, "  \"presses\": [");
+  int recorded = state.presses_sent < (uint32_t)state.press_capacity ? (int)state.presses_sent : state.press_capacity;
+  for (int i = 0; i < recorded; i++) {
+    const press_record *r = &state.presses[i];
+    fprintf(f, "%s\n    {\"target\": %d, \"sent_frame\": %d, \"seen_frame\": %d, \"lum\": [%d, %d], \"lag_ms\": %.2f}",
+            i ? "," : "", r->target, r->sent_frame, r->seen_frame, r->lum_target, r->lum_other, r->lag_ms);
+  }
+  fprintf(f, "\n  ],\n");
   fprintf(f, "  \"wifi\": {\"rssi_avg_percent\": %d, \"rssi_min_percent\": %d, \"channel\": %d}\n",
           link->rssi_samples ? link->rssi_sum / link->rssi_samples : -1,
           link->rssi_samples ? link->rssi_min : -1, link->channel);
@@ -634,6 +677,11 @@ int vitabench_run(bool automated) {
   series_init(&state.render_ms, capacity);
   series_init(&state.pipeline_ms, capacity);
   series_init(&state.input_lag_ms, config.bench_seconds + 5);
+  state.press_capacity = config.bench_seconds + 8;
+  state.presses = calloc(state.press_capacity, sizeof(press_record));
+  if (state.presses == NULL) {
+    state.press_capacity = 0;
+  }
   reset_measurements();
 
   char app_name[256] = "";
@@ -729,6 +777,12 @@ int vitabench_run(bool automated) {
         state.press_sent_us = LiGetMicroseconds();
         press_down(input_type);
         state.awaiting_marker = true;
+        if (state.presses_sent < state.press_capacity) {
+          state.presses[state.presses_sent] = (press_record){
+            .target = state.cursor_target, .sent_frame = state.newest_frame,
+            .seen_frame = -1, .lum_target = -1, .lum_other = -1, .lag_ms = -1,
+          };
+        }
         state.presses_sent++;
         pthread_mutex_unlock(&bench_mutex);
         sceKernelDelayThread(KEY_HOLD_US);
@@ -772,6 +826,9 @@ done:
   series_free(&state.render_ms);
   series_free(&state.pipeline_ms);
   series_free(&state.input_lag_ms);
+  free(state.presses);
+  state.presses = NULL;
+  state.press_capacity = 0;
 
   if (!automated) {
     if (error[0]) {
