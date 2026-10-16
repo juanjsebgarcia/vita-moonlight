@@ -17,8 +17,10 @@
 #include "../util.h"
 #include "../check_host.h"
 #include "../debug.h"
+#include "../bench.h"
 
 #include <stdarg.h>
+#include <psp2/kernel/processmgr.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -565,6 +567,15 @@ void gui_init() {
 
 void gui_loop() {
   gui_init();
+
+  if (config.bench_autorun) {
+    // An unattended benchmark (tools/bench/run.sh): clear the flag first, so a
+    // failed run can't leave the app benchmarking on every launch, then exit
+    config.bench_autorun = false;
+    config_save(config_path, &config);
+    vitabench_run(true);
+    sceKernelExitProcess(0);
+  }
 
   while (ui_main_menu() == 2);
 

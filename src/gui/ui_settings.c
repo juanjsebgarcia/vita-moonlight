@@ -11,6 +11,8 @@
 #include "../debug.h"
 #include "../stats.h"
 #include "../connection.h"
+#include "../bench.h"
+#include "ui_connect.h"
 #include "../input/touchabsolute.h"
 
 #include <assert.h>
@@ -454,7 +456,10 @@ enum {
   SETTINGS_BOOST_CLOCKS,
   SETTINGS_DIRECT_DECODE,
   SETTINGS_INPUT_SYNC,
-  SETTINGS_PACKET_SIZE
+  SETTINGS_PACKET_SIZE,
+  SETTINGS_BENCH_RUN,
+  SETTINGS_BENCH_SECONDS,
+  SETTINGS_HIDE_DEVELOPER
 };
 
 enum {
@@ -492,6 +497,9 @@ enum {
   SETTINGS_VIEW_DIRECT_DECODE,
   SETTINGS_VIEW_INPUT_SYNC,
   SETTINGS_VIEW_PACKET_SIZE,
+  SETTINGS_VIEW_BENCH_RUN,
+  SETTINGS_VIEW_BENCH_SECONDS,
+  SETTINGS_VIEW_HIDE_DEVELOPER,
 
   SETTINGS_VIEW_MAX_COUNT,
 };
@@ -533,6 +541,10 @@ static int move_idx_in_array(char *array[], int count, char *find, int index_dis
   }
 }
 
+
+// Returned by settings_loop to rebuild the menu, for example after developer
+// options are shown or hidden
+#define SETTINGS_REBUILD 0x42
 
 // Number of rows in the settings menu, so the help can look up a row's title
 static int settings_menu_count = 0;
@@ -581,6 +593,16 @@ static const char *settings_help_text(int id) {
     case SETTINGS_DIRECT_DECODE:
       return "For troubleshooting only. Uses the older way of handling video, which stutters more "
              "on a busy Wi-Fi network. Leave it off unless you want to compare the two.";
+    case SETTINGS_BENCH_RUN:
+      return "Streams the benchmark page (tools/bench/bench.html) from this computer and measures "
+             "input lag, latency, frame rate and dropped frames, then saves a report to the "
+             "memory card. The computer needs a Sunshine app that shows the page; see "
+             "tools/bench/README.md. Only available from a connected computer's menu.";
+    case SETTINGS_BENCH_SECONDS:
+      return "How long the benchmark measures for. Longer runs smooth out Wi-Fi hiccups.";
+    case SETTINGS_HIDE_DEVELOPER:
+      return "Hides these developer options again. Hold L and R and press triangle in Settings "
+             "to show them.";
     case SETTINGS_LOCAL_AUDIO:
       return "Also plays the game's sound on your PC's speakers. Off keeps the PC quiet and sends "
              "the sound only to the Vita.";
@@ -689,7 +711,50 @@ static int settings_loop(int id, void *context, const input_data *input) {
   menu_entry *menu = context;
 
   if ((input->buttons & SCE_CTRL_TRIANGLE) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+    // read_buttons() only reports newly pressed buttons, so check L and R are held directly
+    SceCtrlData pad = {0};
+    sceCtrlPeekBufferPositive(0, &pad, 1);
+    if ((pad.buttons & SCE_CTRL_L1) && (pad.buttons & SCE_CTRL_R1)) {
+      config.developer_mode = !config.developer_mode;
+      ui_settings_save_config();
+      display_error(config.developer_mode
+                    ? "Developer options are now shown at the end of Settings."
+                    : "Developer options are hidden.");
+      return SETTINGS_REBUILD;
+    }
     show_settings_help(menu, id);
+    return 0;
+  }
+
+  bool confirm = (input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0;
+  if (id == SETTINGS_BENCH_RUN && confirm) {
+    ui_settings_save_config();
+    vitabench_run(false);
+    return SETTINGS_REBUILD;
+  }
+  if (id == SETTINGS_HIDE_DEVELOPER && confirm) {
+    config.developer_mode = false;
+    ui_settings_save_config();
+    return SETTINGS_REBUILD;
+  }
+  if (id == SETTINGS_BENCH_SECONDS) {
+    static const int durations[] = {30, 60, 120, 300};
+    const int count = sizeof(durations) / sizeof(durations[0]);
+    bool left_pressed = (input->buttons & SCE_CTRL_LEFT) && (input->buttons & SCE_CTRL_HOLD) == 0;
+    bool right_pressed = (input->buttons & SCE_CTRL_RIGHT) && (input->buttons & SCE_CTRL_HOLD) == 0;
+    if (left_pressed || right_pressed || confirm) {
+      int current = 0;
+      for (int i = 0; i < count; i++) {
+        if (durations[i] == config.bench_seconds) {
+          current = i;
+        }
+      }
+      current = (current + (left_pressed ? count - 1 : 1)) % count;
+      config.bench_seconds = durations[current];
+      char value[32];
+      snprintf(value, sizeof(value), "%d s", config.bench_seconds);
+      SET_ROW_VALUE(SETTINGS_VIEW_BENCH_SECONDS, value);
+    }
     return 0;
   }
   bool did_change = 0;
@@ -1235,10 +1300,12 @@ static int settings_back(void *context) {
 // Eliminado: hotkeys_menu y referencias, ya que los atajos ahora son fijos
 
 int ui_settings_menu() {
-  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (35 today). Each
+  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (40 at most today). Each
   // entry is about 1 KB of the main thread stack, so do not oversize it
   menu_entry menu[44];
-  int idx = 0;
+  int idx;
+rebuild:
+  idx = 0;
   // Rows are re-numbered on every build; 0 means the setting has no row
   memset(SETTINGS_VIEW_IDX, 0, sizeof(SETTINGS_VIEW_IDX));
   // Mid-stream, only list settings that take effect on resume. The rest (such as
@@ -1285,7 +1352,6 @@ int ui_settings_menu() {
 
   MENU_ENTRY(SETTINGS_ENABLE_FRAME_PACER, SETTINGS_VIEW_ENABLE_FRAME_PACER, "Enable frame pacer", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_PACKET_SIZE, SETTINGS_VIEW_PACKET_SIZE, "Video packet size", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_DIRECT_DECODE, SETTINGS_VIEW_DIRECT_DECODE, "Decode on network thread (legacy)", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_LOCAL_AUDIO, SETTINGS_VIEW_LOCAL_AUDIO, "Enable local audio", "");
 
   MENU_CATEGORY("System");
@@ -1315,6 +1381,28 @@ int ui_settings_menu() {
   MENU_CATEGORY("Keyboard");
   MENU_ENTRY(SETTINGS_KEYBOARD_LAYOUT, SETTINGS_VIEW_KEYBOARD_LAYOUT, "Keyboard layout", "");
 
+  // Shown after holding L and R and pressing triangle
+  char bench_target[256] = "";
+  if (config.developer_mode) {
+    MENU_CATEGORY("Developer");
+    if (streaming) {
+      MENU_MESSAGE("The benchmark can't run during a stream.");
+    } else if (!ui_connect_server_ready()) {
+      MENU_MESSAGE("To benchmark, open Settings from a connected computer's menu.");
+    } else {
+      char app_name[128];
+      if (ui_connect_find_bench_app(config.bench_app, app_name, sizeof(app_name)) >= 0) {
+        snprintf(bench_target, sizeof(bench_target), "%s on %s", app_name, ui_connect_server_name());
+      } else {
+        snprintf(bench_target, sizeof(bench_target), "no benchmark app on %s", ui_connect_server_name());
+      }
+      MENU_ENTRY(SETTINGS_BENCH_RUN, SETTINGS_VIEW_BENCH_RUN, "Run benchmark", "");
+      MENU_ENTRY(SETTINGS_BENCH_SECONDS, SETTINGS_VIEW_BENCH_SECONDS, "Benchmark duration", ICON_LEFT_RIGHT_ARROWS);
+    }
+    MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_DIRECT_DECODE, SETTINGS_VIEW_DIRECT_DECODE, "Decode on network thread (legacy)", "");
+    MENU_ENTRY(SETTINGS_HIDE_DEVELOPER, SETTINGS_VIEW_HIDE_DEVELOPER, "Hide developer options", "");
+  }
+
   // Inicializar el subname de todas las opciones antes de mostrar el menú
   char current[256];
   // Resolution
@@ -1339,9 +1427,21 @@ int ui_settings_menu() {
   // Puedes agregar aquí más inicializaciones si quieres que otras opciones también muestren su valor actual al abrir el menú
 
   settings_loop_setup = 1;
-  assert(idx < 48);
+  assert(idx <= (int)(sizeof(menu) / sizeof(menu[0])));
+
+  if (bench_target[0]) {
+    SET_ROW_VALUE(SETTINGS_VIEW_BENCH_RUN, bench_target);
+    char seconds[32];
+    snprintf(seconds, sizeof(seconds), "%d s", config.bench_seconds);
+    SET_ROW_VALUE(SETTINGS_VIEW_BENCH_SECONDS, seconds);
+  }
+
   settings_menu_count = idx;
   int ret = display_menu(menu, idx, NULL, &settings_loop, &settings_back, &settings_draw, &menu);
+  if (ret == SETTINGS_REBUILD) {
+    settings_loop_setup = 1;
+    goto rebuild;
+  }
   return ret;
 }
 
