@@ -9,6 +9,7 @@
 #include "../input/swap_shoulder_buttons.h"
 #include "../video/vita.h"
 #include "../debug.h"
+#include "../stats.h"
 #include "../input/touchabsolute.h"
 
 #include <assert.h>
@@ -448,7 +449,11 @@ enum {
   SETTINGS_SWAP_SHOULDER_BUTTONS, // NUEVO: Swap R1/L1 <-> R2/L2
   SETTINGS_MOUSE_ACCEL,
   SETTINGS_KEYBOARD_LAYOUT,
-  SETTINGS_TOUCH_MODE_SELECT // Nuevo: selección de modo táctil exclusivo
+  SETTINGS_TOUCH_MODE_SELECT, // Nuevo: selección de modo táctil exclusivo
+  SETTINGS_BOOST_CLOCKS,
+  SETTINGS_DIRECT_DECODE,
+  SETTINGS_INPUT_SYNC,
+  SETTINGS_PACKET_SIZE
 };
 
 enum {
@@ -482,6 +487,10 @@ enum {
   SETTINGS_VIEW_MOUSE_ACCEL,
   SETTINGS_VIEW_KEYBOARD_LAYOUT,
   SETTINGS_VIEW_TOUCH_MODE_SELECT, // Vista para modo táctil exclusivo
+  SETTINGS_VIEW_BOOST_CLOCKS,
+  SETTINGS_VIEW_DIRECT_DECODE,
+  SETTINGS_VIEW_INPUT_SYNC,
+  SETTINGS_VIEW_PACKET_SIZE,
 
   SETTINGS_VIEW_MAX_COUNT,
 };
@@ -794,6 +803,13 @@ static int settings_loop(int id, void *context, const input_data *input) {
       did_change = 1;
       config.disable_powersave = !config.disable_powersave;
       break;
+    case SETTINGS_BOOST_CLOCKS:
+      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+        break;
+      }
+      did_change = 1;
+      config.boost_clocks = !config.boost_clocks;
+      break;
     case SETTINGS_JP_LAYOUT:
       if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
         break;
@@ -802,11 +818,15 @@ static int settings_loop(int id, void *context, const input_data *input) {
       config.jp_layout = !config.jp_layout;
       break;
     case SETTINGS_SHOW_FPS:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      // Left/right or confirm cycles off -> fps -> full
+      if (left) {
+        config.stats_overlay = (config.stats_overlay + STATS_OVERLAY_COUNT - 1) % STATS_OVERLAY_COUNT;
+      } else if (right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0)) {
+        config.stats_overlay = (config.stats_overlay + 1) % STATS_OVERLAY_COUNT;
+      } else {
         break;
       }
       did_change = 1;
-      config.show_fps = !config.show_fps;
       break;
     case SETTINGS_LOCAL_AUDIO:
       if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
@@ -822,6 +842,44 @@ static int settings_loop(int id, void *context, const input_data *input) {
       did_change = 1;
       config.enable_frame_pacer = !config.enable_frame_pacer;
       break;
+    case SETTINGS_DIRECT_DECODE:
+      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+        break;
+      }
+      did_change = 1;
+      config.direct_decode = !config.direct_decode;
+      break;
+    case SETTINGS_INPUT_SYNC:
+      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+        break;
+      }
+      did_change = 1;
+      config.input_sync_to_controller = !config.input_sync_to_controller;
+      break;
+    case SETTINGS_PACKET_SIZE: {
+      // 1024 is the safe default; 1392 is the largest that fits a 1500-byte MTU
+      static const int packet_sizes[] = {1024, 1392};
+      const int packet_size_count = sizeof(packet_sizes) / sizeof(packet_sizes[0]);
+      int step = 0;
+      if (left) {
+        step = -1;
+      } else if (right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0)) {
+        step = 1;
+      } else {
+        break;
+      }
+      int current_idx = -1;
+      for (int i = 0; i < packet_size_count; i++) {
+        if (packet_sizes[i] == config.stream.packetSize) {
+          current_idx = i;
+        }
+      }
+      // A custom value from the config file moves to the first preset
+      int next_idx = current_idx < 0 ? 0 : (current_idx + step + packet_size_count) % packet_size_count;
+      config.stream.packetSize = packet_sizes[next_idx];
+      did_change = 1;
+      break;
+    }
     case SETTINGS_CENTER_REGION_ONLY:
       if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
         break;
@@ -939,10 +997,14 @@ static int settings_loop(int id, void *context, const input_data *input) {
   sprintf(current, "%s", config.disable_powersave ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_DISABLE_POWERSAVE, current);
 
+  sprintf(current, "%s", config.boost_clocks ? "yes" : "no");
+  MENU_REPLACE(SETTINGS_VIEW_BOOST_CLOCKS, current);
+
   sprintf(current, "%s", config.jp_layout ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_JP_LAYOUT, current);
 
-  sprintf(current, "%s", config.show_fps ? "yes" : "no");
+  static const char *stats_overlay_names[STATS_OVERLAY_COUNT] = {"off", "fps", "full"};
+  sprintf(current, "%s", stats_overlay_names[config.stats_overlay]);
   MENU_REPLACE(SETTINGS_VIEW_SHOW_FPS, current);
 
   sprintf(current, "%s", config.localaudio ? "yes" : "no");
@@ -950,6 +1012,15 @@ static int settings_loop(int id, void *context, const input_data *input) {
 
   sprintf(current, "%s", config.enable_frame_pacer ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_ENABLE_FRAME_PACER, current);
+
+  sprintf(current, "%s", config.direct_decode ? "yes" : "no");
+  MENU_REPLACE(SETTINGS_VIEW_DIRECT_DECODE, current);
+
+  sprintf(current, "%s", config.input_sync_to_controller ? "yes" : "no");
+  MENU_REPLACE(SETTINGS_VIEW_INPUT_SYNC, current);
+
+  sprintf(current, "%d bytes", config.stream.packetSize);
+  MENU_REPLACE(SETTINGS_VIEW_PACKET_SIZE, current);
 
   sprintf(current, "%s", config.center_region_only ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_CENTER_REGION_ONLY, current);
@@ -998,7 +1069,9 @@ static int settings_back(void *context) {
 // Eliminado: hotkeys_menu y referencias, ya que los atajos ahora son fijos
 
 int ui_settings_menu() {
-  menu_entry menu[32];
+  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (37 today). Each
+  // entry is about 1 KB of the main thread stack, so do not oversize it
+  menu_entry menu[44];
   int idx = 0;
 #define MENU_CATEGORY(NAME) \
   do { \
@@ -1028,16 +1101,21 @@ int ui_settings_menu() {
 
 
   MENU_ENTRY(SETTINGS_ENABLE_FRAME_PACER, SETTINGS_VIEW_ENABLE_FRAME_PACER, "Enable frame pacer", "");
+  MENU_ENTRY(SETTINGS_PACKET_SIZE, SETTINGS_VIEW_PACKET_SIZE, "Video packet size", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY(SETTINGS_DIRECT_DECODE, SETTINGS_VIEW_DIRECT_DECODE, "Decode on network thread (legacy)", "");
   MENU_ENTRY(SETTINGS_LOCAL_AUDIO, SETTINGS_VIEW_LOCAL_AUDIO, "Enable local audio", "");
 
   MENU_CATEGORY("System");
   MENU_ENTRY(SETTINGS_SAVE_DEBUG_LOG, SETTINGS_VIEW_SAVE_DEBUG_LOG, "Enable debug log", "");
+  MENU_MESSAGE("Slows streaming, enable only to diagnose problems.");
   MENU_ENTRY(SETTINGS_DISABLE_POWERSAVE, SETTINGS_VIEW_DISABLE_POWERSAVE, "Disable power save", "");
+  MENU_ENTRY(SETTINGS_BOOST_CLOCKS, SETTINGS_VIEW_BOOST_CLOCKS, "Boost CPU/GPU clocks while streaming", "");
   MENU_ENTRY(SETTINGS_JP_LAYOUT, SETTINGS_VIEW_JP_LAYOUT, "Swap X & O for Moonlight", "");
-  MENU_ENTRY(SETTINGS_SHOW_FPS, SETTINGS_VIEW_SHOW_FPS, "Display streaming FPS", "");
+  MENU_ENTRY(SETTINGS_SHOW_FPS, SETTINGS_VIEW_SHOW_FPS, "Stats overlay", ICON_LEFT_RIGHT_ARROWS);
 
   MENU_CATEGORY("Input");
 
+  MENU_ENTRY(SETTINGS_INPUT_SYNC, SETTINGS_VIEW_INPUT_SYNC, "Sync input to controller sampling", "");
   MENU_ENTRY(SETTINGS_ENABLE_MOTION_CONTROLS, SETTINGS_VIEW_ENABLE_MOTION_CONTROLS, "Enable Gyroscope reporting", "");
   MENU_ENTRY(SETTINGS_ENABLE_DOUBLE_TAP_SPRINT, SETTINGS_VIEW_ENABLE_DOUBLE_TAP_SPRINT, "Enable double tap to sprint", "");
   MENU_ENTRY(SETTINGS_DOUBLE_TAP_SPRINT_STEP_TIME, SETTINGS_VIEW_DOUBLE_TAP_SPRINT_STEP_TIME, "Sprint double tap time", "");
@@ -1097,7 +1175,7 @@ void ui_settings_save_config() {
   vita_debug_log("  swap_shoulder_buttons = %d", config.swap_shoulder_buttons);
   vita_debug_log("  controller_type = %d", config.controller_type);
   vita_debug_log("  enable_mapping = %s", config.mapping ? "yes" : "no");
-  vita_debug_log("  show_fps = %d", config.show_fps);
+  vita_debug_log("  stats_overlay = %d", config.stats_overlay);
   vita_debug_log("  enable_motion_controls = %d", config.enable_motion_controls);
   vita_debug_log("  double_tap_sprint = %d", config.enable_double_tap_sprint);
   vita_debug_log("  double_tap_sprint_step_time = %u", config.double_tap_sprint_step_time);
@@ -1108,6 +1186,7 @@ void ui_settings_save_config() {
   vita_debug_log("  stream.bitrate = %d", config.stream.bitrate);
   vita_debug_log("  save_debug_log = %d", config.save_debug_log);
   vita_debug_log("  disable_powersave = %d", config.disable_powersave);
+  vita_debug_log("  boost_clocks = %d", config.boost_clocks);
   vita_debug_log("  jp_layout = %d", config.jp_layout);
   vita_debug_log("  localaudio = %d", config.localaudio);
   vita_debug_log("  enable_frame_pacer = %d", config.enable_frame_pacer);

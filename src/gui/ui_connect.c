@@ -83,6 +83,11 @@ void ui_connect_stream(int appId) {
     drFlags |= DISPLAY_FULLSCREEN;
 
   DECODER_RENDERER_CALLBACKS *video_callback = platform_get_video(system);
+  if (config.direct_decode) {
+    video_callback->capabilities |= CAPABILITY_DIRECT_SUBMIT;
+  } else {
+    video_callback->capabilities &= ~CAPABILITY_DIRECT_SUBMIT;
+  }
   if (config.enable_ref_frame_invalidation) {
     video_callback->capabilities |= CAPABILITY_REFERENCE_FRAME_INVALIDATION_AVC;
   } else {

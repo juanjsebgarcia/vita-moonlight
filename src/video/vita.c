@@ -25,6 +25,7 @@
 #include "../input/vita.h"
 #include "vita.h"
 #include "sps.h"
+#include "../stats.h"
 
 #include <Limelight.h>
 
@@ -64,6 +65,9 @@ enum {
 
 #define AV_INPUT_BUFFER_PADDING_SIZE 64
 
+// gs_sps_fix writes at most 128 bytes of rewritten SPS NAL after the start code
+#define SPS_FIXUP_MAX_GROWTH 128
+
 static char* decoder_buffer = NULL;
 
 static size_t decoder_buffer_size = 0;
@@ -86,7 +90,13 @@ enum VideoStatus {
   INIT_FRAME_PACER_THREAD,
 };
 
-vita2d_texture *frame_texture = NULL;
+// Two textures so the hardware decoder can write the next frame while the GPU
+// is still reading the previous one
+#define FRAME_TEXTURE_COUNT 2
+static vita2d_texture *frame_textures[FRAME_TEXTURE_COUNT] = {NULL};
+// The texture the next frame is decoded into. The other one may still be
+// queued for display.
+static int back_texture_idx = 0;
 enum VideoStatus video_status = NOT_INIT;
 
 SceAvcdecCtrl *decoder = NULL;
@@ -106,6 +116,7 @@ typedef struct {
 static bool active_video_thread = true;
 static bool active_pacer_thread = false;
 static indicator_status poor_net_indicator = {0};
+static bool decode_thread_logged = false;
 
 uint32_t frame_count = 0;
 uint32_t need_drop = 0;
@@ -219,6 +230,9 @@ static int vita_pacer_thread_main(SceSize args, void *argp) {
     curr_fps[0] = curr_frame_count;
     curr_fps[1] = max_fps;
 
+    // This loop already runs about once a second for the whole stream
+    vitastats_tick();
+
     //last_vblank_count = curr_vblank_count;
     uint64_t curr_check_time = sceKernelGetSystemTimeWide();
     uint32_t lapse = curr_check_time - last_check_time;
@@ -276,9 +290,13 @@ static void vita_cleanup() {
   }
 
   if (video_status == INIT_FRAMEBUFFER) {
-    if (frame_texture != NULL) {
-      vita2d_free_texture(frame_texture);
-      frame_texture = NULL;
+    // Make sure the GPU is no longer reading the textures before freeing them
+    vita2d_wait_rendering_done();
+    for (int i = 0; i < FRAME_TEXTURE_COUNT; i++) {
+      if (frame_textures[i] != NULL) {
+        vita2d_free_texture(frame_textures[i]);
+        frame_textures[i] = NULL;
+      }
     }
 
     if (decoder_buffer != NULL) {
@@ -297,6 +315,8 @@ static void vita_cleanup() {
 static int vita_setup(int videoFormat, int width, int height, int redrawRate, void* context, int drFlags) {
   int ret;
   printf("vita video setup\n");
+  decode_thread_logged = false;
+  vitastats_reset();
 
   if (video_status == NOT_INIT) {
     // INIT_GS
@@ -313,15 +333,22 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
     if (decoder_buffer == NULL) {
       printf("decoder_buffer: not enough memory\n");
       ret = VITA_VIDEO_ERROR_NO_MEM;
-      goto cleanup;
-    } 
-
-    frame_texture = vita2d_create_empty_texture_format(image_scaling.texture_width, image_scaling.texture_height, SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR);
-    if (frame_texture == NULL) {
-      printf("frame_texture: not enough memory\n");
-      ret = VITA_VIDEO_ERROR_NO_MEM;
+      // Let vita_cleanup() run this stage's teardown, which is NULL-safe
+      video_status = INIT_FRAMEBUFFER;
       goto cleanup;
     }
+
+    for (int i = 0; i < FRAME_TEXTURE_COUNT; i++) {
+      frame_textures[i] = vita2d_create_empty_texture_format(image_scaling.texture_width, image_scaling.texture_height, SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR);
+      if (frame_textures[i] == NULL) {
+        printf("frame_textures[%d]: not enough memory\n", i);
+        ret = VITA_VIDEO_ERROR_NO_MEM;
+        // Let vita_cleanup() free the buffer and any texture already created
+        video_status = INIT_FRAMEBUFFER;
+        goto cleanup;
+      }
+    }
+    back_texture_idx = 0;
 
     printf("Initalized Framebuffer");
 
@@ -439,6 +466,15 @@ cleanup:
 }
 
 static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
+  uint64_t submit_us = LiGetMicroseconds();
+  vitastats_frame_received(decodeUnit, submit_us);
+
+  if (!decode_thread_logged) {
+    // Runs on common-c's VideoDec thread, or VideoRecv with config.direct_decode
+    vita_debug_log_thread("video decode");
+    decode_thread_logged = true;
+  }
+
   SceAvcdecAu au = {0};
   SceAvcdecArrayPicture array_picture = {0};
   struct SceAvcdecPicture picture = {0};
@@ -453,14 +489,16 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   picture.frame.framePitch = image_scaling.texture_width;
   picture.frame.frameWidth = image_scaling.texture_width;
   picture.frame.frameHeight = image_scaling.texture_height;
-  picture.frame.pPicture[0] = vita2d_texture_get_datap(frame_texture);
+  picture.frame.pPicture[0] = vita2d_texture_get_datap(frame_textures[back_texture_idx]);
 
   //ensure_buf_size((void *)&decoder_buffer, &decoder_buffer_size, decodeUnit->fullLength + 64);
 
-  if (decoder_buffer_size < (decodeUnit->fullLength + AV_INPUT_BUFFER_PADDING_SIZE)) {
-    printf("Reallocating decoder buffer to %u bytes", (size_t)decodeUnit->fullLength + AV_INPUT_BUFFER_PADDING_SIZE);
-    decoder_buffer = realloc(decoder_buffer, decodeUnit->fullLength + AV_INPUT_BUFFER_PADDING_SIZE);
-    decoder_buffer_size = decodeUnit->fullLength+AV_INPUT_BUFFER_PADDING_SIZE;
+  // The SPS rewrite below can grow the unit, so leave room for it on top of the padding
+  size_t required_size = decodeUnit->fullLength + SPS_FIXUP_MAX_GROWTH + AV_INPUT_BUFFER_PADDING_SIZE;
+  if (decoder_buffer_size < required_size) {
+    printf("Reallocating decoder buffer to %u bytes", required_size);
+    decoder_buffer = realloc(decoder_buffer, required_size);
+    decoder_buffer_size = required_size;
     if (decoder_buffer == NULL) {
       printf("Out of memory! could not reallocate buffer!!");
       exit(1);
@@ -486,7 +524,8 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   }
 
   au.es.pBuf = decoder_buffer;
-  au.es.size = decodeUnit->fullLength;
+  // Use the assembled length, not fullLength, since gs_sps_fix may have resized the SPS
+  au.es.size = length;
   au.dts.lower = 0xFFFFFFFF;
   au.dts.upper = 0xFFFFFFFF;
   au.pts.lower = 0xFFFFFFFF;
@@ -494,6 +533,8 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
 
   int ret = 0;
   ret = sceAvcdecDecode(decoder, &au, &array_picture);
+  uint64_t decoded_us = LiGetMicroseconds();
+  vitastats_frame_decoded(decoded_us - submit_us);
   if (ret < 0) {
     printf("sceAvcdecDecode (len=0x%x): 0x%x numOfOutput %d\n", decodeUnit->fullLength, ret, array_picture.numOfOutput);
     return DR_NEED_IDR;
@@ -511,18 +552,25 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
       vita_debug_log("remain frameskip: %d\n", need_drop);
       // skip
       need_drop--;
+      vitastats_frame_dropped_by_pacer();
     } else {
+      // The decode above overlapped with the GPU drawing the previous frame from
+      // the other texture. Wait for that to finish here, after the decode instead
+      // of after the draw, so the next decode can safely reuse that texture.
+      vita2d_wait_rendering_done();
+
       vita2d_start_drawing();
 
-      draw_streaming(frame_texture);
+      draw_streaming(frame_textures[back_texture_idx]);
       draw_fps();
       draw_indicators();
 
       vita2d_end_drawing();
-
-      vita2d_wait_rendering_done();
       vita2d_swap_buffers();
+      vitastats_frame_rendered(LiGetMicroseconds() - decoded_us);
 
+      // Only flip after drawing, so a dropped frame's texture is simply reused
+      back_texture_idx = (back_texture_idx + 1) % FRAME_TEXTURE_COUNT;
       frame_count++;
     }
   }
@@ -546,9 +594,7 @@ void draw_streaming(vita2d_texture *frame_texture) {
 }
 
 void draw_fps() {
-  if (config.show_fps) {
-    vita2d_font_draw_textf(font, 40, 20, RGBA8(0xFF, 0xFF, 0xFF, 0xFF), 16, "fps: %u / %u", curr_fps[0], curr_fps[1]);
-  }
+  vitastats_draw();
 }
 
 void draw_indicators() {
@@ -594,5 +640,9 @@ DECODER_RENDERER_CALLBACKS decoder_callbacks_vita = {
   .setup = vita_setup,
   .cleanup = vita_cleanup,
   .submitDecodeUnit = vita_submit_decode_unit,
-  .capabilities = CAPABILITY_DIRECT_SUBMIT | CAPABILITY_SLICES_PER_FRAME(2)
+  // No CAPABILITY_DIRECT_SUBMIT by default: common-c then runs submitDecodeUnit on
+  // its own VideoDec thread behind a frame queue, so the blocking decode, GPU wait
+  // and buffer swap never stop VideoRecv from draining the socket. ui_connect.c
+  // sets the flag when config.direct_decode asks for the old behaviour.
+  .capabilities = CAPABILITY_SLICES_PER_FRAME(2)
 };

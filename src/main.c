@@ -64,6 +64,7 @@
 #include "input/motion.h"
 
 #include "debug.h"
+#include "stats.h"
 #include "check_dir.h"
 
 #define VITA_NET_MEM_SIZE 1 * 1024 * 1024
@@ -134,6 +135,11 @@ static void vita_init() {
     printf("Debug log mutex init failed!");
     loop_forever();
   }
+
+  if (!vitastats_init()) {
+    printf("Stats mutex init failed!");
+    loop_forever();
+  }
 }
 
 
@@ -179,6 +185,7 @@ int main(int argc, char* argv[]) {
   config.log_file = fopen(log_path, "w");
 
   load_all_known_devices();
+  vita_debug_log_thread("main");
 
   gui_loop();
 }

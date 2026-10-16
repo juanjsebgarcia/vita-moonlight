@@ -60,8 +60,11 @@ typedef struct _CONFIGURATION {
   bool enable_front_touchzones;
   struct special_keys special_keys;
   bool disable_powersave;
+  bool boost_clocks;
+  bool direct_decode; // decode on common-c's receive thread, as before the decode thread
+  bool input_sync_to_controller; // pace input reads to controller samples instead of 2 ms polling
   bool jp_layout;
-  bool show_fps;
+  int stats_overlay; // STATS_OVERLAY_* from stats.h
   bool enable_frame_pacer;
   bool center_region_only;
   bool save_debug_log;
