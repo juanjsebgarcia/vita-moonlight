@@ -27,7 +27,7 @@
 #include <psp2/power.h>
 #include <vita2d.h>
 
-#define STATS_LINE_COUNT 9
+#define STATS_LINE_COUNT 10
 #define STATS_LINE_LENGTH 80
 #define STATS_FONT_SIZE 16
 #define STATS_LINE_HEIGHT 18
@@ -55,6 +55,8 @@ typedef struct {
   timing host;
   // Host + receive + queue + decode + render for each frame that reached the screen
   timing pipeline;
+  // CPU time spent drawing the overlay itself, so its cost is visible
+  timing overlay;
 } window;
 
 static pthread_mutex_t stats_mutex;
@@ -69,6 +71,14 @@ static RTP_VIDEO_STATS last_rtp_stats = {0};
 static char lines[STATS_LINE_COUNT][STATS_LINE_LENGTH] = {{0}};
 static int line_count = 0;
 static float rendered_fps = 0;
+// Bumped whenever lines change, so the draw only re-measures text when needed
+static int lines_version = 0;
+
+// Nothing is collected unless someone is looking: the overlay is on, or the
+// numbers are going to the log. Read on every frame, so kept trivial.
+static bool stats_active(void) {
+  return config.stats_overlay != STATS_OVERLAY_OFF || config.save_debug_log;
+}
 
 static void timing_add(timing *t, uint64_t us) {
   t->sum_us += us;
@@ -103,6 +113,9 @@ void vitastats_reset(void) {
 }
 
 void vitastats_frame_received(const DECODE_UNIT *du, uint64_t submit_us) {
+  if (!stats_active()) {
+    return;
+  }
   pthread_mutex_lock(&stats_mutex);
   current.frames_received++;
   current.bytes += du->fullLength;
@@ -133,6 +146,9 @@ void vitastats_frame_received(const DECODE_UNIT *du, uint64_t submit_us) {
 }
 
 void vitastats_frame_decoded(uint64_t decode_us) {
+  if (!stats_active()) {
+    return;
+  }
   pthread_mutex_lock(&stats_mutex);
   timing_add(&current.decode, decode_us);
   frame_pipeline_us += decode_us;
@@ -140,6 +156,9 @@ void vitastats_frame_decoded(uint64_t decode_us) {
 }
 
 void vitastats_frame_rendered(uint64_t render_us) {
+  if (!stats_active()) {
+    return;
+  }
   pthread_mutex_lock(&stats_mutex);
   current.frames_rendered++;
   timing_add(&current.render, render_us);
@@ -148,6 +167,9 @@ void vitastats_frame_rendered(uint64_t render_us) {
 }
 
 void vitastats_frame_dropped_by_pacer(void) {
+  if (!stats_active()) {
+    return;
+  }
   pthread_mutex_lock(&stats_mutex);
   current.frames_dropped_by_pacer++;
   pthread_mutex_unlock(&stats_mutex);
@@ -164,6 +186,13 @@ void vitastats_tick(void) {
   pthread_mutex_unlock(&stats_mutex);
 
   if (elapsed_us == 0) {
+    return;
+  }
+  if (!stats_active()) {
+    // Skip the network and Wi-Fi queries and the formatting entirely
+    pthread_mutex_lock(&stats_mutex);
+    line_count = 0;
+    pthread_mutex_unlock(&stats_mutex);
     return;
   }
   float seconds = elapsed_us / 1000000.0f;
@@ -240,9 +269,12 @@ void vitastats_tick(void) {
            scePowerGetArmClockFrequency(), scePowerGetBusClockFrequency(),
            scePowerGetGpuClockFrequency());
 
+  snprintf(new_lines[n++], STATS_LINE_LENGTH, "Overlay %.2f ms CPU per frame", timing_avg_ms(&w.overlay));
+
   pthread_mutex_lock(&stats_mutex);
   memcpy(lines, new_lines, sizeof(lines));
   line_count = n;
+  lines_version++;
   rendered_fps = drawn_fps;
   pthread_mutex_unlock(&stats_mutex);
 
@@ -250,7 +282,7 @@ void vitastats_tick(void) {
   if (config.save_debug_log) {
     vita_debug_log("[STATS] latency %.1f/%.1f fps rx %.1f drawn %.1f pacer_drop %u lost %u idr %u mbps %.2f "
                    "net %.1f/%.1f queue %.1f/%.1f decode %.1f/%.1f render %.1f/%.1f host %.1f "
-                   "rtt %u/%u fec_rec %u fec_fail %u oos %u pending %d rssi %d%% ch %d",
+                   "rtt %u/%u fec_rec %u fec_fail %u oos %u pending %d rssi %d%% ch %d overlay %.2f",
                    latency_ms, latency_max_ms,
                    received_fps, drawn_fps, w.frames_dropped_by_pacer, w.frames_lost, w.idr_frames, mbps,
                    timing_avg_ms(&w.network), timing_max_ms(&w.network),
@@ -259,7 +291,7 @@ void vitastats_tick(void) {
                    timing_avg_ms(&w.render), timing_max_ms(&w.render),
                    timing_avg_ms(&w.host), rtt_ms, rtt_var_ms,
                    fec_recovered, fec_failed, out_of_sequence, pending_frames,
-                   rssi_percent, channel);
+                   rssi_percent, channel, timing_avg_ms(&w.overlay));
   }
 }
 
@@ -268,36 +300,54 @@ void vitastats_draw(void) {
     return;
   }
 
+  // The previous frame's drawing cost is recorded under the same lock as the copy
+  static uint64_t last_draw_us = 0;
+  static int measured_version = -1;
+  static int box_width = 0;
+  uint64_t start_us = LiGetMicroseconds();
+
   // Copy out under the lock, then draw without holding it
   char local_lines[STATS_LINE_COUNT][STATS_LINE_LENGTH];
   int n;
+  int version;
   float fps;
   pthread_mutex_lock(&stats_mutex);
   n = line_count;
+  version = lines_version;
   fps = rendered_fps;
   memcpy(local_lines, lines, sizeof(local_lines));
+  if (last_draw_us > 0) {
+    timing_add(&current.overlay, last_draw_us);
+  }
   pthread_mutex_unlock(&stats_mutex);
 
   if (config.stats_overlay == STATS_OVERLAY_FPS) {
     vita2d_font_draw_textf(font, 40, 20, RGBA8(0xFF, 0xFF, 0xFF, 0xFF), STATS_FONT_SIZE,
                            "fps: %.0f / %d", fps, config.stream.fps);
+    last_draw_us = 0;
     return;
   }
 
   if (n == 0) {
+    last_draw_us = 0;
     return;
   }
-  int width = 0;
-  for (int i = 0; i < n; i++) {
-    int w = vita2d_font_text_width(font, STATS_FONT_SIZE, local_lines[i]);
-    if (w > width) {
-      width = w;
+  // Measuring text is the expensive part, so only redo it when the text changed
+  if (version != measured_version) {
+    box_width = 0;
+    for (int i = 0; i < n; i++) {
+      int w = vita2d_font_text_width(font, STATS_FONT_SIZE, local_lines[i]);
+      if (w > box_width) {
+        box_width = w;
+      }
     }
+    measured_version = version;
   }
   vita2d_draw_rectangle(STATS_ORIGIN_X - 6, STATS_ORIGIN_Y - STATS_LINE_HEIGHT + 2,
-                        width + 12, n * STATS_LINE_HEIGHT + 8, RGBA8(0, 0, 0, 0xA0));
+                        box_width + 12, n * STATS_LINE_HEIGHT + 8, RGBA8(0, 0, 0, 0xA0));
   for (int i = 0; i < n; i++) {
     vita2d_font_draw_text(font, STATS_ORIGIN_X, STATS_ORIGIN_Y + i * STATS_LINE_HEIGHT,
                           RGBA8(0xFF, 0xFF, 0xFF, 0xFF), STATS_FONT_SIZE, local_lines[i]);
   }
+  last_draw_us = LiGetMicroseconds() - start_us;
 }
