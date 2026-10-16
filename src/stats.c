@@ -27,7 +27,7 @@
 #include <psp2/power.h>
 #include <vita2d.h>
 
-#define STATS_LINE_COUNT 8
+#define STATS_LINE_COUNT 9
 #define STATS_LINE_LENGTH 80
 #define STATS_FONT_SIZE 16
 #define STATS_LINE_HEIGHT 18
@@ -53,11 +53,15 @@ typedef struct {
   timing decode;
   timing render;
   timing host;
+  // Host + receive + queue + decode + render for each frame that reached the screen
+  timing pipeline;
 } window;
 
 static pthread_mutex_t stats_mutex;
 static window current = {0};
 static int last_frame_number = 0;
+// The frame being decoded, built up as it moves through the decode thread
+static uint64_t frame_pipeline_us = 0;
 static uint64_t last_tick_us = 0;
 static RTP_VIDEO_STATS last_rtp_stats = {0};
 
@@ -91,6 +95,7 @@ void vitastats_reset(void) {
   memset(&current, 0, sizeof(current));
   memset(&last_rtp_stats, 0, sizeof(last_rtp_stats));
   last_frame_number = 0;
+  frame_pipeline_us = 0;
   last_tick_us = LiGetMicroseconds();
   line_count = 0;
   rendered_fps = 0;
@@ -110,15 +115,19 @@ void vitastats_frame_received(const DECODE_UNIT *du, uint64_t submit_us) {
   }
   last_frame_number = du->frameNumber;
 
+  frame_pipeline_us = 0;
   if (du->enqueueTimeUs >= du->receiveTimeUs) {
     timing_add(&current.network, du->enqueueTimeUs - du->receiveTimeUs);
+    frame_pipeline_us += du->enqueueTimeUs - du->receiveTimeUs;
   }
   if (submit_us >= du->enqueueTimeUs) {
     timing_add(&current.queue, submit_us - du->enqueueTimeUs);
+    frame_pipeline_us += submit_us - du->enqueueTimeUs;
   }
   // Reported in tenths of a millisecond, and zero when the host does not send it
   if (du->frameHostProcessingLatency != 0) {
     timing_add(&current.host, (uint64_t)du->frameHostProcessingLatency * 100);
+    frame_pipeline_us += (uint64_t)du->frameHostProcessingLatency * 100;
   }
   pthread_mutex_unlock(&stats_mutex);
 }
@@ -126,6 +135,7 @@ void vitastats_frame_received(const DECODE_UNIT *du, uint64_t submit_us) {
 void vitastats_frame_decoded(uint64_t decode_us) {
   pthread_mutex_lock(&stats_mutex);
   timing_add(&current.decode, decode_us);
+  frame_pipeline_us += decode_us;
   pthread_mutex_unlock(&stats_mutex);
 }
 
@@ -133,6 +143,7 @@ void vitastats_frame_rendered(uint64_t render_us) {
   pthread_mutex_lock(&stats_mutex);
   current.frames_rendered++;
   timing_add(&current.render, render_us);
+  timing_add(&current.pipeline, frame_pipeline_us + render_us);
   pthread_mutex_unlock(&stats_mutex);
 }
 
@@ -189,8 +200,21 @@ void vitastats_tick(void) {
   float drawn_fps = w.frames_rendered / seconds;
   float mbps = w.bytes * 8 / seconds / 1000000.0f;
 
+  // Estimated time from the host capturing a frame to it being on the Vita's
+  // screen. The clocks aren't synchronised, so the network leg is half the round
+  // trip, and the display's own scan-out is not included.
+  float one_way_ms = have_rtt ? rtt_ms / 2.0f : 0;
+  float latency_ms = timing_avg_ms(&w.pipeline) + one_way_ms;
+  float latency_max_ms = timing_max_ms(&w.pipeline) + one_way_ms;
+
   char new_lines[STATS_LINE_COUNT][STATS_LINE_LENGTH];
   int n = 0;
+  if (w.pipeline.count == 0) {
+    snprintf(new_lines[n++], STATS_LINE_LENGTH, "Latency n/a");
+  } else {
+    snprintf(new_lines[n++], STATS_LINE_LENGTH, "Latency ~%.0f ms (max %.0f)%s",
+             latency_ms, latency_max_ms, have_rtt ? "" : ", no RTT yet");
+  }
   snprintf(new_lines[n++], STATS_LINE_LENGTH, "%dx%d@%d  %.1f / %.1f Mbps",
            config.stream.width, config.stream.height, config.stream.fps,
            mbps, config.stream.bitrate / 1000.0f);
@@ -224,9 +248,10 @@ void vitastats_tick(void) {
 
   // One line per second gives comparable numbers between builds or settings
   if (config.save_debug_log) {
-    vita_debug_log("[STATS] fps rx %.1f drawn %.1f pacer_drop %u lost %u idr %u mbps %.2f "
+    vita_debug_log("[STATS] latency %.1f/%.1f fps rx %.1f drawn %.1f pacer_drop %u lost %u idr %u mbps %.2f "
                    "net %.1f/%.1f queue %.1f/%.1f decode %.1f/%.1f render %.1f/%.1f host %.1f "
                    "rtt %u/%u fec_rec %u fec_fail %u oos %u pending %d rssi %d%% ch %d",
+                   latency_ms, latency_max_ms,
                    received_fps, drawn_fps, w.frames_dropped_by_pacer, w.frames_lost, w.idr_frames, mbps,
                    timing_avg_ms(&w.network), timing_max_ms(&w.network),
                    timing_avg_ms(&w.queue), timing_max_ms(&w.queue),
