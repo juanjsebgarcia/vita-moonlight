@@ -35,6 +35,11 @@ bool vita_debug_init() {
   return true;
 }
 
+// Warning: when save_debug_log is on, every call allocates 8 KB, takes a global
+// mutex and flushes to the memory card. It is called from the video, audio and
+// input threads (on dropped frames, touch events and common-c's own logging),
+// so it noticeably slows streaming. Never measure performance with it enabled,
+// and avoid adding calls on per-frame or per-event paths.
 void vita_debug_log(const char *s, ...) {
   if (!config.save_debug_log) {
     return;

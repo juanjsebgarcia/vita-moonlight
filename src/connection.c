@@ -65,6 +65,7 @@ void connection_connection_started() {
     return;
   }
   vita_debug_log("connection started\n");
+  vita_debug_log("WARNING: debug logging is enabled and slows streaming. Disable it before judging performance.\n");
   connection_status = LI_CONNECTED;
   start_output();
   vitavideo_hide_poor_net_indicator();
