@@ -179,7 +179,11 @@ void touchabsolute_handle_absolute(const TouchData* touch, SceRtcTick* current, 
         if (touch->finger > 0) {
           switch (touch->finger) {
             case 1:
-              move_mouse(*swipe, *touch);
+              // Absolute mode already sends the finger's position, and a relative
+              // move on top would leave the cursor offset once the drag stops
+              if (!touchabsolute_is_enabled()) {
+                move_mouse(*swipe, *touch);
+              }
               break;
             case 2:
               move_wheel(*swipe, *touch);

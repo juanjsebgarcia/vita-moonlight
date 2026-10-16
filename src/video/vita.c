@@ -328,14 +328,18 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
     if (decoder_buffer == NULL) {
       printf("decoder_buffer: not enough memory\n");
       ret = VITA_VIDEO_ERROR_NO_MEM;
+      // Let vita_cleanup() run this stage's teardown, which is NULL-safe
+      video_status = INIT_FRAMEBUFFER;
       goto cleanup;
-    } 
+    }
 
     for (int i = 0; i < FRAME_TEXTURE_COUNT; i++) {
       frame_textures[i] = vita2d_create_empty_texture_format(image_scaling.texture_width, image_scaling.texture_height, SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR);
       if (frame_textures[i] == NULL) {
         printf("frame_textures[%d]: not enough memory\n", i);
         ret = VITA_VIDEO_ERROR_NO_MEM;
+        // Let vita_cleanup() free the buffer and any texture already created
+        video_status = INIT_FRAMEBUFFER;
         goto cleanup;
       }
     }
