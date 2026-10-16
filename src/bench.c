@@ -79,6 +79,16 @@ enum {
   PHASE_MEASURING,
 };
 
+// What a timed press sends
+enum {
+  INPUT_KEY,
+  INPUT_MOUSE,
+  INPUT_GAMEPAD,
+  // Moves the pointer between two targets and watches for it, which times
+  // the host's input and capture without the page drawing anything
+  INPUT_CURSOR,
+};
+
 typedef struct {
   float *values;
   int count;
@@ -351,15 +361,6 @@ static void send_key(short key) {
   sceKernelDelayThread(KEY_HOLD_US);
   LiSendKeyboardEvent(key, KEY_ACTION_UP, 0);
 }
-
-enum {
-  INPUT_KEY,
-  INPUT_MOUSE,
-  INPUT_GAMEPAD,
-  // Moves the pointer between two targets and watches for it, which times
-  // the host's input and capture without the page drawing anything
-  INPUT_CURSOR,
-};
 
 // Which input path the timed presses use, so they can be compared: a key goes
 // through the host's keyboard injection, a click through its mouse, and a
