@@ -34,6 +34,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BENCH_DIR="$REPO_ROOT/tools/bench"
 VITA_SH="$REPO_ROOT/tools/vita.sh"
 FTP_PORT="${VITA_FTP_PORT:-1337}"
+CMD_PORT="${VITA_CMD_PORT:-1338}"
+TITLE_ID="XYZZ00002"
 CONF_PATH="ux0:/data/moonlight/moonlight.conf"
 REPORT_PATH="ux0:/data/moonlight/reports/last-bench.json"
 
@@ -85,6 +87,21 @@ upload() {
   curl -sSf --max-time 20 -T "$1" "$(ftp_url "$2")"
 }
 
+# Quits Moonlight and waits until it has really exited. A launch sent while the
+# previous instance is still closing is ignored, which loses the run.
+close_app() {
+  local reply
+  for _ in $(seq 1 30); do
+    reply="$(printf 'quit %s\n' "$TITLE_ID" | nc -w 3 "$VITA_IP" "$CMD_PORT" || true)"
+    # vitacompanion answers this once there is nothing left to quit
+    case "$reply" in
+      *"cannot quit"*) return 0 ;;
+    esac
+    sleep 0.5
+  done
+  echo "  warning: Moonlight didn't report closed; launching anyway" >&2
+}
+
 # Prints the report's start time and label, to tell a new report from an old one
 report_id() {
   python3 -I -c 'import json, sys
@@ -100,7 +117,7 @@ fetch "$CONF_PATH" "$original" || die "can't read $CONF_PATH; is vitacompanion r
 echo "backed up moonlight.conf to $original"
 
 restore() {
-  "$VITA_SH" kill >/dev/null 2>&1 || true
+  close_app 2>/dev/null || true
   if upload "$original" "$CONF_PATH"; then
     echo "restored the original moonlight.conf"
   else
@@ -131,7 +148,7 @@ run_variant() {
   local old_id=""
   [ -f "$before" ] && old_id="$(report_id "$before")"
 
-  "$VITA_SH" kill >/dev/null
+  close_app
   upload "$conf" "$CONF_PATH"
   "$VITA_SH" launch
   echo "round $round, $label: running for ${seconds}s..."
