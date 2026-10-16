@@ -9,6 +9,7 @@
 #include <psp2/touch.h>
 #include <psp2/ctrl.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 static bool absolute_mouse_enabled = false;

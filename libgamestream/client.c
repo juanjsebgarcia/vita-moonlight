@@ -39,6 +39,7 @@
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
+#include <psp2/kernel/threadmgr.h>
 
 #include "../src/debug.h"
 
@@ -565,7 +566,12 @@ int gs_pair(PSERVER_DATA server, char* pin) {
   char client_secret_data[16];
   RAND_bytes(client_secret_data, sizeof(client_secret_data));
 
+  // OpenSSL 1.1 made the signature pointer const
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  ASN1_BIT_STRING *asnSignature;
+#else
   const ASN1_BIT_STRING *asnSignature;
+#endif
   X509_get0_signature(&asnSignature, NULL, cert);
 
   char challenge_response[16 + SIGNATURE_LEN + sizeof(client_secret_data)];
