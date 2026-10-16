@@ -7,6 +7,10 @@
 # moonlight.conf settings to use for that variant, for example:
 #
 #   tools/bench/run.sh base legacy:direct_decode=true big:packetsize=1392
+#   tools/bench/run.sh key:bench_input=key mouse:bench_input=mouse pad:bench_input=gamepad
+#
+# The stats overlay and debug log are turned off for every run, since they
+# cost time themselves, unless a variant sets stats_overlay or save_debug_log.
 #
 # Variants run in turn, round after round (base, legacy, big, base, ...), so
 # Wi-Fi conditions changing over time affect them all alike.
@@ -46,7 +50,7 @@ die() {
 }
 
 usage() {
-  sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
   exit 1
 }
 
@@ -114,9 +118,12 @@ run_variant() {
   fi
 
   local conf="$out/$label-$round.conf"
+  # The overlay and the debug log cost time themselves, so they're off unless
+  # a variant turns them on; variant keys come last and win
   python3 -I "$BENCH_DIR/conf_edit.py" "$original" "$conf" \
     bench_autorun=true "bench_seconds=$seconds" "bench_label=$label" \
-    "bench_host=$host" "bench_app=$app" ${extra[@]+"${extra[@]}"}
+    "bench_host=$host" "bench_app=$app" stats_overlay=0 save_debug_log=false \
+    ${extra[@]+"${extra[@]}"}
 
   local before="$out/.before.json"
   rm -f "$before"

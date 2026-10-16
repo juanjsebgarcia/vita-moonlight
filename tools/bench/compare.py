@@ -19,7 +19,7 @@ METRICS = [
     ("latency est p50 ms", ("latency_estimate_ms", "p50")),
     ("drawn fps", ("frames", "fps_rendered")),
     ("net lost", ("frames", "lost_network")),
-    ("host skips", ("page", "skipped")),
+    ("skips beyond rate", ("page", "skipped_beyond_rate")),
     ("repeats", ("page", "repeated")),
     ("decode p95 ms", ("decode_ms", "p95")),
     ("render p95 ms", ("render_ms", "p95")),
