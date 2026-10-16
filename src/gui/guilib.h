@@ -26,6 +26,17 @@ typedef struct menu_geom {
   int x, y, width, height, el, total_y;
 } menu_geom;
 
+// Face button symbols, drawn as shapes because the UI font has no glyphs for them
+enum {
+  BUTTON_GLYPH_CROSS,
+  BUTTON_GLYPH_CIRCLE,
+  BUTTON_GLYPH_TRIANGLE,
+  BUTTON_GLYPH_SQUARE,
+};
+
+// Longest line wrap_text() produces, in bytes
+#define WRAP_LINE_MAX 256
+
 extern vita2d_font *font;
 
 struct menu_geom make_geom_centered(int w, int h);
@@ -67,6 +78,14 @@ void display_error(char *format, ...);
 // Shows a larger dialog with a title and explanatory text, closed with
 // confirm, cancel or triangle
 void display_help(const char *title, const char *message);
+
+// Draws a face button symbol whose bottom sits on the text baseline y, and
+// returns its width
+int draw_button_glyph(int glyph, int x, int y, int size);
+
+// Splits text into lines no wider than max_width at the UI font size, breaking
+// at spaces and newlines. Returns the number of lines written to lines.
+int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int max_lines);
 
 void flash_message(char *format, ...);
 

@@ -662,10 +662,15 @@ static void show_settings_help(const menu_entry *menu, int id) {
 
 // Drawn under the settings box, so the help is discoverable without taking a row
 static void settings_draw(void) {
-  const char *hint = "\xe2\x96\xb3 Help";
-  int width = vita2d_font_text_width(font, 18, hint);
+  const char *hint = "Help";
+  const int glyph_size = 14;
+  const int gap = 6;
+  int width = glyph_size + gap + vita2d_font_text_width(font, 18, hint);
   // The settings menu uses the default 600x400 box, centred on the 960x544 screen
-  vita2d_font_draw_text(font, 480 + 300 - width, 272 + 200 + 26, 0xffffffff, 18, hint);
+  int x = 480 + 300 - width;
+  int y = 272 + 200 + 26;
+  x += draw_button_glyph(BUTTON_GLYPH_TRIANGLE, x, y, glyph_size) + gap;
+  vita2d_font_draw_text(font, x, y, 0xffffffff, 18, hint);
 }
 
 static int settings_loop(int id, void *context, const input_data *input) {
