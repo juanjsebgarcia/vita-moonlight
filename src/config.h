@@ -62,7 +62,7 @@ typedef struct _CONFIGURATION {
   bool disable_powersave;
   bool boost_clocks;
   bool jp_layout;
-  bool show_fps;
+  int stats_overlay; // STATS_OVERLAY_* from stats.h
   bool enable_frame_pacer;
   bool center_region_only;
   bool save_debug_log;

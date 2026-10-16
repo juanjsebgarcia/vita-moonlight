@@ -25,6 +25,7 @@
 #include "../input/vita.h"
 #include "vita.h"
 #include "sps.h"
+#include "../stats.h"
 
 #include <Limelight.h>
 
@@ -229,6 +230,9 @@ static int vita_pacer_thread_main(SceSize args, void *argp) {
     curr_fps[0] = curr_frame_count;
     curr_fps[1] = max_fps;
 
+    // This loop already runs about once a second for the whole stream
+    vitastats_tick();
+
     //last_vblank_count = curr_vblank_count;
     uint64_t curr_check_time = sceKernelGetSystemTimeWide();
     uint32_t lapse = curr_check_time - last_check_time;
@@ -312,6 +316,7 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
   int ret;
   printf("vita video setup\n");
   decode_thread_logged = false;
+  vitastats_reset();
 
   if (video_status == NOT_INIT) {
     // INIT_GS
@@ -461,6 +466,9 @@ cleanup:
 }
 
 static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
+  uint64_t submit_us = LiGetMicroseconds();
+  vitastats_frame_received(decodeUnit, submit_us);
+
   if (!decode_thread_logged) {
     // Runs on common-c's VideoDec thread
     vita_debug_log_thread("video decode");
@@ -525,6 +533,8 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
 
   int ret = 0;
   ret = sceAvcdecDecode(decoder, &au, &array_picture);
+  uint64_t decoded_us = LiGetMicroseconds();
+  vitastats_frame_decoded(decoded_us - submit_us);
   if (ret < 0) {
     printf("sceAvcdecDecode (len=0x%x): 0x%x numOfOutput %d\n", decodeUnit->fullLength, ret, array_picture.numOfOutput);
     return DR_NEED_IDR;
@@ -542,6 +552,7 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
       vita_debug_log("remain frameskip: %d\n", need_drop);
       // skip
       need_drop--;
+      vitastats_frame_dropped_by_pacer();
     } else {
       // The decode above overlapped with the GPU drawing the previous frame from
       // the other texture. Wait for that to finish here, after the decode instead
@@ -556,6 +567,7 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
 
       vita2d_end_drawing();
       vita2d_swap_buffers();
+      vitastats_frame_rendered(LiGetMicroseconds() - decoded_us);
 
       // Only flip after drawing, so a dropped frame's texture is simply reused
       back_texture_idx = (back_texture_idx + 1) % FRAME_TEXTURE_COUNT;
@@ -582,9 +594,7 @@ void draw_streaming(vita2d_texture *frame_texture) {
 }
 
 void draw_fps() {
-  if (config.show_fps) {
-    vita2d_font_draw_textf(font, 40, 20, RGBA8(0xFF, 0xFF, 0xFF, 0xFF), 16, "fps: %u / %u", curr_fps[0], curr_fps[1]);
-  }
+  vitastats_draw();
 }
 
 void draw_indicators() {

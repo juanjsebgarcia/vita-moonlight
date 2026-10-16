@@ -28,6 +28,7 @@
 #include <ini.h>
 #include "input/vita.h"
 #include "debug.h"
+#include "stats.h"
 
 extern char* strdup(const char*);
 
@@ -124,8 +125,13 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->boost_clocks = BOOL(value);
     } else if (strcmp(name, "jp_layout") == 0) {
       config->jp_layout = BOOL(value);
+    } else if (strcmp(name, "stats_overlay") == 0) {
+      config->stats_overlay = INT(value);
     } else if (strcmp(name, "show_fps") == 0) {
-      config->show_fps = BOOL(value);
+      // Older configs only had an FPS on/off switch
+      if (BOOL(value) && config->stats_overlay == STATS_OVERLAY_OFF) {
+        config->stats_overlay = STATS_OVERLAY_FPS;
+      }
     } else if (strcmp(name, "save_debug_log") == 0) {
       config->save_debug_log = BOOL(value);
     } else if (strcmp(name, "mapping") == 0) {
@@ -207,7 +213,7 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_bool(fd, "disable_powersave", config->disable_powersave);
   write_config_bool(fd, "boost_clocks", config->boost_clocks);
   write_config_bool(fd, "jp_layout", config->jp_layout);
-  write_config_bool(fd, "show_fps", config->show_fps);
+  write_config_int(fd, "stats_overlay", config->stats_overlay);
   write_config_bool(fd, "save_debug_log", config->save_debug_log);
   write_config_bool(fd, "enable_front_touchzones", config->enable_front_touchzones);
 
@@ -281,7 +287,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->disable_powersave = true;
   config->boost_clocks = true;
   config->jp_layout = false;
-  config->show_fps = false;
+  config->stats_overlay = STATS_OVERLAY_OFF;
   config->enable_frame_pacer = true;
   config->center_region_only = false;
 
@@ -317,7 +323,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   char* config_file = config_path;
   if (config_file) {
     config_file_parse(config_file, config);
-    vita_debug_log("[DEBUG] Configuración cargada: key_dir = %s, touchscreen_mode = %d, show_fps = %d", config->key_dir, config->touchscreen_mode, config->show_fps);
+    vita_debug_log("[DEBUG] Configuración cargada: key_dir = %s, touchscreen_mode = %d, stats_overlay = %d", config->key_dir, config->touchscreen_mode, config->stats_overlay);
   }
 
   update_layout();
@@ -350,6 +356,10 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
       config->stream.bitrate = 10000;
     else
       config->stream.bitrate = 5000;
+  }
+
+  if (config->stats_overlay < STATS_OVERLAY_OFF || config->stats_overlay >= STATS_OVERLAY_COUNT) {
+    config->stats_overlay = STATS_OVERLAY_OFF;
   }
 
   // Larger packets would be IP-fragmented on a standard 1500-byte MTU

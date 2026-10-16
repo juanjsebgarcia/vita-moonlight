@@ -8,6 +8,7 @@
 #include "../input/swap_shoulder_buttons.h"
 #include "../video/vita.h"
 #include "../debug.h"
+#include "../stats.h"
 #include "../input/touchabsolute.h"
 
 #include <assert.h>
@@ -810,11 +811,15 @@ static int settings_loop(int id, void *context, const input_data *input) {
       config.jp_layout = !config.jp_layout;
       break;
     case SETTINGS_SHOW_FPS:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      // Left/right or confirm cycles off -> fps -> full
+      if (left) {
+        config.stats_overlay = (config.stats_overlay + STATS_OVERLAY_COUNT - 1) % STATS_OVERLAY_COUNT;
+      } else if (right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0)) {
+        config.stats_overlay = (config.stats_overlay + 1) % STATS_OVERLAY_COUNT;
+      } else {
         break;
       }
       did_change = 1;
-      config.show_fps = !config.show_fps;
       break;
     case SETTINGS_LOCAL_AUDIO:
       if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
@@ -953,7 +958,8 @@ static int settings_loop(int id, void *context, const input_data *input) {
   sprintf(current, "%s", config.jp_layout ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_JP_LAYOUT, current);
 
-  sprintf(current, "%s", config.show_fps ? "yes" : "no");
+  static const char *stats_overlay_names[STATS_OVERLAY_COUNT] = {"off", "fps", "full"};
+  sprintf(current, "%s", stats_overlay_names[config.stats_overlay]);
   MENU_REPLACE(SETTINGS_VIEW_SHOW_FPS, current);
 
   sprintf(current, "%s", config.localaudio ? "yes" : "no");
@@ -1049,7 +1055,7 @@ int ui_settings_menu() {
   MENU_ENTRY(SETTINGS_DISABLE_POWERSAVE, SETTINGS_VIEW_DISABLE_POWERSAVE, "Disable power save", "");
   MENU_ENTRY(SETTINGS_BOOST_CLOCKS, SETTINGS_VIEW_BOOST_CLOCKS, "Boost CPU/GPU clocks while streaming", "");
   MENU_ENTRY(SETTINGS_JP_LAYOUT, SETTINGS_VIEW_JP_LAYOUT, "Swap X & O for Moonlight", "");
-  MENU_ENTRY(SETTINGS_SHOW_FPS, SETTINGS_VIEW_SHOW_FPS, "Display streaming FPS", "");
+  MENU_ENTRY(SETTINGS_SHOW_FPS, SETTINGS_VIEW_SHOW_FPS, "Stats overlay", ICON_LEFT_RIGHT_ARROWS);
 
   MENU_CATEGORY("Input");
 
@@ -1112,7 +1118,7 @@ void ui_settings_save_config() {
   vita_debug_log("  swap_shoulder_buttons = %d", config.swap_shoulder_buttons);
   vita_debug_log("  controller_type = %d", config.controller_type);
   vita_debug_log("  enable_mapping = %s", config.mapping ? "yes" : "no");
-  vita_debug_log("  show_fps = %d", config.show_fps);
+  vita_debug_log("  stats_overlay = %d", config.stats_overlay);
   vita_debug_log("  enable_motion_controls = %d", config.enable_motion_controls);
   vita_debug_log("  double_tap_sprint = %d", config.enable_double_tap_sprint);
   vita_debug_log("  double_tap_sprint_step_time = %u", config.double_tap_sprint_step_time);
