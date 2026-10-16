@@ -10,7 +10,6 @@
     height: 100%;
     overflow: hidden;
     background: #000;
-    cursor: none;
   }
   canvas {
     display: block;
@@ -41,6 +40,12 @@ const LAYOUT = {
   // Two reference blocks (white, then black), then FRAME_BITS data blocks
   // holding the tick count, most significant bit first, white = 1
   barcode: { x: 0.100, y: 0.020, blockW: 0.045, h: 0.060 },
+  // Kept black so the mouse pointer shows up clearly here. The benchmark's
+  // cursor mode moves the pointer between the two targets (hotspot positions)
+  // and times when it appears, which leaves the browser out of the
+  // measurement: Windows draws the pointer and Sunshine captures it.
+  cursorLane: { x: 0.915, y: 0.010, w: 0.080, h: 0.080 },
+  cursorTargets: [{ x: 0.930, y: 0.020 }, { x: 0.965, y: 0.020 }],
 };
 const FRAME_BITS = 16;
 const MARKER_MS = 100;
@@ -254,6 +259,12 @@ function drawStrip(nowMs) {
     ctx.fillStyle = bit ? "#fff" : "#000";
     ctx.fillRect((b.x + i * b.blockW) * width, b.y * height, b.blockW * width, b.h * height);
   });
+
+  // The cursor lane stays black; a faint outline shows where it is
+  const lane = LAYOUT.cursorLane;
+  ctx.strokeStyle = "#222";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(lane.x * width, lane.y * height, lane.w * width, lane.h * height);
 }
 
 function drawHud(t) {
