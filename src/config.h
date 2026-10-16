@@ -60,6 +60,7 @@ typedef struct _CONFIGURATION {
   bool enable_front_touchzones;
   struct special_keys special_keys;
   bool disable_powersave;
+  bool boost_clocks;
   bool jp_layout;
   bool show_fps;
   bool enable_frame_pacer;

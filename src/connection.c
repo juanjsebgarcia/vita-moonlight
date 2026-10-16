@@ -98,7 +98,9 @@ static void connection_connection_terminated(int error_code) {
 
   LiStopConnection();
 
-  if (connection_status == LI_CONNECTED) {
+  // pause_output() leaves the power state running, so a stream quit from the
+  // pause menu must still go through stop_output() to restore the clocks
+  if (connection_status == LI_CONNECTED || connection_status == LI_MINIMIZED) {
     stop_output();
   }
   vita_debug_log("connection terminated\n");

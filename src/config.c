@@ -114,6 +114,8 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->center_region_only = BOOL(value);
     } else if (strcmp(name, "disable_powersave") == 0) {
       config->disable_powersave = BOOL(value);
+    } else if (strcmp(name, "boost_clocks") == 0) {
+      config->boost_clocks = BOOL(value);
     } else if (strcmp(name, "jp_layout") == 0) {
       config->jp_layout = BOOL(value);
     } else if (strcmp(name, "show_fps") == 0) {
@@ -197,6 +199,7 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_bool(fd, "enable_frame_pacer", config->enable_frame_pacer);
   write_config_bool(fd, "center_region_only", config->center_region_only);
   write_config_bool(fd, "disable_powersave", config->disable_powersave);
+  write_config_bool(fd, "boost_clocks", config->boost_clocks);
   write_config_bool(fd, "jp_layout", config->jp_layout);
   write_config_bool(fd, "show_fps", config->show_fps);
   write_config_bool(fd, "save_debug_log", config->save_debug_log);
@@ -270,6 +273,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->unsupported_version = false;
   config->save_debug_log = false;
   config->disable_powersave = true;
+  config->boost_clocks = true;
   config->jp_layout = false;
   config->show_fps = false;
   config->enable_frame_pacer = true;

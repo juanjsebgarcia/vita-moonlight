@@ -447,7 +447,8 @@ enum {
   SETTINGS_SWAP_SHOULDER_BUTTONS, // NUEVO: Swap R1/L1 <-> R2/L2
   SETTINGS_MOUSE_ACCEL,
   SETTINGS_KEYBOARD_LAYOUT,
-  SETTINGS_TOUCH_MODE_SELECT // Nuevo: selección de modo táctil exclusivo
+  SETTINGS_TOUCH_MODE_SELECT, // Nuevo: selección de modo táctil exclusivo
+  SETTINGS_BOOST_CLOCKS
 };
 
 enum {
@@ -481,6 +482,7 @@ enum {
   SETTINGS_VIEW_MOUSE_ACCEL,
   SETTINGS_VIEW_KEYBOARD_LAYOUT,
   SETTINGS_VIEW_TOUCH_MODE_SELECT, // Vista para modo táctil exclusivo
+  SETTINGS_VIEW_BOOST_CLOCKS,
 
   SETTINGS_VIEW_MAX_COUNT,
 };
@@ -793,6 +795,13 @@ static int settings_loop(int id, void *context, const input_data *input) {
       did_change = 1;
       config.disable_powersave = !config.disable_powersave;
       break;
+    case SETTINGS_BOOST_CLOCKS:
+      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+        break;
+      }
+      did_change = 1;
+      config.boost_clocks = !config.boost_clocks;
+      break;
     case SETTINGS_JP_LAYOUT:
       if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
         break;
@@ -938,6 +947,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
   sprintf(current, "%s", config.disable_powersave ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_DISABLE_POWERSAVE, current);
 
+  sprintf(current, "%s", config.boost_clocks ? "yes" : "no");
+  MENU_REPLACE(SETTINGS_VIEW_BOOST_CLOCKS, current);
+
   sprintf(current, "%s", config.jp_layout ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_JP_LAYOUT, current);
 
@@ -997,7 +1009,9 @@ static int settings_back(void *context) {
 // Eliminado: hotkeys_menu y referencias, ya que los atajos ahora son fijos
 
 int ui_settings_menu() {
-  menu_entry menu[32];
+  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (34 today). Each
+  // entry is about 1 KB of the main thread stack, so do not oversize it
+  menu_entry menu[40];
   int idx = 0;
 #define MENU_CATEGORY(NAME) \
   do { \
@@ -1032,6 +1046,7 @@ int ui_settings_menu() {
   MENU_CATEGORY("System");
   MENU_ENTRY(SETTINGS_SAVE_DEBUG_LOG, SETTINGS_VIEW_SAVE_DEBUG_LOG, "Enable debug log", "");
   MENU_ENTRY(SETTINGS_DISABLE_POWERSAVE, SETTINGS_VIEW_DISABLE_POWERSAVE, "Disable power save", "");
+  MENU_ENTRY(SETTINGS_BOOST_CLOCKS, SETTINGS_VIEW_BOOST_CLOCKS, "Boost CPU/GPU clocks while streaming", "");
   MENU_ENTRY(SETTINGS_JP_LAYOUT, SETTINGS_VIEW_JP_LAYOUT, "Swap X & O for Moonlight", "");
   MENU_ENTRY(SETTINGS_SHOW_FPS, SETTINGS_VIEW_SHOW_FPS, "Display streaming FPS", "");
 
@@ -1107,6 +1122,7 @@ void ui_settings_save_config() {
   vita_debug_log("  stream.bitrate = %d", config.stream.bitrate);
   vita_debug_log("  save_debug_log = %d", config.save_debug_log);
   vita_debug_log("  disable_powersave = %d", config.disable_powersave);
+  vita_debug_log("  boost_clocks = %d", config.boost_clocks);
   vita_debug_log("  jp_layout = %d", config.jp_layout);
   vita_debug_log("  localaudio = %d", config.localaudio);
   vita_debug_log("  enable_frame_pacer = %d", config.enable_frame_pacer);
