@@ -64,6 +64,9 @@ void display_alert(
         );
 
 void display_error(char *format, ...);
+// Shows a larger dialog with a title and explanatory text, closed with
+// confirm, cancel or triangle
+void display_help(const char *title, const char *message);
 
 void flash_message(char *format, ...);
 
