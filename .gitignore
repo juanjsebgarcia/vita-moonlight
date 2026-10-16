@@ -7,3 +7,4 @@ mdns_discovery.py
 .vscode/tasks.json
 psp2core_tmp.psp2dmp
 .vscode/settings.json
+.claude/
