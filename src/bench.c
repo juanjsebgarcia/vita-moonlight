@@ -39,6 +39,14 @@
 #define BARCODE_X 0.100f
 #define BARCODE_BLOCK_W 0.045f
 #define BARCODE_CY (0.020f + 0.060f / 2)
+// The two mouse pointer targets in the cursor lane (hotspot positions), and
+// the box below and right of each where the pointer's arrow is drawn
+static const float CURSOR_TARGET_X[2] = {0.930f, 0.965f};
+#define CURSOR_TARGET_Y 0.020f
+#define CURSOR_BOX_W 0.012f
+#define CURSOR_BOX_H 0.035f
+// Absolute mouse positions are sent on this scale
+#define MOUSE_REFERENCE 10000
 #define FRAME_BITS 16
 #define TICK_MASK ((1 << FRAME_BITS) - 1)
 
@@ -104,7 +112,12 @@ static struct {
   uint64_t lag_send_us;
   bool lag_pending;
   uint32_t presses_sent, presses_seen, presses_missed;
+  // Cursor mode: which target the pointer was last sent to
+  int cursor_target;
 } state;
+
+// The input type for the run in progress, read by the decode thread
+static volatile int active_input = 0;
 
 static void series_init(series *s, int capacity) {
   s->values = malloc(sizeof(float) * capacity);
@@ -174,6 +187,28 @@ static int probe(const uint8_t *pixels, int stride_bytes, float x1, float y1, fl
   return total / 9;
 }
 
+// Brightest pixel in a box given as fractions of the region; the pointer is
+// small, so a whole box is scanned rather than a single point
+static int probe_box_max(const uint8_t *pixels, int stride_bytes, float x1, float y1, float x2, float y2,
+                         float fx, float fy, float fw, float fh) {
+  int left = (int)(x1 + fx * (x2 - x1));
+  int top = (int)(y1 + fy * (y2 - y1));
+  int right = (int)(x1 + (fx + fw) * (x2 - x1));
+  int bottom = (int)(y1 + (fy + fh) * (y2 - y1));
+  int max = 0;
+  for (int y = top; y <= bottom; y++) {
+    const uint8_t *row = pixels + y * stride_bytes;
+    for (int x = left; x <= right; x++) {
+      const uint8_t *p = row + x * 4;
+      int lum = (p[0] + p[1] + p[2]) / 3;
+      if (lum > max) {
+        max = lum;
+      }
+    }
+  }
+  return max;
+}
+
 void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t decoded_us,
                              const uint8_t *pixels, int stride_bytes,
                              float region_x1, float region_y1, float region_x2, float region_y2) {
@@ -198,6 +233,13 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
     }
     marker = probe(pixels, stride_bytes, region_x1, region_y1, region_x2, region_y2,
                    MARKER_CX, MARKER_CY) > threshold;
+  }
+  bool cursor_at[2] = {false, false};
+  if (readable && active_input == INPUT_CURSOR) {
+    for (int i = 0; i < 2; i++) {
+      cursor_at[i] = probe_box_max(pixels, stride_bytes, region_x1, region_y1, region_x2, region_y2,
+                                   CURSOR_TARGET_X[i], CURSOR_TARGET_Y, CURSOR_BOX_W, CURSOR_BOX_H) > threshold;
+    }
   }
 
   pthread_mutex_lock(&bench_mutex);
@@ -240,8 +282,17 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
       state.last_tick = tick;
       state.have_tick = true;
 
-      // The marker turning white after a press means the press got through
-      if (marker && state.last_marker == 0 && state.awaiting_marker) {
+      if (active_input == INPUT_CURSOR) {
+        // The pointer showing at the new target, and gone from the old one
+        int target = state.cursor_target;
+        if (state.awaiting_marker && cursor_at[target] && !cursor_at[1 - target]) {
+          state.awaiting_marker = false;
+          state.lag_send_us = state.press_sent_us;
+          state.lag_pending = true;
+          state.presses_seen++;
+        }
+      } else if (marker && state.last_marker == 0 && state.awaiting_marker) {
+        // The marker turning white after a press means the press got through
         state.awaiting_marker = false;
         state.lag_send_us = state.press_sent_us;
         state.lag_pending = true;
@@ -305,6 +356,9 @@ enum {
   INPUT_KEY,
   INPUT_MOUSE,
   INPUT_GAMEPAD,
+  // Moves the pointer between two targets and watches for it, which times
+  // the host's input and capture without the page drawing anything
+  INPUT_CURSOR,
 };
 
 // Which input path the timed presses use, so they can be compared: a key goes
@@ -317,15 +371,28 @@ static int bench_input_type(void) {
   if (config.bench_input && strcmp(config.bench_input, "gamepad") == 0) {
     return INPUT_GAMEPAD;
   }
+  if (config.bench_input && strcmp(config.bench_input, "cursor") == 0) {
+    return INPUT_CURSOR;
+  }
   return INPUT_KEY;
 }
 
 static const char *bench_input_name(int type) {
-  return type == INPUT_MOUSE ? "mouse" : type == INPUT_GAMEPAD ? "gamepad" : "key";
+  return type == INPUT_MOUSE ? "mouse" : type == INPUT_GAMEPAD ? "gamepad"
+       : type == INPUT_CURSOR ? "cursor" : "key";
+}
+
+static void move_cursor_to(int target) {
+  LiSendMousePositionEvent((short)(CURSOR_TARGET_X[target] * MOUSE_REFERENCE),
+                           (short)(CURSOR_TARGET_Y * MOUSE_REFERENCE), MOUSE_REFERENCE, MOUSE_REFERENCE);
 }
 
 static void press_down(int type) {
-  if (type == INPUT_MOUSE) {
+  if (type == INPUT_CURSOR) {
+    // Called with bench_mutex held, so the target and the send stay together
+    state.cursor_target = 1 - state.cursor_target;
+    move_cursor_to(state.cursor_target);
+  } else if (type == INPUT_MOUSE) {
     LiSendMouseButtonEvent(BUTTON_ACTION_PRESS, BUTTON_LEFT);
   } else if (type == INPUT_GAMEPAD) {
     LiSendMultiControllerEvent(0, 1, A_FLAG, 0, 0, 0, 0, 0, 0);
@@ -335,7 +402,9 @@ static void press_down(int type) {
 }
 
 static void press_up(int type) {
-  if (type == INPUT_MOUSE) {
+  if (type == INPUT_CURSOR) {
+    // Nothing to release
+  } else if (type == INPUT_MOUSE) {
     LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, BUTTON_LEFT);
   } else if (type == INPUT_GAMEPAD) {
     LiSendMultiControllerEvent(0, 1, 0, 0, 0, 0, 0, 0, 0);
@@ -611,6 +680,13 @@ int vitabench_run(bool automated) {
   reset_measurements();
 
   int input_type = bench_input_type();
+  active_input = input_type;
+  if (input_type == INPUT_CURSOR) {
+    // Park the pointer on the first target before timing moves away from it
+    state.cursor_target = 0;
+    move_cursor_to(0);
+    sceKernelDelayThread(RESET_SETTLE_US);
+  }
   phase = PHASE_MEASURING;
   uint64_t start = LiGetMicroseconds();
   uint64_t end = start + (uint64_t)config.bench_seconds * 1000000;
@@ -635,10 +711,9 @@ int vitabench_run(bool automated) {
       bool waiting = state.awaiting_marker;
       pthread_mutex_unlock(&bench_mutex);
       if (!waiting) {
-        uint64_t sent = LiGetMicroseconds();
-        press_down(input_type);
         pthread_mutex_lock(&bench_mutex);
-        state.press_sent_us = sent;
+        state.press_sent_us = LiGetMicroseconds();
+        press_down(input_type);
         state.awaiting_marker = true;
         state.presses_sent++;
         pthread_mutex_unlock(&bench_mutex);
