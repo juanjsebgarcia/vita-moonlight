@@ -672,6 +672,12 @@ static void settings_draw(void) {
   int y = 272 + 200 + 26;
   x += draw_button_glyph(BUTTON_GLYPH_TRIANGLE, x, y, glyph_size) + gap;
   vita2d_font_draw_text(font, x, y, 0xffffffff, 18, hint);
+
+  // TEMPORARY preview of every control symbol, local test build only
+  int gx = 20;
+  for (int g = 0; g < BUTTON_GLYPH_COUNT; g++) {
+    gx += draw_button_glyph(g, gx, 536, 18) + 8;
+  }
 }
 
 static int settings_loop(int id, void *context, const input_data *input) {
