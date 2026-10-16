@@ -15,7 +15,7 @@ project(moonlight)
 include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
 # NOTE: To update the version shown in the UI and VPK, edit the following lines:
 #   set(VERSION_MAJOR "0")
-#   set(VERSION_MINOR "11")
+#   set(VERSION_MINOR "13")
 #   set(VERSION_PATCH "2")
 #
 set(TITLE_ID "XYZZ00002")
@@ -24,11 +24,16 @@ set(VERSION_MAJOR "0")
 set(VERSION_MINOR "13")
 set(VERSION_PATCH "2")
 
-execute_process(COMMAND
-	python -c "print('%02d.%02d' % (${VERSION_MAJOR}, ${VERSION_MINOR}))"
-	OUTPUT_VARIABLE APP_VER
-)
-string(REPLACE "\n" "" APP_VER "${APP_VER}")
+# APP_VER is MM.mm, zero-padded. Built in CMake because a bare `python` is not
+# available everywhere, and a failed call silently left APP_VER empty
+foreach(part MAJOR MINOR)
+	if(VERSION_${part} LESS 10)
+		set(APP_VER_${part} "0${VERSION_${part}}")
+	else()
+		set(APP_VER_${part} "${VERSION_${part}}")
+	endif()
+endforeach()
+set(APP_VER "${APP_VER_MAJOR}.${APP_VER_MINOR}")
 
 add_definitions(-DVERSION_MAJOR=${VERSION_MAJOR})
 add_definitions(-DVERSION_MINOR=${VERSION_MINOR})
