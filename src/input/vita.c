@@ -50,6 +50,8 @@
 #define WIDTH 960
 #define HEIGHT 544
 #define MOUSE_SENSITIVITY 2400.0
+// Poll interval when the input thread is idle, or if the blocking controller read fails
+#define INPUT_FALLBACK_POLL_US 2000
 
 const short Y_MAXIMIUM_DEADZONE = -32383;
 const short Y_MINIMUM_DEADZONE = -1024;
@@ -773,8 +775,13 @@ inline void vitainput_process(void) {
   memset(&pad, 0, sizeof(pad));
   memset(&touch, 0, sizeof(TouchData));
   memset(&curr, 0, sizeof(input_data));
-  sceCtrlSetSamplingModeExt(SCE_CTRL_MODE_ANALOG_WIDE);
-  sceCtrlPeekBufferPositiveExt2(controller_port, &pad, 1);
+  // Blocks until the controller produces its next sample (once per vblank), which
+  // paces this thread to the hardware instead of re-reading the same sample many
+  // times. The sampling mode is set once in vitainput_init().
+  if (sceCtrlReadBufferPositiveExt2(controller_port, &pad, 1) < 0) {
+    sceCtrlPeekBufferPositiveExt2(controller_port, &pad, 1);
+    sceKernelDelayThread(INPUT_FALLBACK_POLL_US);
+  }
   sceTouchPeek(SCE_TOUCH_PORT_FRONT, &front, 1);
   sceTouchPeek(SCE_TOUCH_PORT_BACK, &back, 1);
   // Siempre actualizar los puntos táctiles del frente
@@ -889,10 +896,11 @@ static uint8_t active_input_thread = 0;
 int vitainput_thread(SceSize args, void *argp) {
   while (1) {
     if (active_input_thread) {
+      // Paced by the blocking controller read inside
       vitainput_process();
+    } else {
+      sceKernelDelayThread(INPUT_FALLBACK_POLL_US);
     }
-
-    sceKernelDelayThread(2000); // 2 ms
   }
 
   return 0;
