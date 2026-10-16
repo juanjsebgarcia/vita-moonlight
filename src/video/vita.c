@@ -89,7 +89,13 @@ enum VideoStatus {
   INIT_FRAME_PACER_THREAD,
 };
 
-vita2d_texture *frame_texture = NULL;
+// Two textures so the hardware decoder can write the next frame while the GPU
+// is still reading the previous one
+#define FRAME_TEXTURE_COUNT 2
+static vita2d_texture *frame_textures[FRAME_TEXTURE_COUNT] = {NULL};
+// The texture the next frame is decoded into. The other one may still be
+// queued for display.
+static int back_texture_idx = 0;
 enum VideoStatus video_status = NOT_INIT;
 
 SceAvcdecCtrl *decoder = NULL;
@@ -280,9 +286,13 @@ static void vita_cleanup() {
   }
 
   if (video_status == INIT_FRAMEBUFFER) {
-    if (frame_texture != NULL) {
-      vita2d_free_texture(frame_texture);
-      frame_texture = NULL;
+    // Make sure the GPU is no longer reading the textures before freeing them
+    vita2d_wait_rendering_done();
+    for (int i = 0; i < FRAME_TEXTURE_COUNT; i++) {
+      if (frame_textures[i] != NULL) {
+        vita2d_free_texture(frame_textures[i]);
+        frame_textures[i] = NULL;
+      }
     }
 
     if (decoder_buffer != NULL) {
@@ -321,12 +331,15 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
       goto cleanup;
     } 
 
-    frame_texture = vita2d_create_empty_texture_format(image_scaling.texture_width, image_scaling.texture_height, SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR);
-    if (frame_texture == NULL) {
-      printf("frame_texture: not enough memory\n");
-      ret = VITA_VIDEO_ERROR_NO_MEM;
-      goto cleanup;
+    for (int i = 0; i < FRAME_TEXTURE_COUNT; i++) {
+      frame_textures[i] = vita2d_create_empty_texture_format(image_scaling.texture_width, image_scaling.texture_height, SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR);
+      if (frame_textures[i] == NULL) {
+        printf("frame_textures[%d]: not enough memory\n", i);
+        ret = VITA_VIDEO_ERROR_NO_MEM;
+        goto cleanup;
+      }
     }
+    back_texture_idx = 0;
 
     printf("Initalized Framebuffer");
 
@@ -445,7 +458,7 @@ cleanup:
 
 static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   if (!decode_thread_logged) {
-    // With CAPABILITY_DIRECT_SUBMIT this runs on common-c's VideoRecv thread
+    // Runs on common-c's VideoDec thread
     vita_debug_log_thread("video decode");
     decode_thread_logged = true;
   }
@@ -464,7 +477,7 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   picture.frame.framePitch = image_scaling.texture_width;
   picture.frame.frameWidth = image_scaling.texture_width;
   picture.frame.frameHeight = image_scaling.texture_height;
-  picture.frame.pPicture[0] = vita2d_texture_get_datap(frame_texture);
+  picture.frame.pPicture[0] = vita2d_texture_get_datap(frame_textures[back_texture_idx]);
 
   //ensure_buf_size((void *)&decoder_buffer, &decoder_buffer_size, decodeUnit->fullLength + 64);
 
@@ -526,17 +539,22 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
       // skip
       need_drop--;
     } else {
+      // The decode above overlapped with the GPU drawing the previous frame from
+      // the other texture. Wait for that to finish here, after the decode instead
+      // of after the draw, so the next decode can safely reuse that texture.
+      vita2d_wait_rendering_done();
+
       vita2d_start_drawing();
 
-      draw_streaming(frame_texture);
+      draw_streaming(frame_textures[back_texture_idx]);
       draw_fps();
       draw_indicators();
 
       vita2d_end_drawing();
-
-      vita2d_wait_rendering_done();
       vita2d_swap_buffers();
 
+      // Only flip after drawing, so a dropped frame's texture is simply reused
+      back_texture_idx = (back_texture_idx + 1) % FRAME_TEXTURE_COUNT;
       frame_count++;
     }
   }
@@ -608,5 +626,8 @@ DECODER_RENDERER_CALLBACKS decoder_callbacks_vita = {
   .setup = vita_setup,
   .cleanup = vita_cleanup,
   .submitDecodeUnit = vita_submit_decode_unit,
-  .capabilities = CAPABILITY_DIRECT_SUBMIT | CAPABILITY_SLICES_PER_FRAME(2)
+  // No CAPABILITY_DIRECT_SUBMIT: common-c then runs submitDecodeUnit on its own
+  // VideoDec thread behind a frame queue, so the blocking decode, GPU wait and
+  // buffer swap never stop VideoRecv from draining the socket
+  .capabilities = CAPABILITY_SLICES_PER_FRAME(2)
 };
