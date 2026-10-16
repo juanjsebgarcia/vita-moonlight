@@ -50,6 +50,7 @@ static const float CURSOR_TARGET_X[2] = {0.930f, 0.965f};
 // Without the page's reference blocks (cursor mode on a plain dark screen),
 // the pointer counts as present above this luminance
 #define CURSOR_FIXED_THRESHOLD 160
+#define CURSOR_PARK_TIMEOUT_US 5000000ULL
 #define FRAME_BITS 16
 #define TICK_MASK ((1 << FRAME_BITS) - 1)
 
@@ -143,6 +144,8 @@ static struct {
   int press_capacity;
   // The latest frame number decoded, measuring or not
   int newest_frame;
+  // Cursor mode: where the pointer is in the latest frame, measuring or not
+  bool pointer_at[2];
 } state;
 
 // The input type for the run in progress, read by the decode thread
@@ -279,6 +282,8 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
   pthread_mutex_lock(&bench_mutex);
   state.page_visible = readable;
   state.newest_frame = du->frameNumber;
+  state.pointer_at[0] = cursor_at[0];
+  state.pointer_at[1] = cursor_at[1];
   if (phase == PHASE_MEASURING) {
     state.frames_received++;
     state.bytes += du->fullLength;
@@ -484,6 +489,13 @@ static bool wait_for(bool (*condition)(void), uint64_t timeout_us) {
 
 static bool is_connected(void) {
   return connection_get_status() == LI_CONNECTED;
+}
+
+static bool pointer_parked(void) {
+  pthread_mutex_lock(&bench_mutex);
+  bool parked = state.pointer_at[0] && !state.pointer_at[1];
+  pthread_mutex_unlock(&bench_mutex);
+  return parked;
 }
 
 static bool page_is_visible(void) {
@@ -744,9 +756,17 @@ int vitabench_run(bool automated) {
 
   active_input = input_type;
   if (input_type == INPUT_CURSOR) {
-    // Park the pointer on the first target before timing moves away from it
+    // Park the pointer on the first target, and wait until it's actually seen
+    // there. Otherwise the first timed move can be 'seen' a frame later
+    // because the pointer was already on its way, an impossibly short lag.
     state.cursor_target = 0;
     move_cursor_to(0);
+    if (!wait_for(pointer_parked, CURSOR_PARK_TIMEOUT_US)) {
+      snprintf(error, sizeof(error),
+               "The mouse pointer wasn't seen at the top right of the screen. Is the screen dark "
+               "there, with Windows' standard white pointer?");
+      goto done;
+    }
     sceKernelDelayThread(RESET_SETTLE_US);
   }
   phase = PHASE_MEASURING;
