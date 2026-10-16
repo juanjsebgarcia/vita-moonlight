@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moonlight Bench</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    cursor: none;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<script>
+"use strict";
+
+// Moonlight Bench: a fixed, reproducible streaming target.
+//
+// Everything drawn is a pure function of the time since the last reset and a
+// fixed seed, so every run shows the same pictures at the same moments.
+// Input never changes the scene; it only lights the input marker.
+//
+// The top strip is machine-readable, and its layout is a contract with the
+// Vita client (see tools/bench/README.md). All positions are fractions of the
+// viewport, so they survive any capture resolution or scaling.
+const LAYOUT = {
+  // Reserved black strip across the top; the visuals are drawn below it
+  panelHeight: 0.10,
+  // Turns white for MARKER_MS after any input
+  marker: { x: 0.010, y: 0.015, w: 0.060, h: 0.070 },
+  // Two reference blocks (white, then black), then FRAME_BITS data blocks
+  // holding the tick count, most significant bit first, white = 1
+  barcode: { x: 0.100, y: 0.020, blockW: 0.045, h: 0.060 },
+};
+const FRAME_BITS = 16;
+const MARKER_MS = 100;
+const SEED = 0x6d6f6f6e; // "moon"
+
+const params = new URLSearchParams(location.search);
+const MODE = params.get("mode") === "typical" ? "typical" : "stress";
+// The barcode counts ticks of the stream's frame rate, not screen refreshes,
+// so a 120 Hz monitor streaming at 60 fps still advances by one per streamed
+// frame. Set ?fps= to match the stream.
+const TICK_RATE = Math.max(1, Number(params.get("fps")) || 60);
+// Stress keeps nearly every pixel changing; typical is closer to a game
+const INTENSITY = MODE === "stress"
+  ? { particles: 700, spiroPoints: 2400, rings: 28, polygons: 14, speed: 1.0, plasmaGrain: 6 }
+  : { particles: 160, spiroPoints: 600, rings: 12, polygons: 5, speed: 0.45, plasmaGrain: 10 };
+
+const canvas = document.getElementById("screen");
+const ctx = canvas.getContext("2d", { alpha: false });
+// Low-resolution plasma, scaled up each frame
+const plasma = document.createElement("canvas");
+const plasmaCtx = plasma.getContext("2d");
+let plasmaImage = null;
+
+// mulberry32: tiny, fast and identical in every browser
+function makeRandom(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const random = makeRandom(SEED);
+const particles = Array.from({ length: INTENSITY.particles }, () => ({
+  ax: 0.2 + random() * 0.8,
+  ay: 0.2 + random() * 0.8,
+  fx: 0.3 + random() * 2.2,
+  fy: 0.3 + random() * 2.2,
+  phase: random() * Math.PI * 2,
+  hue: random() * 360,
+  size: 1 + random() * 4,
+}));
+const polygons = Array.from({ length: INTENSITY.polygons }, (_, i) => ({
+  sides: 3 + (i % 6),
+  orbit: 0.15 + random() * 0.3,
+  spin: (random() - 0.5) * 4,
+  speed: 0.2 + random() * 0.8,
+  phase: random() * Math.PI * 2,
+  hue: random() * 360,
+}));
+
+let width = 0;
+let height = 0;
+let startMs = performance.now();
+let frame = 0;
+let tick = 0;
+let markerUntilMs = 0;
+let inputs = 0;
+let showHud = true;
+let fpsFrames = 0;
+let fpsSince = performance.now();
+let fps = 0;
+
+function resize() {
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+  plasma.width = Math.max(32, Math.round(width / INTENSITY.plasmaGrain / 4));
+  plasma.height = Math.max(18, Math.round(height / INTENSITY.plasmaGrain / 4));
+  plasmaImage = plasmaCtx.createImageData(plasma.width, plasma.height);
+}
+
+function reset() {
+  startMs = performance.now();
+  frame = 0;
+  tick = 0;
+  markerUntilMs = 0;
+}
+
+function onInput() {
+  inputs++;
+  markerUntilMs = performance.now() + MARKER_MS;
+}
+
+function drawPlasma(t, top) {
+  const data = plasmaImage.data;
+  const w = plasma.width;
+  const h = plasma.height;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const u = x / w;
+      const v = y / h;
+      const value = Math.sin(u * 10 + t * 1.3)
+        + Math.sin((v * 9 + t * 0.9) * 1.1)
+        + Math.sin((u * 7 + v * 7 + t * 1.7) * 0.9)
+        + Math.sin(Math.hypot(u - 0.5, v - 0.5) * 22 - t * 2.3);
+      const i = (y * w + x) * 4;
+      data[i] = 128 + 127 * Math.sin(value * Math.PI);
+      data[i + 1] = 128 + 127 * Math.sin(value * Math.PI + 2.1);
+      data[i + 2] = 128 + 127 * Math.sin(value * Math.PI + 4.2);
+      data[i + 3] = 255;
+    }
+  }
+  plasmaCtx.putImageData(plasmaImage, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(plasma, 0, top, width, height - top);
+}
+
+function drawTunnel(t, cx, cy, radius) {
+  // Checkered rings rushing outwards and rotating: lots of moving hard edges
+  const segments = 16;
+  for (let r = 0; r < INTENSITY.rings; r++) {
+    const depth = ((r / INTENSITY.rings) + t * 0.35) % 1;
+    const outer = radius * depth * depth * 1.6;
+    const inner = outer * 0.86;
+    const twist = t * 0.8 + r * 0.25;
+    for (let s = 0; s < segments; s++) {
+      if ((s + r) % 2) {
+        continue;
+      }
+      const a0 = twist + (s / segments) * Math.PI * 2;
+      const a1 = a0 + (Math.PI * 2) / segments;
+      ctx.beginPath();
+      ctx.arc(cx, cy, outer, a0, a1);
+      ctx.arc(cx, cy, inner, a1, a0, true);
+      ctx.closePath();
+      ctx.fillStyle = `hsla(${(r * 23 + t * 90) % 360}, 90%, ${35 + 30 * depth}%, 0.85)`;
+      ctx.fill();
+    }
+  }
+}
+
+function drawSpirograph(t, cx, cy, radius) {
+  const R = radius * 0.9;
+  const k = 0.37 + 0.08 * Math.sin(t * 0.2);
+  const l = 0.6 + 0.3 * Math.sin(t * 0.33);
+  ctx.beginPath();
+  for (let i = 0; i < INTENSITY.spiroPoints; i++) {
+    const a = (i / INTENSITY.spiroPoints) * Math.PI * 24 + t * 0.6;
+    const x = cx + R * ((1 - k) * Math.cos(a) + l * k * Math.cos(((1 - k) / k) * a));
+    const y = cy + R * ((1 - k) * Math.sin(a) - l * k * Math.sin(((1 - k) / k) * a));
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+  ctx.strokeStyle = `hsla(${(t * 60) % 360}, 100%, 70%, 0.9)`;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+}
+
+function drawPolygons(t, cx, cy, radius) {
+  for (const p of polygons) {
+    const a = p.phase + t * p.speed;
+    const px = cx + Math.cos(a) * radius * p.orbit * 2.2;
+    const py = cy + Math.sin(a * 1.3) * radius * p.orbit * 1.4;
+    const size = radius * (0.08 + 0.05 * Math.sin(t * 1.7 + p.phase));
+    ctx.beginPath();
+    for (let s = 0; s <= p.sides; s++) {
+      const angle = t * p.spin + (s / p.sides) * Math.PI * 2;
+      const x = px + Math.cos(angle) * size;
+      const y = py + Math.sin(angle) * size;
+      if (s === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = `hsl(${(p.hue + t * 40) % 360}, 100%, 60%)`;
+    ctx.fillStyle = `hsla(${(p.hue + 180 + t * 40) % 360}, 100%, 50%, 0.35)`;
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+function drawParticles(t, top) {
+  const areaH = height - top;
+  for (const p of particles) {
+    const x = width * (0.5 + 0.5 * p.ax * Math.sin(t * p.fx + p.phase));
+    const y = top + areaH * (0.5 + 0.5 * p.ay * Math.sin(t * p.fy + p.phase * 1.7));
+    ctx.fillStyle = `hsl(${(p.hue + t * 120) % 360}, 100%, 65%)`;
+    ctx.fillRect(x, y, p.size, p.size);
+  }
+}
+
+function drawStrip(nowMs) {
+  // The machine-readable strip. Plain black and white, large blocks.
+  const panel = height * LAYOUT.panelHeight;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, width, panel);
+
+  const m = LAYOUT.marker;
+  ctx.fillStyle = nowMs < markerUntilMs ? "#fff" : "#000";
+  ctx.fillRect(m.x * width, m.y * height, m.w * width, m.h * height);
+  // An outline shows where the marker is when it's dark
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(m.x * width, m.y * height, m.w * width, m.h * height);
+
+  const b = LAYOUT.barcode;
+  const bits = [1, 0];
+  const value = tick & ((1 << FRAME_BITS) - 1);
+  for (let i = FRAME_BITS - 1; i >= 0; i--) {
+    bits.push((value >> i) & 1);
+  }
+  bits.forEach((bit, i) => {
+    ctx.fillStyle = bit ? "#fff" : "#000";
+    ctx.fillRect((b.x + i * b.blockW) * width, b.y * height, b.blockW * width, b.h * height);
+  });
+}
+
+function drawHud(t) {
+  if (!showHud) {
+    return;
+  }
+  const lines = [
+    `Moonlight Bench  mode=${MODE}  ${width}x${height}`,
+    `t=${t.toFixed(1)}s  tick=${tick}@${TICK_RATE}  drawn=${frame}  fps=${fps.toFixed(0)}  inputs=${inputs}`,
+    "R reset  H hide  F fullscreen  any other key: marker",
+  ];
+  const size = Math.max(12, Math.round(height * 0.022));
+  ctx.font = `${size}px monospace`;
+  ctx.textBaseline = "bottom";
+  lines.forEach((line, i) => {
+    const y = height - size * 0.6 - (lines.length - 1 - i) * size * 1.3;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.fillRect(size * 0.5, y - size * 1.15, ctx.measureText(line).width + size * 0.6, size * 1.3);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(line, size * 0.8, y);
+  });
+}
+
+function pollGamepads() {
+  // Browsers only report a gamepad after one of its buttons has been pressed
+  // while the page has focus, so keyboard input is what automation uses
+  for (const pad of navigator.getGamepads ? navigator.getGamepads() : []) {
+    if (!pad) {
+      continue;
+    }
+    pad.buttons.forEach((button, i) => {
+      const key = `${pad.index}:${i}`;
+      const was = pollGamepads.pressed.has(key);
+      if (button.pressed && !was) {
+        pollGamepads.pressed.add(key);
+        onInput();
+      } else if (!button.pressed && was) {
+        pollGamepads.pressed.delete(key);
+      }
+    });
+  }
+}
+pollGamepads.pressed = new Set();
+
+function render(nowMs) {
+  pollGamepads();
+  tick = Math.floor(((nowMs - startMs) * TICK_RATE) / 1000);
+  const t = ((nowMs - startMs) / 1000) * INTENSITY.speed;
+  const top = height * LAYOUT.panelHeight;
+  const cx = width / 2;
+  const cy = top + (height - top) / 2;
+  const radius = Math.min(width, height - top) / 2;
+
+  drawPlasma(t, top);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, top, width, height - top);
+  ctx.clip();
+  drawTunnel(t, cx, cy, radius);
+  drawSpirograph(t, cx, cy, radius);
+  drawPolygons(t, cx, cy, radius);
+  drawParticles(t, top);
+  ctx.restore();
+  drawStrip(nowMs);
+  drawHud(t);
+
+  frame++;
+  fpsFrames++;
+  if (nowMs - fpsSince >= 1000) {
+    fps = (fpsFrames * 1000) / (nowMs - fpsSince);
+    fpsFrames = 0;
+    fpsSince = nowMs;
+  }
+  requestAnimationFrame(render);
+}
+
+window.addEventListener("resize", resize);
+window.addEventListener("keydown", (event) => {
+  // Keep keys from scrolling or triggering browser shortcuts
+  event.preventDefault();
+  if (event.repeat) {
+    return;
+  }
+  const key = event.key.toLowerCase();
+  if (key === "r") {
+    reset();
+  } else if (key === "h") {
+    showHud = !showHud;
+  } else if (key === "f") {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen();
+    }
+  } else {
+    onInput();
+  }
+});
+window.addEventListener("mousedown", onInput);
+window.addEventListener("touchstart", onInput, { passive: true });
+
+resize();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
