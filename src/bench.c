@@ -62,6 +62,8 @@
 #define PRESS_TIMEOUT_US 800000ULL
 // Room for frames at up to 120 fps
 #define MAX_FPS_RECORDED 120
+// Report paths start with the config folder, which can be up to 4 KB
+#define REPORT_PATH_MAX (sizeof(config.key_dir) + 64)
 
 enum {
   PHASE_IDLE,
@@ -430,7 +432,7 @@ static void write_timing(FILE *f, const char *name, series *s, bool last) {
 }
 
 typedef struct {
-  char path[512];
+  char path[REPORT_PATH_MAX];
   float seconds;
   float input_lag_p50, input_lag_p95, latency_p50;
   float fps_rendered;
@@ -508,10 +510,11 @@ static void write_report(FILE *f, const char *started, const char *host, const c
 
 static void save_report(const char *started_compact, const char *started, const char *host, const char *app,
                         const char *error, float seconds, const link_samples *link, report_summary *summary) {
-  char dir[512];
+  char dir[REPORT_PATH_MAX];
   snprintf(dir, sizeof(dir), "%sreports", config.key_dir);
   sceIoMkdir(dir, 0777);
-  snprintf(summary->path, sizeof(summary->path), "%s/bench-%s.json", dir, started_compact);
+  snprintf(summary->path, sizeof(summary->path), "%.*s/bench-%s.json",
+           (int)(sizeof(summary->path) - 64), dir, started_compact);
 
   FILE *f = fopen(summary->path, "w");
   if (f) {
@@ -519,7 +522,7 @@ static void save_report(const char *started_compact, const char *started, const 
     fclose(f);
   }
   // A fixed name too, so tools can always find the latest run
-  char latest[512];
+  char latest[REPORT_PATH_MAX + 32];
   snprintf(latest, sizeof(latest), "%s/last-bench.json", dir);
   f = fopen(latest, "w");
   if (f) {
@@ -532,8 +535,9 @@ static void save_report(const char *started_compact, const char *started, const 
 
 int vitabench_run(bool automated) {
   char error[512] = "";
-  char started[32];
-  char started_compact[32];
+  // Sized for any year the RTC can report
+  char started[48];
+  char started_compact[48];
   SceDateTime now;
   sceRtcGetCurrentClockLocalTime(&now);
   snprintf(started, sizeof(started), "%04d-%02d-%02dT%02d:%02d:%02d",
