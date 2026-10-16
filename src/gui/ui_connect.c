@@ -185,7 +185,7 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
           vita_debug_log("[PAIR] After save_device_info(dev) - time: %u", (unsigned)time(NULL));
           // Notify user pairing succeeded: show a short message so the PIN dialog
           // (which was drawn earlier) is replaced by a success message.
-          flash_message("Paired: %s", dev->name);
+          flash_message("Paired: %s", device_label(dev));
         } else {
           vita_debug_log("[PAIR] Dispositivo no encontrado para la IP %s al guardar MAC", server.serverInfo.address);
         }
@@ -437,7 +437,7 @@ device_info_t* ui_connect_and_pairing(device_info_t *info) {
   save_device_info(info);
   vita_debug_log("[PAIR] After save_device_info(info) - time: %u", (unsigned)time(NULL));
   // Notify user pairing succeeded
-  flash_message("Paired: %s", info->name);
+  flash_message("Paired: %s", device_label(info));
 
   if (server.paired) {
     // no more need, move next action
@@ -524,7 +524,7 @@ bool check_connection(const char *name, char *addr, uint16_t port) {
 
 void ui_connect_paired_device(device_info_t *info) {
   if (!info->paired) {
-    display_error("Unpaired device\n%s", info->name);
+    display_error("Unpaired device\n%s", device_label(info));
     return;
   }
 
@@ -540,7 +540,7 @@ void ui_connect_paired_device(device_info_t *info) {
   save_device_info(info);
 
   if (addr == NULL) {
-    display_error("Can't connect to server\n%s", info->name);
+    display_error("Can't connect to server\n%s", device_label(info));
     return;
   }
 
