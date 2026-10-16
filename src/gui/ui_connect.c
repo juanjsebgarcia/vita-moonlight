@@ -148,7 +148,9 @@ int ui_connect_open_headless(device_info_t *info, char *err, size_t err_len) {
     if (addresses[i][0] == '\0') {
       continue;
     }
-    ret = gs_init(&server, (char *)addresses[i], info->port, key_dir, 0, config.unsupported_version);
+    // Same as the interactive path: skip the host display-mode check, which
+    // Sunshine's mode list doesn't reliably pass (e.g. 960x540 at 50 fps)
+    ret = gs_init(&server, (char *)addresses[i], info->port, key_dir, 0, true);
   }
   if (ret != GS_OK) {
     snprintf(err, err_len, "Can't connect to %s: %s", info->name, gs_error ? gs_error : "no response");
