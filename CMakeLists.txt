@@ -108,6 +108,8 @@ add_executable(${PROJECT_NAME}.elf
 
 # Por defecto, solo enlazamos curl y el resto de libs estándar:
 target_link_libraries(${PROJECT_NAME}.elf
+	# Room for vita-elf-create's module tables before the data segment (sce_gap.ld)
+	-Wl,-T,${CMAKE_SOURCE_DIR}/sce_gap.ld
 	# Lets the benchmark time the Vita's send path (src/bench.c)
 	-Wl,--wrap=enet_peer_send
 	-Wl,--wrap=enet_socket_send
