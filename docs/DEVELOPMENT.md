@@ -109,18 +109,20 @@ Send one command per connection, ending in a newline, for example `printf 'launc
 
 | Command | Effect |
 |---|---|
-| `help` | Lists the commands. It takes no arguments: `help <command>` does not show per-command help. |
+| `help` | Lists the commands. **Never type `help <command>`**: it runs that command (`help quit` quit every app). |
 | `launch <TITLEID>` | Starts an app |
 | `quit [TITLEID]` | Quits an app, or **all apps** with no argument. Replies "Error: cannot quit the app" if it isn't running. |
 | `reboot` | Reboots the Vita |
 | `screen on` / `screen off` | Turns the screen on or off |
-| `nosleep` | Controls automatic suspend prevention |
-| `press`, `release` | Synthetic input (syntax not yet documented here) |
+| `nosleep on`, `off`, `status` | Prevents suspending (not screen dimming) |
+| `press`, `release` | Synthetic input, e.g. `press cross; wait 100ms; release cross`. See [`REMOTE-VITA.md`](REMOTE-VITA.md) |
 | `promote` | Promotes an extracted app directory |
 | `wait` | Waits for a duration such as `100ms` or `3s` |
 | `version` | Prints the version |
 
 There is no `destroy` command; older guides that mention it refer to an earlier version.
+
+**Driving the Vita without touching it** (button presses, safe config edits, screenshots, getting measurements back) is covered in [`REMOTE-VITA.md`](REMOTE-VITA.md).
 
 ## Logs and crash dumps
 
