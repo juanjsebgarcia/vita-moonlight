@@ -26,6 +26,7 @@
 #include "../config.h"
 #include "../connection.h"
 #include "../device.h"
+#include "../netcount.h"
 #include "../util.h"
 
 #include <Limelight.h>
@@ -189,8 +190,9 @@ static bool wait_connected(uint64_t timeout_us) {
 }
 
 // Streams the PC's Desktop at the Good settings and measures packet loss
-// (from common-c's error-correction counters) and jitter (the round trip's
-// variation). Returns false with a message in err if it couldn't.
+// (gaps in the video packets' sequence numbers, src/netcount.c; common-c's own
+// recovered and failed counters are only kept for audio) and jitter (the
+// round trip's variation). Returns false with a message in err if it couldn't.
 static bool test_stream(link_test *result, char *err, size_t err_len) {
   int app_id = ui_connect_find_app(TEST_APP);
   if (app_id < 0) {
@@ -217,11 +219,8 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
   }
   sceKernelDelayThread(TEST_SETTLE_US);
 
-  RTP_VIDEO_STATS before = {0}, after = {0};
-  const RTP_VIDEO_STATS *rtp = LiGetRTPVideoStats();
-  if (rtp != NULL) {
-    before = *rtp;
-  }
+  netcount before, after;
+  netcount_read(&before);
   double variance_sum = 0;
   int variance_samples = 0;
   for (int i = 0; i < TEST_SECONDS * 2; i++) {
@@ -236,13 +235,9 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
       variance_samples++;
     }
   }
-  rtp = LiGetRTPVideoStats();
-  if (rtp != NULL) {
-    after = *rtp;
-  }
-  uint32_t packets = (after.packetCountVideo - before.packetCountVideo) + (after.packetCountFec - before.packetCountFec);
-  uint32_t lost = (after.packetCountFecRecovered - before.packetCountFecRecovered) +
-                  (after.packetCountFecFailed - before.packetCountFecFailed);
+  netcount_read(&after);
+  uint32_t lost = netcount_lost(&before, &after);
+  uint32_t packets = (after.received - before.received) + lost;
   if (packets == 0) {
     snprintf(err, err_len, "No video arrived during the test stream.");
     goto done;
