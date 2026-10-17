@@ -26,6 +26,7 @@
 #include "vita.h"
 #include "sps.h"
 #include "../stats.h"
+#include "../bench.h"
 
 #include <Limelight.h>
 
@@ -540,6 +541,8 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   au.pts.upper = 0xFFFFFFFF;
 
   int ret = 0;
+  // Separates assembling the frame from the hardware decode, for the benchmark
+  uint64_t hw_start_us = LiGetMicroseconds();
   ret = sceAvcdecDecode(decoder, &au, &array_picture);
   uint64_t decoded_us = LiGetMicroseconds();
   vitastats_frame_decoded(decoded_us - submit_us);
@@ -551,6 +554,16 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   if (array_picture.numOfOutput != 1) {
     //printf("numOfOutput %d\n", array_picture.numOfOutput);
     return DR_OK;
+  }
+
+  if (vitabench_active()) {
+    // Read the benchmark page's strip from the texture this frame was decoded into
+    vita2d_texture *decoded = frame_textures[back_texture_idx];
+    vitabench_frame_decoded(decodeUnit, submit_us, hw_start_us, decoded_us,
+                            vita2d_texture_get_datap(decoded), vita2d_texture_get_stride(decoded),
+                            image_scaling.texture_height,
+                            image_scaling.region_x1, image_scaling.region_y1,
+                            image_scaling.region_x2, image_scaling.region_y2);
   }
 
   //TODO: Seems silly to decode the unit if we're going to drop the frame?
@@ -575,7 +588,11 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
 
       vita2d_end_drawing();
       vita2d_swap_buffers();
-      vitastats_frame_rendered(LiGetMicroseconds() - decoded_us);
+      uint64_t rendered_us = LiGetMicroseconds();
+      vitastats_frame_rendered(rendered_us - decoded_us);
+      if (vitabench_active()) {
+        vitabench_frame_rendered(rendered_us);
+      }
 
       // Only flip after drawing, so a dropped frame's texture is simply reused
       back_texture_idx = (back_texture_idx + 1) % FRAME_TEXTURE_COUNT;

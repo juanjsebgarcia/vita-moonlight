@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <sys/types.h>
 
@@ -35,6 +36,8 @@
 
 SERVER_DATA server;
 PAPP_LIST server_applist;
+// Name of the host the current connection is to, as it was paired
+static char current_host[256] = "";
 int pos[2];
 
 int get_app_id(PAPP_LIST list, char *name) {
@@ -60,19 +63,21 @@ int get_app_name(PAPP_LIST list, int id, char *name) {
   return 0;
 }
 
-void ui_connect_stream(int appId) {
+// Starts streaming appId. Returns 0, or a negative code with a message in err,
+// so callers decide whether to show it (the benchmark runs without dialogs).
+static int start_stream(int appId, char *err, size_t err_len) {
   // TODO support force controller id
   vita_debug_log("Running gs_start_app...");
   int ret = gs_start_app(&server, &config.stream, appId, config.sops, config.localaudio, 1);
   if (ret < 0) {
     if (ret == GS_NOT_SUPPORTED_4K)
-      display_error("Server doesn't support 4K\n");
+      snprintf(err, err_len, "Server doesn't support 4K");
     else if (ret == GS_NOT_SUPPORTED_MODE)
-      display_error("Server doesn't support %dx%d (%d fps)\n", config.stream.width, config.stream.height, config.stream.fps);
+      snprintf(err, err_len, "Server doesn't support %dx%d (%d fps)", config.stream.width, config.stream.height, config.stream.fps);
     else
-      display_error("Errorcode starting app: %d\n", ret);
+      snprintf(err, err_len, "Errorcode starting app: %d", ret);
 
-    return;
+    return ret;
   }
   vita_debug_log("App started.");
 
@@ -113,14 +118,111 @@ void ui_connect_stream(int appId) {
 
   if (ret == 0) {
     server.currentGame = appId;
-  } else {
-    
-    const char* connection_failed_stage_name = LiGetStageName(connection_stage);
-
-    display_error("Failed to start stream:\nFailed stage: %s\n(error code %d)",
-                  connection_failed_stage_name, ret);
-    return;
+    return 0;
   }
+
+  const char* connection_failed_stage_name = LiGetStageName(connection_stage);
+  snprintf(err, err_len, "Failed to start stream:\nFailed stage: %s\n(error code %d)",
+           connection_failed_stage_name, ret);
+  return ret < 0 ? ret : -1;
+}
+
+void ui_connect_stream(int appId) {
+  char err[512];
+  if (start_stream(appId, err, sizeof(err)) != 0) {
+    display_error("%s", err);
+  }
+}
+
+int ui_connect_open_headless(device_info_t *info, char *err, size_t err_len) {
+  char key_dir[4096];
+  snprintf(key_dir, sizeof(key_dir), "%s/%s", config.key_dir, info->name);
+
+  // Try the address that worked last time first
+  const char *addresses[2] = {
+    info->prefer_external ? info->external : info->internal,
+    info->prefer_external ? info->internal : info->external,
+  };
+  int ret = GS_ERROR;
+  for (int i = 0; i < 2 && ret != GS_OK; i++) {
+    if (addresses[i][0] == '\0') {
+      continue;
+    }
+    // Same as the interactive path: skip the host display-mode check, which
+    // Sunshine's mode list doesn't reliably pass (e.g. 960x540 at 50 fps)
+    ret = gs_init(&server, (char *)addresses[i], info->port, key_dir, 0, true);
+  }
+  if (ret != GS_OK) {
+    snprintf(err, err_len, "Can't connect to %s: %s", info->name, gs_error ? gs_error : "no response");
+    return -1;
+  }
+  snprintf(current_host, sizeof(current_host), "%s", info->name);
+  connection_reset();
+
+  if (gs_applist(&server, &server_applist) != GS_OK) {
+    snprintf(err, err_len, "Can't read the app list from %s: %s", info->name, gs_error ? gs_error : "");
+    return -1;
+  }
+  connection_paired();
+  return 0;
+}
+
+bool ui_connect_server_ready(void) {
+  int status = connection_get_status();
+  return server.paired && server_applist != NULL && (status == LI_READY || status == LI_PAIRED);
+}
+
+const char *ui_connect_server_name(void) {
+  return current_host;
+}
+
+static bool contains_ignoring_case(const char *haystack, const char *needle) {
+  size_t n = strlen(needle);
+  for (; *haystack; haystack++) {
+    if (strncasecmp(haystack, needle, n) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+int ui_connect_find_bench_app(const char *preferred, char *found, size_t found_len) {
+  PAPP_LIST match = NULL;
+  for (PAPP_LIST app = server_applist; app != NULL && match == NULL; app = app->next) {
+    if (preferred && preferred[0] && strcasecmp(app->name, preferred) == 0) {
+      match = app;
+    }
+  }
+  for (PAPP_LIST app = server_applist; app != NULL && match == NULL; app = app->next) {
+    if (contains_ignoring_case(app->name, "bench")) {
+      match = app;
+    }
+  }
+  if (match == NULL) {
+    return -1;
+  }
+  snprintf(found, found_len, "%s", match->name);
+  return match->id;
+}
+
+int ui_connect_start_app_by_id(int app_id, char *err, size_t err_len) {
+  vitapower_config(config);
+  vitainput_config(config);
+  connection_paired();
+  return start_stream(app_id, err, err_len);
+}
+
+void ui_connect_return_to_server(void) {
+  // A finished stream leaves the connection disconnected; go back to the
+  // state the host's menu expects
+  if (connection_get_status() == LI_DISCONNECTED) {
+    connection_reset();
+  }
+  connection_paired();
+}
+
+int ui_connect_quit_app(void) {
+  return gs_quit_app(&server);
 }
 
 enum {
@@ -272,6 +374,7 @@ int ui_connect(char *name, char *address, uint16_t port) {
     sprintf(key_dir, "%s/%s", config.key_dir, name);
 
     ret = gs_init(&server, address, port, key_dir, 0, true);
+    snprintf(current_host, sizeof(current_host), "%s", name);
     if (ret == GS_OUT_OF_MEMORY) {
       display_error("Not enough memory");
       return 0;
@@ -381,6 +484,10 @@ int ui_connected_menu() {
     // FIXME: unpair not work
     // MENU_ENTRY(CONNECT_PAIRUNPAIR, "Unpair");
 
+    // While streaming, Settings is listed with Resume and Quit instead
+    if (server.currentGame == 0) {
+      MENU_ENTRY(CONNECT_SETTINGS, "Settings");
+    }
     MENU_ENTRY(CONNECT_DISCONNECT, "Disconnect");
 
     // app list
