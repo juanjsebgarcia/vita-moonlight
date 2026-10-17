@@ -26,6 +26,7 @@
 #include "../config.h"
 #include "../connection.h"
 #include "../device.h"
+#include "../netcount.h"
 #include "../util.h"
 
 #include <Limelight.h>
@@ -51,19 +52,22 @@
 #define TEST_SECONDS 10
 #define TEST_CONNECT_TIMEOUT_US 20000000
 // Good also needs the test stream to lose under this share of packets, with
-// the round trip varying by less than this. Provisional, like Weak's values.
+// the round trip varying by less than this. On a still Desktop the variation
+// measured ±3.8 ms at a 74% signal and ±7.2 ms at 60%; only two readings, so
+// treat the line as a reasonable one rather than a proven one.
 #define GOOD_MAX_LOSS_PERCENT 1.0f
-#define GOOD_MAX_JITTER_MS 10
+#define GOOD_MAX_JITTER_MS 6
 
 typedef struct {
   const char *name;
   int width, height, fps, bitrate_kbps;
 } preset;
 
-// Good: by the access point, 20 Mbps was sharp with almost no loss, and more
-// only added latency. Weak is provisional until measured at a weaker signal:
-// 540p looks the same as 720p on the Vita's screen, so every bit goes into
-// the picture, at half the bitrate.
+// Good: by the access point, 720p at 20 Mbps was sharp and smooth with a
+// 13.9 ms latency estimate, and higher bitrates only added latency. Weak: at a
+// middling signal, 540p at 10 Mbps measured ~12.5 ms against ~24 ms for 720p
+// at 20 Mbps, with as few freezes, and looks the same on the Vita's 960x544
+// screen. (docs/DECODE.md, with the out-of-order packet fix in place.)
 static const preset PRESETS[] = {
   [RECOMMENDED_GOOD] = {"Good Wi-Fi", 1280, 720, 60, 20000},
   [RECOMMENDED_WEAK] = {"Weak Wi-Fi", 960, 540, 60, 10000},
@@ -186,8 +190,9 @@ static bool wait_connected(uint64_t timeout_us) {
 }
 
 // Streams the PC's Desktop at the Good settings and measures packet loss
-// (from common-c's error-correction counters) and jitter (the round trip's
-// variation). Returns false with a message in err if it couldn't.
+// (gaps in the video packets' sequence numbers, src/netcount.c; common-c's own
+// recovered and failed counters are only kept for audio) and jitter (the
+// round trip's variation). Returns false with a message in err if it couldn't.
 static bool test_stream(link_test *result, char *err, size_t err_len) {
   int app_id = ui_connect_find_app(TEST_APP);
   if (app_id < 0) {
@@ -214,11 +219,8 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
   }
   sceKernelDelayThread(TEST_SETTLE_US);
 
-  RTP_VIDEO_STATS before = {0}, after = {0};
-  const RTP_VIDEO_STATS *rtp = LiGetRTPVideoStats();
-  if (rtp != NULL) {
-    before = *rtp;
-  }
+  netcount before, after;
+  netcount_read(&before);
   double variance_sum = 0;
   int variance_samples = 0;
   for (int i = 0; i < TEST_SECONDS * 2; i++) {
@@ -233,13 +235,9 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
       variance_samples++;
     }
   }
-  rtp = LiGetRTPVideoStats();
-  if (rtp != NULL) {
-    after = *rtp;
-  }
-  uint32_t packets = (after.packetCountVideo - before.packetCountVideo) + (after.packetCountFec - before.packetCountFec);
-  uint32_t lost = (after.packetCountFecRecovered - before.packetCountFecRecovered) +
-                  (after.packetCountFecFailed - before.packetCountFecFailed);
+  netcount_read(&after);
+  uint32_t lost = netcount_lost(&before, &after);
+  uint32_t packets = (after.received - before.received) + lost;
   if (packets == 0) {
     snprintf(err, err_len, "No video arrived during the test stream.");
     goto done;
@@ -323,12 +321,13 @@ static const char *help_text(int row) {
              "Settings from your PC's menu first, so it knows which PC to test.";
     case ROW_GOOD:
       return "For a strong signal, such as in the same room as your router: 1280x720 at 60 fps "
-             "and 20 Mbps. A sharp picture with almost no lost frames. Higher bitrates only add "
-             "delay. Also turns the frame pacer and V-Sync off and clock boost on.";
+             "and 20 Mbps. A sharp, smooth picture. Higher bitrates only add delay. Also turns "
+             "the frame pacer and V-Sync off and clock boost on.";
     case ROW_WEAK:
       return "For a weaker signal, such as further from your router or through walls: 960x540 at "
-             "60 fps and 10 Mbps. It looks almost the same on the Vita's screen and needs half the "
-             "bandwidth. Also turns the frame pacer and V-Sync off and clock boost on.";
+             "60 fps and 10 Mbps. It looks the same on the Vita's screen, needs half the "
+             "bandwidth, and on weaker Wi-Fi has about half the delay of the Good settings. Also "
+             "turns the frame pacer and V-Sync off and clock boost on.";
     default:
       return NULL;
   }
