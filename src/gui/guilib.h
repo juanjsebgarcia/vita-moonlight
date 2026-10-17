@@ -28,7 +28,12 @@ typedef struct menu_geom {
 
 extern vita2d_font *font;
 
+// Every menu row is this tall, and no menu box is taller than the default one
+#define MENU_ROW_HEIGHT 24
+#define MENU_MAX_HEIGHT 400
+
 struct menu_geom make_geom_centered(int w, int h);
+struct menu_geom make_geom_fitted(int w, int rows);
 
 #define SCE_CTRL_HOLD 0x80000000
 

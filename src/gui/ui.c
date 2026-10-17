@@ -472,11 +472,13 @@ int ui_main_menu() {
     sprintf(resume_msg, "Resume connection to %s", addr);
     MENU_ENTRY(MAIN_MENU_CONNECT_RESUME, resume_msg, false);
   } else {
-    MENU_SEPARATOR("Add new computer");
-    MENU_ENTRY(MAIN_MENU_SEARCH, "Search devices ...", false);
-    MENU_ENTRY(MAIN_MENU_CONNECT, "Add manually ...", false);
-
-    if (known_devices.count) {
+    // Paired computers come first: most people have one or two, and they are
+    // what the menu is for, so the cursor starts on them
+    int paired_count = 0;
+    for (int i = 0; i < known_devices.count; i++) {
+      paired_count += known_devices.devices[i].paired ? 1 : 0;
+    }
+    if (paired_count > 0) {
       MENU_SEPARATOR("Paired computers");
       // Usar resultados del hilo de escaneo
       for (int i = 0; i < known_devices.count; i++) {
@@ -523,6 +525,10 @@ int ui_main_menu() {
         }
       }
     }
+
+    MENU_SEPARATOR("Add new computer");
+    MENU_ENTRY(MAIN_MENU_SEARCH, "Search devices ...", false);
+    MENU_ENTRY(MAIN_MENU_CONNECT, "Add manually ...", false);
   }
 
   MENU_SEPARATOR("");
@@ -530,7 +536,9 @@ int ui_main_menu() {
   MENU_ENTRY(MAIN_MENU_QUIT, "Quit", false);
 
   // Solo iniciar escaneo si NO hay cambio de IP pendiente y no se ha hecho ya
-  menu_geom geom = make_geom_centered(500, 200);
+  // Shrinks to its rows, and grows up to the settings menu's height so
+  // Settings and Quit stay visible once a few hosts are listed
+  menu_geom geom = make_geom_fitted(500, idx);
   return display_menu(menu, idx, &geom, &ui_main_menu_loop, &ui_main_menu_back, NULL, NULL);
 }
 
