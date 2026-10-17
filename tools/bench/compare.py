@@ -22,6 +22,8 @@ METRICS = [
     ("skips beyond rate", ("page", "skipped_beyond_rate")),
     ("repeats", ("page", "repeated")),
     ("decode p95 ms", ("decode_ms", "p95")),
+    ("hw decode p50 ms", ("hw_decode_ms", "p50")),
+    ("assemble p50 ms", ("assemble_ms", "p50")),
     ("render p95 ms", ("render_ms", "p95")),
     ("Mbps", ("bitrate_mbps",)),
     ("rssi %", ("wifi", "rssi_avg_percent")),
