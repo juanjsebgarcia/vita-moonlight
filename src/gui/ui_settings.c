@@ -829,8 +829,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
   // L and R switch tabs. Pressing both together, as for developer mode, moves
   // back and forth and lands on the same tab.
   bool pressed_once = (input->buttons & SCE_CTRL_HOLD) == 0;
-  bool left_tab = (input->buttons & SCE_CTRL_L1) != 0;
-  bool right_tab = (input->buttons & SCE_CTRL_R1) != 0;
+  // sceCtrlPeekBufferPositive reports the shoulder buttons on the L2/R2 bits
+  bool left_tab = (input->buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) != 0;
+  bool right_tab = (input->buttons & (SCE_CTRL_R1 | SCE_CTRL_R2)) != 0;
   if (pressed_once && left_tab != right_tab) {
     move_tab(left_tab ? -1 : 1);
     return SETTINGS_REBUILD;
@@ -840,7 +841,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
     // read_buttons() only reports newly pressed buttons, so check L and R are held directly
     SceCtrlData pad = {0};
     sceCtrlPeekBufferPositive(0, &pad, 1);
-    if ((pad.buttons & SCE_CTRL_L1) && (pad.buttons & SCE_CTRL_R1)) {
+    // The menus' sceCtrlPeekBufferPositive reports the shoulder buttons on the
+    // L2/R2 bits (the old LTRIGGER/RTRIGGER names), so accept either pair
+    if ((pad.buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) && (pad.buttons & (SCE_CTRL_R1 | SCE_CTRL_R2))) {
       config.developer_mode = !config.developer_mode;
       ui_settings_save_config();
       display_error(config.developer_mode
