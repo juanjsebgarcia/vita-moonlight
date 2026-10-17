@@ -69,6 +69,7 @@ add_executable(${PROJECT_NAME}.elf
 	src/platform.c
 	src/stats.c
 	src/bench.c
+	src/netcount.c
 	src/util.c
 	src/device.c
 	src/check_dir.c
@@ -109,6 +110,8 @@ target_link_libraries(${PROJECT_NAME}.elf
 	# Lets the benchmark time the Vita's send path (src/bench.c)
 	-Wl,--wrap=enet_peer_send
 	-Wl,--wrap=enet_socket_send
+	# Counts video packets as they arrive (src/netcount.c)
+	-Wl,--wrap=recvUdpSocket
 	-lexpat
 	-lcurl
 	moonlight-common-c
