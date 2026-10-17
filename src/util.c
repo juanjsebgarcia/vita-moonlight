@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <psp2/net/netctl.h>
 #include <psp2/registrymgr.h>
 
 void swap_app_list_entries(PAPP_LIST a, PAPP_LIST b) {
@@ -62,4 +63,12 @@ bool vita_bluetooth_enabled(void) {
   // The switch in Settings > Bluetooth Devices, as the system stores it
   int enabled = 0;
   return sceRegMgrGetKeyInt("/CONFIG/BT", "bt_enable", &enabled) >= 0 && enabled != 0;
+}
+
+int vita_wifi_percent(void) {
+  SceNetCtlInfo info;
+  if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_RSSI_PERCENTAGE, &info) < 0) {
+    return -1;
+  }
+  return info.rssi_percentage;
 }
