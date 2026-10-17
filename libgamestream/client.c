@@ -54,6 +54,10 @@
 #define UNIQUEID_CHARS (UNIQUEID_BYTES*2)
 
 static char unique_id[UNIQUEID_CHARS+1];
+// Name the host shows for this client (Sunshine lists paired clients by it),
+// stored URL-encoded since it goes straight into the pair query string
+#define DEFAULT_DEVICE_NAME "PS%20Vita"
+static char device_name[256] = DEFAULT_DEVICE_NAME;
 static X509 *cert;
 static char cert_hex[8192];
 static EVP_PKEY *privateKey;
@@ -428,6 +432,33 @@ static void decrypt(const unsigned char *ciphertext, int ciphertextLen, const un
   EVP_CIPHER_CTX_free(cipher);
 }
 
+void gs_set_device_name(const char *name) {
+  static const char hex[] = "0123456789ABCDEF";
+  size_t out = 0;
+
+  for (const unsigned char *p = (const unsigned char *)name; name && *p; p++) {
+    // Keep RFC 3986 unreserved characters, percent-encode everything else
+    // (including each byte of multi-byte UTF-8)
+    bool unreserved = (*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+                      (*p >= '0' && *p <= '9') || *p == '-' || *p == '_' ||
+                      *p == '.' || *p == '~';
+    size_t need = unreserved ? 1 : 3;
+    if (out + need >= sizeof(device_name))
+      break;
+    if (unreserved) {
+      device_name[out++] = *p;
+    } else {
+      device_name[out++] = '%';
+      device_name[out++] = hex[*p >> 4];
+      device_name[out++] = hex[*p & 0x0F];
+    }
+  }
+  device_name[out] = '\0';
+
+  if (out == 0)
+    strcpy(device_name, DEFAULT_DEVICE_NAME);
+}
+
 int gs_unpair(PSERVER_DATA server) {
   int ret = GS_OK;
   char url[4096];
@@ -465,7 +496,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
 
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
-  snprintf(url, sizeof(url), "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&phrase=getservercert&salt=%s&clientcert=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, salt_hex, cert_hex);
+  snprintf(url, sizeof(url), "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=%s&updateState=1&phrase=getservercert&salt=%s&clientcert=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, device_name, salt_hex, cert_hex);
   PHTTP_DATA data = http_create_data();
   if (data == NULL)
     return GS_OUT_OF_MEMORY;
@@ -523,7 +554,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
 
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
-  snprintf(url, sizeof(url), "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&clientchallenge=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, challenge_hex);
+  snprintf(url, sizeof(url), "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=%s&updateState=1&clientchallenge=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, device_name, challenge_hex);
   if ((ret = http_request(url, data)) != GS_OK)
     goto cleanup;
 
@@ -591,7 +622,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
 
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
-  snprintf(url, sizeof(url), "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&serverchallengeresp=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, challenge_response_hex);
+  snprintf(url, sizeof(url), "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=%s&updateState=1&serverchallengeresp=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, device_name, challenge_response_hex);
   if ((ret = http_request(url, data)) != GS_OK)
     goto cleanup;
 
@@ -650,7 +681,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
 
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
-  snprintf(url, sizeof(url), "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&clientpairingsecret=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, client_pairing_secret_hex);
+  snprintf(url, sizeof(url), "http://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=%s&updateState=1&clientpairingsecret=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str, device_name, client_pairing_secret_hex);
   if ((ret = http_request(url, data)) != GS_OK)
     goto cleanup;
 
@@ -669,7 +700,7 @@ int gs_pair(PSERVER_DATA server, char* pin) {
 
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
-  snprintf(url, sizeof(url), "https://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=roth&updateState=1&phrase=pairchallenge", server->serverInfo.address, server->httpsPort, unique_id, uuid_str);
+  snprintf(url, sizeof(url), "https://%s:%u/pair?uniqueid=%s&uuid=%s&devicename=%s&updateState=1&phrase=pairchallenge", server->serverInfo.address, server->httpsPort, unique_id, uuid_str, device_name);
   if ((ret = http_request(url, data)) != GS_OK)
     goto cleanup;
 

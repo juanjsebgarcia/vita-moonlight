@@ -6,9 +6,9 @@
 #include <psp2/kernel/clib.h>
 
 static const char* keyboard_layout_names[] = {
-    "Ingles (US)",
-    "Espanol (Espana)",
-    "Espanol (Latinoamerica)",
+    "English (US)",
+    "Spanish (Spain)",
+    "Spanish (Latin America)",
 };
 
 static int keyboard_layout_loop(int id, void *context, const input_data *input) {
