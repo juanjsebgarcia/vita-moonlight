@@ -139,7 +139,7 @@ def main():
         print("lang/template.ini is out of date: run tools/i18n_check.py --write")
         failed = True
     for path in sorted(LANG_DIR.glob("*.ini")):
-        if path == TEMPLATE:
+        if path in (TEMPLATE, LANG_DIR / "source.ini"):
             continue
         errors, translated, meta = check_language(path, english)
         for error in errors:

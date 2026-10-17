@@ -8,3 +8,6 @@ mdns_discovery.py
 psp2core_tmp.psp2dmp
 .vscode/settings.json
 .claude/
+
+# Translation work files, made by tools/translate/prepare.py
+tools/translate/work/
