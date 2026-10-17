@@ -23,7 +23,8 @@ extern bool send_wol_packet(const char *mac, const char *ip_broadcast, int port)
 static bool broadcast_address(const device_info_t *info, char *out, size_t size) {
   snprintf(out, size, "%s", info->internal);
   char *last_dot = strrchr(out, '.');
-  if (last_dot == NULL || (size_t)(last_dot - out) + 4 > size) {
+  // The dot, "255" and the terminator need five bytes from the dot on
+  if (last_dot == NULL || (size_t)(last_dot - out) + 5 > size) {
     return false;
   }
   strcpy(last_dot + 1, "255");
