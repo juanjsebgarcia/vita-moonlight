@@ -25,6 +25,9 @@ METRICS = [
     ("hw decode p50 ms", ("hw_decode_ms", "p50")),
     ("assemble p50 ms", ("assemble_ms", "p50")),
     ("render p95 ms", ("render_ms", "p95")),
+    ("vblank wait p50 ms", ("vblank_wait_ms", "p50")),
+    ("vblank wait p95 ms", ("vblank_wait_ms", "p95")),
+    ("replaced", ("frames", "replaced_before_shown")),
     ("Mbps", ("bitrate_mbps",)),
     ("rssi %", ("wifi", "rssi_avg_percent")),
 ]
