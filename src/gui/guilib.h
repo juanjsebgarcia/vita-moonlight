@@ -137,6 +137,12 @@ bool is_rectangle_touched(const SceTouchData *touch, int lx, int ly, int rx, int
 // instead of the first, if it's there and can be selected
 void display_menu_select(int id);
 
+// Start and finish a frame. display_menu() finishes the frame its caller
+// started, then draws its own; a callback run mid-frame can finish that frame
+// early and start a fresh one for display_menu() to finish instead
+void ui_start();
+void ui_end();
+
 int display_menu(
         menu_entry menu[],
         int total_elements,

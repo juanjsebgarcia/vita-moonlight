@@ -48,6 +48,9 @@ void i18n_use(const char *setting);
 // background). Returns true if it switched: rebuild what shows text.
 bool i18n_follow_system(void);
 
+// Whether i18n_follow_system() would switch, without switching
+bool i18n_system_language_changed(void);
+
 // Switches language. Returns false, staying as it was, if there's no such
 // language. Whoever shows text must rebuild it afterwards.
 bool i18n_set(const char *tag);
