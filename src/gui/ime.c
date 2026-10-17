@@ -77,8 +77,12 @@ void initImeDialog(SceImeType type, const char *title, char *initial_text, int m
   sceImeDialogParamInit(&param);
 
   param.sdkVersion = 0x03150021;
-  param.supportedLanguages = 0x0001FFFF;
-  param.languagesForced = SCE_TRUE;
+  // Every language the keyboard has (up to Turkish, SCE_IME_LANGUAGE_TURKISH),
+  // offered as the player chose in the Vita's own keyboard settings rather
+  // than forced: forcing made every player cycle through the same fixed list,
+  // which also left out Brazilian Portuguese, British English and Turkish
+  param.supportedLanguages = 0x000FFFFF;
+  param.languagesForced = SCE_FALSE;
   param.type = type;
   param.title = ime_title_utf16;
   param.maxTextLength = max_text_length;
