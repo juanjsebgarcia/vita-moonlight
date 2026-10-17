@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include <psp2/videodec.h>
 #include <Limelight.h>
@@ -21,7 +22,9 @@ extern char *strdup(const char *);
 // Read by the input code, which swaps the shoulder buttons while it's set
 bool swap_shoulder_buttons = false;
 
-const char *const SETTINGS_TAB_NAMES[SETTINGS_TAB_COUNT] = {"Stream", "System", "Controls", "Developer", "About"};
+const str_id SETTINGS_TAB_NAMES[SETTINGS_TAB_COUNT] = {
+  STR_TAB_STREAM, STR_TAB_SYSTEM, STR_TAB_CONTROLS, STR_TAB_DEVELOPER, STR_TAB_ABOUT,
+};
 
 bool settings_tab_shown(int tab) {
   return tab != SETTINGS_TAB_DEVELOPER || config.developer_mode;
@@ -180,13 +183,16 @@ void settings_sync_bitrate(void) {
 
 static void bitrate_value(char *out, size_t size) {
   int kbps = config.stream.bitrate;
+  char number[16];
   if (bitrate_custom) {
-    snprintf(out, size, "Custom");
+    snprintf(out, size, "%s", tr(STR_SET_VALUE_CUSTOM));
+    return;
   } else if (kbps % 1000 == 0) {
-    snprintf(out, size, "%d Mbps", kbps / 1000);
+    snprintf(number, sizeof(number), "%d", kbps / 1000);
   } else {
-    snprintf(out, size, "%.1f Mbps", kbps / 1000.0f);
+    snprintf(number, sizeof(number), "%.1f", kbps / 1000.0f);
   }
+  TR_FMT(out, size, STR_UNIT_MBPS, number);
 }
 
 static bool bitrate_change(int step) {
@@ -208,7 +214,9 @@ static bool bitrate_is_custom(void) {
 }
 
 static void custom_bitrate_value(char *out, size_t size) {
-  snprintf(out, size, "%d kbps", config.stream.bitrate);
+  char number[16];
+  snprintf(number, sizeof(number), "%d", config.stream.bitrate);
+  TR_FMT(out, size, STR_UNIT_KBPS, number);
 }
 
 /*
@@ -219,7 +227,9 @@ static const int PACKET_SIZES[] = {1024, 1392};
 #define PACKET_SIZE_COUNT ((int)(sizeof(PACKET_SIZES) / sizeof(PACKET_SIZES[0])))
 
 static void packet_size_value(char *out, size_t size) {
-  snprintf(out, size, "%d bytes", config.stream.packetSize);
+  char number[16];
+  snprintf(number, sizeof(number), "%d", config.stream.packetSize);
+  TR_FMT(out, size, STR_UNIT_BYTES, number);
 }
 
 static bool packet_size_change(int step) {
@@ -237,8 +247,8 @@ static bool packet_size_change(int step) {
 }
 
 static void stats_overlay_value(char *out, size_t size) {
-  static const char *const names[STATS_OVERLAY_COUNT] = {"off", "fps", "full"};
-  snprintf(out, size, "%s", names[config.stats_overlay]);
+  static const str_id names[STATS_OVERLAY_COUNT] = {STR_STATS_OFF, STR_STATS_FPS, STR_STATS_FULL};
+  snprintf(out, size, "%s", tr(names[config.stats_overlay]));
 }
 
 static bool stats_overlay_change(int step) {
@@ -247,7 +257,7 @@ static bool stats_overlay_change(int step) {
 }
 
 static void app_list_value(char *out, size_t size) {
-  snprintf(out, size, "%s", config.app_list_style == APP_LIST_TEXT ? "text" : "box art");
+  snprintf(out, size, "%s", tr(config.app_list_style == APP_LIST_TEXT ? STR_APP_LIST_TEXT : STR_APP_LIST_BOXART));
 }
 
 static bool app_list_change(int step) {
@@ -255,6 +265,7 @@ static bool app_list_change(int step) {
   return true;
 }
 
+// Product names, the same in every language
 static const char *const CONTROLLER_TYPE_NAMES[] = {"Xbox", "PlayStation"};
 static const int CONTROLLER_TYPE_VALUES[] = {1, 2};
 #define CONTROLLER_TYPE_COUNT 2
@@ -288,12 +299,12 @@ static bool mouse_accel_change(int step) {
   return true;
 }
 
-static const char *const TOUCH_MODE_NAMES[] = {"Off", "DS4 Touchpad", "Mouse Absolute", "Tablet (Sunshine)"};
+static const str_id TOUCH_MODE_NAMES[] = {STR_TOUCH_OFF, STR_TOUCH_DS4, STR_TOUCH_MOUSE_ABSOLUTE, STR_TOUCH_TABLET};
 #define TOUCH_MODE_COUNT 4
 
 static void touch_mode_value(char *out, size_t size) {
   int mode = config.touchscreen_mode;
-  snprintf(out, size, "%s", mode >= 0 && mode < TOUCH_MODE_COUNT ? TOUCH_MODE_NAMES[mode] : "");
+  snprintf(out, size, "%s", mode >= 0 && mode < TOUCH_MODE_COUNT ? tr(TOUCH_MODE_NAMES[mode]) : "");
 }
 
 static bool touch_mode_change(int step) {
@@ -345,8 +356,20 @@ static void sprint_time_value(char *out, size_t size) {
 }
 
 static void deadzone_value(char *out, size_t size) {
-  snprintf(out, size, "%dpx,%dpx,%dpx,%dpx", config.back_deadzone.top, config.back_deadzone.right,
-           config.back_deadzone.bottom, config.back_deadzone.left);
+  int edges[4] = {config.back_deadzone.top, config.back_deadzone.right, config.back_deadzone.bottom,
+                  config.back_deadzone.left};
+  size_t used = 0;
+  out[0] = '\0';
+  for (int i = 0; i < 4 && used < size; i++) {
+    char number[16];
+    snprintf(number, sizeof(number), "%d", edges[i]);
+    if (i > 0) {
+      used += snprintf(out + used, size - used, ",");
+    }
+    if (used < size) {
+      used += TR_FMT(out + used, size - used, STR_UNIT_PIXELS, number);
+    }
+  }
 }
 
 /*
@@ -354,17 +377,11 @@ static void deadzone_value(char *out, size_t size) {
  */
 
 static void debug_log_help(char *out, size_t size) {
-  snprintf(out, size,
-           "Saves a detailed log to %smoonlight.log for tracking down problems. It slows "
-           "streaming down, so only turn it on when something's wrong, and turn it off again "
-           "afterwards.", config.key_dir);
+  TR_FMT(out, size, STR_SET_SAVE_DEBUG_LOG_HELP, config.key_dir);
 }
 
 static void mapping_help(char *out, size_t size) {
-  snprintf(out, size,
-           "Use your own button layout from a file at %smappings/vita.conf instead of the "
-           "default. There's an example file in the project's GitHub repository.",
-           config.key_dir);
+  TR_FMT(out, size, STR_SET_ENABLE_MAPPING_HELP, config.key_dir);
 }
 
 /*
@@ -382,9 +399,9 @@ static bool bench_ready(void) {
 static void bench_target_value(char *out, size_t size) {
   char app_name[128];
   if (session_find_bench_app(config.bench_app, app_name, sizeof(app_name)) >= 0) {
-    snprintf(out, size, "%s on %s", app_name, session_server_name());
+    TR_FMT(out, size, STR_SET_BENCH_TARGET, app_name, session_server_name());
   } else {
-    snprintf(out, size, "no benchmark app on %s", session_server_name());
+    TR_FMT(out, size, STR_SET_BENCH_NO_APP, session_server_name());
   }
 }
 
@@ -392,7 +409,9 @@ static const int BENCH_DURATIONS[] = {30, 60, 120, 300};
 #define BENCH_DURATION_COUNT ((int)(sizeof(BENCH_DURATIONS) / sizeof(BENCH_DURATIONS[0])))
 
 static void bench_seconds_value(char *out, size_t size) {
-  snprintf(out, size, "%d s", config.bench_seconds);
+  char number[16];
+  snprintf(number, sizeof(number), "%d", config.bench_seconds);
+  TR_FMT(out, size, STR_UNIT_SECONDS, number);
 }
 
 static bool bench_seconds_change(int step) {
@@ -406,6 +425,40 @@ static bool bench_seconds_change(int step) {
   return true;
 }
 
+/*
+ * Language: Automatic (the system's), then every language found
+ */
+
+// The position of the language setting: 0 for Automatic, then each language
+static int language_position(void) {
+  if (config.language == NULL || strcmp(config.language, "auto") == 0) {
+    return 0;
+  }
+  for (int i = 0; i < i18n_language_count(); i++) {
+    if (strcasecmp(i18n_language_at(i)->tag, config.language) == 0) {
+      return i + 1;
+    }
+  }
+  return 0;
+}
+
+static void language_value(char *out, size_t size) {
+  if (language_position() == 0) {
+    TR_FMT(out, size, STR_SET_LANGUAGE_AUTO, i18n_current()->name);
+  } else {
+    snprintf(out, size, "%s", i18n_current()->name);
+  }
+}
+
+static bool language_change(int step) {
+  int count = i18n_language_count() + 1;
+  int position = (language_position() + count + step) % count;
+  // Tags live as long as the app, in i18n's list
+  config.language = position == 0 ? "auto" : (char *)i18n_language_at(position - 1)->tag;
+  i18n_use(config.language);
+  return true;
+}
+
 static void version_value(char *out, size_t size) {
   snprintf(out, size, "v%d.%d.%d", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
 }
@@ -414,222 +467,162 @@ static void version_value(char *out, size_t size) {
  * The table, in the order the rows are listed
  */
 
-// Every About row shares this help
-static const char ABOUT_HELP[] =
-      "About this app: its version, where the project lives and who looks after it, and the "
-      "two projects it works with: Moonlight, the streaming client it's built on, and "
-      "Sunshine, the host you run on your PC.";
-
 const setting_def SETTINGS[] = {
   // Above the tabs, on every one
   {.tab = SETTINGS_TAB_ALL, .kind = SETTING_ACTION, .flags = SETTING_WARNING,
-   .label = "Bluetooth is on, which can disturb Wi-Fi", .listed = vita_bluetooth_enabled,
+   .label = STR_SET_BLUETOOTH_WARNING, .listed = vita_bluetooth_enabled,
    .action = SETTING_ACTION_SHOW_HELP,
-   .help = "Bluetooth and Wi-Fi share the Vita's 2.4 GHz radio, so while Bluetooth is on the "
-      "stream can stutter or lose frames, more so with a Bluetooth controller or headphones "
-      "in use. If you aren't using a Bluetooth device, turn it off in the Vita's Settings, "
-      "under Bluetooth Devices."},
+   .help = STR_SET_BLUETOOTH_WARNING_HELP},
   {.tab = SETTINGS_TAB_ALL, .kind = SETTING_NOTE,
-   .label = "Settings that need a new stream return once this one ends.", .listed = settings_streaming},
+   .label = STR_SET_NOTE_NEW_STREAM, .listed = settings_streaming},
 
   // Stream
   // Listed mid-stream too: it can restart the stream to apply its settings
-  {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_ACTION, .label = "Apply recommended settings",
+  {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_ACTION, .label = STR_SET_RECOMMENDED,
    .action = SETTING_ACTION_RECOMMENDED,
-   .help = "Sets resolution, frame rate and bitrate to what worked best in testing, for your "
-      "connection and for what matters most to you. Auto-detect tests the connection where "
-      "you'll play and picks for you. During a stream it can restart the stream to apply "
-      "them; Auto-detect itself needs the game closed first."},
+   .help = STR_SET_RECOMMENDED_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_CHOICE, .flags = SETTING_NEEDS_NEW_STREAM,
-   .label = "Resolution", .value = resolution_value, .change = resolution_change,
-   .help = "The picture size your PC sends. The Vita's screen is 960x544, so 960x544 or 960x540 "
-      "looks sharpest for the least Wi-Fi. Bigger sizes look about the same on the Vita but "
-      "need more bandwidth. Can't be changed while a game is streaming."},
+   .label = STR_SET_RESOLUTION, .value = resolution_value, .change = resolution_change,
+   .help = STR_SET_RESOLUTION_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_CHOICE, .flags = SETTING_NEEDS_NEW_STREAM,
-   .label = "FPS", .value = fps_value, .change = fps_change,
-   .help = "Frames per second your PC sends. 60 is the smoothest. Try 30 if the stream stutters or"
-      " your Wi-Fi is weak: it needs about half the data. 24 suits films."},
+   .label = STR_SET_FPS, .value = fps_value, .change = fps_change,
+   .help = STR_SET_FPS_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_CHOICE, .flags = SETTING_NEEDS_NEW_STREAM | SETTING_CONFIRM_STEPS,
-   .label = "Bitrate", .value = bitrate_value, .change = bitrate_change,
-   .help = "How much video is sent each second. Higher looks sharper but needs a stronger signal "
-      "and adds a little delay; on the Vita's screen the picture stops improving at about 15 "
-      "to 20 Mbps. 10 suits weaker Wi-Fi, 20 a strong signal. Lower it if the picture goes "
-      "blocky or stutters. Custom lets you type any value below."},
+   .label = STR_SET_BITRATE, .value = bitrate_value, .change = bitrate_change,
+   .help = STR_SET_BITRATE_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_ACTION, .flags = SETTING_NEEDS_NEW_STREAM,
-   .label = "Custom bitrate", .available = bitrate_is_custom, .value = custom_bitrate_value,
+   .label = STR_SET_BITRATE_CUSTOM, .available = bitrate_is_custom, .value = custom_bitrate_value,
    .action = SETTING_ACTION_CUSTOM_BITRATE,
-   .help = "Any bitrate, in kilobits per second (10000 = 10 Mbps), from 500 to 100000. Choose "
-      "Custom on the Bitrate row above to use it."},
+   .help = STR_SET_BITRATE_CUSTOM_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_TOGGLE, .flags = SETTING_NEEDS_NEW_STREAM,
-   .label = "Change graphical game settings for performance", .is_on = sops_on, .change = sops_flip,
-   .help = "Lets GeForce Experience change your game's own graphics settings to suit the stream. "
-      "Only does anything with NVIDIA GeForce Experience; Sunshine ignores it. Turn it off if"
-      " your in-game settings keep changing by themselves."},
+   .label = STR_SET_SOPS, .is_on = sops_on, .change = sops_flip,
+   .help = STR_SET_SOPS_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_TOGGLE, .flags = SETTING_NEEDS_NEW_STREAM,
-   .label = "Enable reference frame invalidation", .is_on = frame_inval_on, .change = frame_inval_flip,
-   .help = "Fixes glitches from lost video faster, without waiting for a whole new picture. Needs "
-      "support from your PC. If you see corrupted video that doesn't clear up, turn this off."},
+   .label = STR_SET_ENABLE_FRAME_INVAL, .is_on = frame_inval_on, .change = frame_inval_flip,
+   .help = STR_SET_ENABLE_FRAME_INVAL_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_TOGGLE, .flags = SETTING_NEEDS_NEW_STREAM,
-   .label = "Enable stream optimization", .is_on = stream_optimize_on, .change = stream_optimize_flip,
-   .help = "Tunes the stream for playing over the internet, away from home. Leave it off on your "
-      "home network, where it only adds overhead."},
+   .label = STR_SET_ENABLE_STREAM_OPTIMIZE, .is_on = stream_optimize_on, .change = stream_optimize_flip,
+   .help = STR_SET_ENABLE_STREAM_OPTIMIZE_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_TOGGLE,
-   .label = "Enable VITA vblank", .is_on = vblank_wait_on, .change = vblank_wait_flip,
-   .help = "V-Sync. Waits for the screen to finish a refresh before showing the next frame. Stops "
-      "lines tearing across the picture, but can add up to a frame of input lag. Off feels "
-      "snappier, on looks cleaner."},
+   .label = STR_SET_ENABLE_VITA_VBLANK_WAIT, .is_on = vblank_wait_on, .change = vblank_wait_flip,
+   .help = STR_SET_ENABLE_VITA_VBLANK_WAIT_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_TOGGLE, .flags = SETTING_NEEDS_NEW_STREAM,
-   .label = "Fill screen (crop edges)", .is_on = fill_screen_on, .change = fill_screen_flip,
-   .help = "When the stream's shape doesn't match the Vita's screen, for example a 4:3 or "
-      "ultrawide game, zoom in and crop the edges to fill the screen instead of showing black"
-      " bars. You may lose some of the picture at the edges."},
+   .label = STR_SET_CENTER_REGION_ONLY, .is_on = fill_screen_on, .change = fill_screen_flip,
+   .help = STR_SET_CENTER_REGION_ONLY_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_TOGGLE,
-   .label = "Enable frame pacer", .is_on = frame_pacer_on, .change = frame_pacer_flip,
-   .help = "Throws away extra frames when more arrive than your FPS setting. It can cause a small "
-      "hitch every few seconds, so off is recommended."},
+   .label = STR_SET_ENABLE_FRAME_PACER, .is_on = frame_pacer_on, .change = frame_pacer_flip,
+   .help = STR_SET_ENABLE_FRAME_PACER_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_CHOICE, .flags = SETTING_NEEDS_NEW_STREAM | SETTING_CONFIRM_STEPS,
-   .label = "Video packet size", .value = packet_size_value, .change = packet_size_change,
-   .help = "How big each chunk of video sent over Wi-Fi is. 1392 sends fewer chunks per frame, "
-      "which can be smoother on a good connection. If the video breaks up or won't start, go "
-      "back to 1024."},
+   .label = STR_SET_PACKET_SIZE, .value = packet_size_value, .change = packet_size_change,
+   .help = STR_SET_PACKET_SIZE_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_TOGGLE, .flags = SETTING_NEEDS_NEW_STREAM,
-   .label = "Fast colour decoding", .is_on = decode_yuv_on, .change = decode_yuv_flip,
-   .help = "Lets the Vita's graphics chip handle the colour conversion while it draws each frame, "
-      "which nearly halves the video decoder's work (about 2 ms less per frame). The picture "
-      "looks the same. Only turn this off if colours look wrong, such as a green or pink "
-      "tint."},
+   .label = STR_SET_DECODE_YUV, .is_on = decode_yuv_on, .change = decode_yuv_flip,
+   .help = STR_SET_DECODE_YUV_HELP},
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_TOGGLE, .flags = SETTING_NEEDS_NEW_STREAM,
-   .label = "Enable local audio", .is_on = local_audio_on, .change = local_audio_flip,
-   .help = "Also plays the game's sound on your PC's speakers. Off keeps the PC quiet and sends "
-      "the sound only to the Vita."},
+   .label = STR_SET_LOCAL_AUDIO, .is_on = local_audio_on, .change = local_audio_flip,
+   .help = STR_SET_LOCAL_AUDIO_HELP},
 
   // System
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_TOGGLE,
-   .label = "Enable debug log", .is_on = debug_log_on, .change = debug_log_flip, .help_with = debug_log_help},
+   .label = STR_SET_SAVE_DEBUG_LOG, .is_on = debug_log_on, .change = debug_log_flip, .help_with = debug_log_help},
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_TOGGLE,
-   .label = "Disable power save", .is_on = powersave_on, .change = powersave_flip,
-   .help = "Stops the Vita dimming its screen or going to sleep while you stream, even when you "
-      "aren't pressing anything, such as during a cutscene."},
+   .label = STR_SET_DISABLE_POWERSAVE, .is_on = powersave_on, .change = powersave_flip,
+   .help = STR_SET_DISABLE_POWERSAVE_HELP},
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_TOGGLE,
-   .label = "Boost CPU/GPU clocks while streaming", .is_on = boost_clocks_on, .change = boost_clocks_flip,
-   .help = "Runs the Vita's processor and graphics at full speed while streaming, for smoother "
-      "video and sound. Uses more battery. Turn it off to save battery if your streams "
-      "already run smoothly."},
+   .label = STR_SET_BOOST_CLOCKS, .is_on = boost_clocks_on, .change = boost_clocks_flip,
+   .help = STR_SET_BOOST_CLOCKS_HELP},
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_TOGGLE,
-   .label = "Swap X & O for Moonlight", .is_on = jp_layout_on, .change = jp_layout_flip,
-   .help = "Swaps X and O in Moonlight's own menus, so O confirms and X goes back, like on "
-      "Japanese consoles. Doesn't change any buttons in your games."},
+   .label = STR_SET_JP_LAYOUT, .is_on = jp_layout_on, .change = jp_layout_flip,
+   .help = STR_SET_JP_LAYOUT_HELP},
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_CHOICE, .flags = SETTING_CONFIRM_STEPS,
-   .label = "Stats overlay", .value = stats_overlay_value, .change = stats_overlay_change,
-   .help = "Shows stream information on screen. fps: the frame rate and Wi-Fi signal. full: frame "
-      "rate, bitrate, lost frames, delays and Wi-Fi signal, to help track down stutter or "
-      "lag. The Wi-Fi signal turns yellow below 60%, a sign to move closer to your router. "
-      "Use left and right to change."},
+   .label = STR_SET_SHOW_FPS, .value = stats_overlay_value, .change = stats_overlay_change,
+   .help = STR_SET_SHOW_FPS_HELP},
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_CHOICE, .flags = SETTING_CONFIRM_STEPS,
-   .label = "App list", .value = app_list_value, .change = app_list_change,
-   .help = "How a PC's games and apps are listed when you connect to it. Box art: a row of game "
-      "covers to scroll through with left and right. Text: a plain list, which uses less "
-      "memory. Covers are saved on the memory card after the first visit."},
+   .label = STR_SET_APP_LIST_STYLE, .value = app_list_value, .change = app_list_change,
+   .help = STR_SET_APP_LIST_STYLE_HELP},
+
+  {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_CHOICE, .flags = SETTING_REBUILDS,
+   .label = STR_SET_LANGUAGE, .value = language_value, .change = language_change,
+   .help = STR_SET_LANGUAGE_HELP},
 
   // Controls
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,
-   .label = "Sync input to controller sampling", .is_on = input_sync_on, .change = input_sync_flip,
-   .help = "Reads your buttons in step with the Vita's controls, which saves battery without "
-      "adding lag. If touch controls feel slower than before, turn it off."},
+   .label = STR_SET_INPUT_SYNC, .is_on = input_sync_on, .change = input_sync_flip,
+   .help = STR_SET_INPUT_SYNC_HELP},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE, .flags = SETTING_NEEDS_NEW_STREAM,
-   .label = "Enable Gyroscope reporting", .is_on = motion_on, .change = motion_flip,
-   .help = "Sends the Vita's motion sensor to your PC, for games with gyro aiming or motion "
-      "controls. Needs a PC host that supports motion, such as Sunshine."},
+   .label = STR_SET_ENABLE_MOTION_CONTROLS, .is_on = motion_on, .change = motion_flip,
+   .help = STR_SET_ENABLE_MOTION_CONTROLS_HELP},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,
-   .label = "Enable double tap to sprint", .is_on = sprint_on, .change = sprint_flip,
-   .help = "Push the left stick fully forward twice, quickly, to hold sprint (a left stick click)."
-      " Handy because the Vita's sticks can't be clicked. A running icon shows while it's "
-      "active."},
+   .label = STR_SET_ENABLE_DOUBLE_TAP_SPRINT, .is_on = sprint_on, .change = sprint_flip,
+   .help = STR_SET_ENABLE_DOUBLE_TAP_SPRINT_HELP},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_ACTION,
-   .label = "Sprint double tap time", .value = sprint_time_value, .action = SETTING_ACTION_SPRINT_TIME,
-   .help = "How quickly the two pushes must come for double tap to sprint, in milliseconds. Raise "
-      "it if sprint won't start, lower it if it starts by accident."},
+   .label = STR_SET_DOUBLE_TAP_SPRINT_STEP_TIME, .value = sprint_time_value, .action = SETTING_ACTION_SPRINT_TIME,
+   .help = STR_SET_DOUBLE_TAP_SPRINT_STEP_TIME_HELP},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_CHOICE, .flags = SETTING_NEEDS_NEW_STREAM | SETTING_SAVE_AT_ONCE,
-   .label = "Controller type", .value = controller_type_value, .change = controller_type_change,
-   .help = "Which controller your PC thinks is connected: PlayStation or Xbox. Games show button "
-      "prompts to match."},
+   .label = STR_SET_CONTROLLER_TYPE, .value = controller_type_value, .change = controller_type_change,
+   .help = STR_SET_CONTROLLER_TYPE_HELP},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,
-   .label = "Swap R1/L1 <-> R2/L2", .is_on = swap_shoulders_on, .change = swap_shoulders_flip,
-   .help = "Off: L and R are L1 and R1, and the top corners of the rear touchpad are L2 and R2. "
-      "On: L and R become L2 and R2, which suits shooters where you aim and fire with the "
-      "triggers, and the rear corners become L1 and R1."},
+   .label = STR_SET_SWAP_SHOULDER_BUTTONS, .is_on = swap_shoulders_on, .change = swap_shoulders_flip,
+   .help = STR_SET_SWAP_SHOULDER_BUTTONS_HELP},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_CHOICE, .flags = SETTING_HELD_REPEATS,
-   .label = "Mouse acceleration", .value = mouse_accel_value, .change = mouse_accel_change,
-   .help = "How fast the mouse cursor moves when you use the front screen as a trackpad. Higher "
-      "moves the cursor further for the same swipe."},
+   .label = STR_SET_MOUSE_ACCEL, .value = mouse_accel_value, .change = mouse_accel_change,
+   .help = STR_SET_MOUSE_ACCEL_HELP},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,
-   .label = "Enable mapping file", .is_on = mapping_on, .change = mapping_flip, .help_with = mapping_help},
+   .label = STR_SET_ENABLE_MAPPING, .is_on = mapping_on, .change = mapping_flip, .help_with = mapping_help},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,
-   .label = "Enable PS button capture", .is_on = psbutton_on, .change = psbutton_flip,
-   .help = "Press the PS button once to send it to your PC, which opens things like Steam's "
-      "overlay. Press it twice quickly to go to the Vita's home screen as usual."},
+   .label = STR_SET_ENABLE_PSBUTTON_CAPTURE, .is_on = psbutton_on, .change = psbutton_flip,
+   .help = STR_SET_ENABLE_PSBUTTON_CAPTURE_HELP},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_ACTION,
-   .label = "Back touchscreen deadzone", .value = deadzone_value, .action = SETTING_ACTION_BACK_DEADZONE,
-   .help = "Strips around the edges of the rear touchpad that are ignored, so holding the Vita "
-      "doesn't press L2, R2, L3 or R3 by accident."},
+   .label = STR_SET_BACK_DEADZONE, .value = deadzone_value, .action = SETTING_ACTION_BACK_DEADZONE,
+   .help = STR_SET_BACK_DEADZONE_HELP},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,
-   .label = "Enable touchscreen special keys", .is_on = touch_keys_on, .change = touch_keys_flip,
-   .help = "Turns the corners of the front screen into buttons, such as top-left for the pause "
-      "menu. Choose what each corner does in Touchscreen special keys."},
+   .label = STR_SET_ENABLE_SPECIAL_KEYS, .is_on = touch_keys_on, .change = touch_keys_flip,
+   .help = STR_SET_ENABLE_SPECIAL_KEYS_HELP},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_ACTION,
-   .label = "Touchscreen special keys", .action = SETTING_ACTION_SPECIAL_KEYS,
-   .help = "Choose what each corner of the front screen does, such as opening the pause menu or "
-      "pressing the PS button. Only works when Enable touchscreen special keys is on."},
+   .label = STR_SET_SPECIAL_KEYS, .action = SETTING_ACTION_SPECIAL_KEYS,
+   .help = STR_SET_SPECIAL_KEYS_HELP},
   // Confirm cycles the modes, so it's a toggle with four positions
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,
-   .label = "Touchscreen mode", .value = touch_mode_value, .change = touch_mode_change,
-   .help = "How the front screen works in games. Off: a trackpad for the mouse. DS4 Touchpad: a "
-      "PlayStation controller touchpad. Mouse Absolute: the cursor jumps to your finger. "
-      "Tablet: full multi-touch (Sunshine)."},
-  {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_HEADER, .label = "Keyboard"},
+   .label = STR_SET_TOUCH_MODE_SELECT, .value = touch_mode_value, .change = touch_mode_change,
+   .help = STR_SET_TOUCH_MODE_SELECT_HELP},
+  {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_HEADER, .label = STR_SET_HEADER_KEYBOARD},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_ACTION,
-   .label = "Keyboard layout", .action = SETTING_ACTION_KEYBOARD_LAYOUT,
-   .help = "The language layout of the on-screen keyboard, which you open with START + LEFT while "
-      "streaming."},
+   .label = STR_SET_KEYBOARD_LAYOUT, .action = SETTING_ACTION_KEYBOARD_LAYOUT,
+   .help = STR_SET_KEYBOARD_LAYOUT_HELP},
 
   // Developer, shown after holding L and R and pressing triangle
   {.tab = SETTINGS_TAB_DEVELOPER, .kind = SETTING_NOTE,
-   .label = "The benchmark can't run during a stream.", .listed = settings_streaming},
+   .label = STR_SET_NOTE_BENCH_STREAMING, .listed = settings_streaming},
   {.tab = SETTINGS_TAB_DEVELOPER, .kind = SETTING_NOTE,
-   .label = "To benchmark, open Settings from a connected computer's menu.", .listed = bench_not_ready},
+   .label = STR_SET_NOTE_BENCH_CONNECT, .listed = bench_not_ready},
   {.tab = SETTINGS_TAB_DEVELOPER, .kind = SETTING_ACTION,
-   .label = "Run benchmark", .listed = bench_ready, .value = bench_target_value,
+   .label = STR_SET_BENCH_RUN, .listed = bench_ready, .value = bench_target_value,
    .action = SETTING_ACTION_RUN_BENCHMARK,
-   .help = "Streams the benchmark page (tools/bench/bench.html) from this computer and measures "
-      "input lag, latency, frame rate and dropped frames, then saves a report to the memory "
-      "card. The computer needs a Sunshine app that shows the page; see "
-      "tools/bench/README.md. Only available from a connected computer's menu."},
+   .help = STR_SET_BENCH_RUN_HELP},
   {.tab = SETTINGS_TAB_DEVELOPER, .kind = SETTING_CHOICE, .flags = SETTING_CONFIRM_STEPS,
-   .label = "Benchmark duration", .listed = bench_ready, .value = bench_seconds_value,
+   .label = STR_SET_BENCH_SECONDS, .listed = bench_ready, .value = bench_seconds_value,
    .change = bench_seconds_change,
-   .help = "How long the benchmark measures for. Longer runs smooth out Wi-Fi hiccups."},
+   .help = STR_SET_BENCH_SECONDS_HELP},
   {.tab = SETTINGS_TAB_DEVELOPER, .kind = SETTING_TOGGLE, .flags = SETTING_NEEDS_NEW_STREAM,
-   .label = "Decode on network thread (legacy)", .is_on = direct_decode_on, .change = direct_decode_flip,
-   .help = "For troubleshooting only. Uses the older way of handling video, which stutters more on"
-      " a busy Wi-Fi network. Leave it off unless you want to compare the two."},
+   .label = STR_SET_DIRECT_DECODE, .is_on = direct_decode_on, .change = direct_decode_flip,
+   .help = STR_SET_DIRECT_DECODE_HELP},
   {.tab = SETTINGS_TAB_DEVELOPER, .kind = SETTING_ACTION,
-   .label = "Hide developer options", .action = SETTING_ACTION_HIDE_DEVELOPER,
-   .help = "Hides these developer options again. Hold L and R and press triangle in Settings to "
-      "show them."},
+   .label = STR_SET_HIDE_DEVELOPER, .action = SETTING_ACTION_HIDE_DEVELOPER,
+   .help = STR_SET_HIDE_DEVELOPER_HELP},
 
   // About: selectable lines, so the tab can scroll and show help
-  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = "Moonlight for PS Vita", .value = version_value,
-   .help = ABOUT_HELP},
-  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = "Project",
-   .fixed_value = "github.com/xyzz/vita-moonlight", .help = ABOUT_HELP},
-  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = "Maintained by",
-   .fixed_value = "AorsiniYT, d3m3vilurr, xyzz", .help = ABOUT_HELP},
-  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = "Built on Moonlight",
-   .fixed_value = "moonlight-stream.org", .help = ABOUT_HELP},
-  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = "Host for your PC",
-   .fixed_value = "Sunshine: github.com/LizardByte/Sunshine", .help = ABOUT_HELP},
-  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = "Licence",
-   .fixed_value = "GNU GPL version 3", .help = ABOUT_HELP},
+  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = STR_ABOUT_APP, .value = version_value,
+   .help = STR_ABOUT_HELP},
+  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = STR_ABOUT_PROJECT,
+   .fixed_value = "github.com/xyzz/vita-moonlight", .help = STR_ABOUT_HELP},
+  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = STR_ABOUT_MAINTAINERS,
+   .fixed_value = "AorsiniYT, d3m3vilurr, xyzz", .help = STR_ABOUT_HELP},
+  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = STR_ABOUT_BUILT_ON,
+   .fixed_value = "moonlight-stream.org", .help = STR_ABOUT_HELP},
+  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = STR_ABOUT_HOST,
+   .fixed_value = "Sunshine: github.com/LizardByte/Sunshine", .help = STR_ABOUT_HELP},
+  {.tab = SETTINGS_TAB_ABOUT, .kind = SETTING_INFO, .label = STR_ABOUT_LICENCE,
+   .fixed_value = "GNU GPL version 3", .help = STR_ABOUT_HELP},
 };
 
 const int SETTINGS_COUNT = (int)(sizeof(SETTINGS) / sizeof(SETTINGS[0]));
@@ -649,7 +642,7 @@ void setting_value(const setting_def *setting, char *out, size_t size) {
   if (setting->value) {
     setting->value(out, size);
   } else if (setting->is_on) {
-    snprintf(out, size, "%s", setting->is_on() ? "yes" : "no");
+    snprintf(out, size, "%s", tr(setting->is_on() ? STR_COMMON_YES : STR_COMMON_NO));
   } else if (setting->fixed_value) {
     snprintf(out, size, "%s", setting->fixed_value);
   }
@@ -659,6 +652,6 @@ void setting_help(const setting_def *setting, char *out, size_t size) {
   if (setting->help_with) {
     setting->help_with(out, size);
   } else {
-    snprintf(out, size, "%s", setting->help ? setting->help : "No help for this setting yet.");
+    snprintf(out, size, "%s", tr(setting->help ? setting->help : STR_SET_NO_HELP));
   }
 }

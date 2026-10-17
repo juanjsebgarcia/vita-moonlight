@@ -189,6 +189,8 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->motion_controls_scalar_x = FLT(value);
     } else if (strcmp(name, "motion_controls_scalar_y") == 0) {
       config->motion_controls_scalar_y = FLT(value);
+    } else if (strcmp(name, "language") == 0) {
+      config->language = STR(value);
     } else if (strcmp(name, "keyboard_layout") == 0) {
       config->keyboard_layout = INT(value);
     } else if (strcmp(name, "touchscreen_mode") == 0) {
@@ -274,6 +276,7 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_float(fd, "motion_controls_scalar_x", config->motion_controls_scalar_x);
   write_config_float(fd, "motion_controls_scalar_y", config->motion_controls_scalar_y);
   write_config_int(fd, "keyboard_layout", config->keyboard_layout);
+  write_config_string(fd, "language", config->language);
   write_config_int(fd, "touchscreen_mode", config->touchscreen_mode);
   write_config_bool(fd, "swap_shoulder_buttons", config->swap_shoulder_buttons); // Guardar swap_shoulder_buttons en la raíz
   write_config_int(fd, "controller_type", config->controller_type); // Guardar controller_type en la raíz
@@ -337,6 +340,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->developer_mode = false;
   config->bench_seconds = BENCH_DEFAULT_SECONDS;
   config->bench_app = "Moonlight Bench";
+  config->language = "auto";
   config->bench_host = "";
   config->bench_label = "";
   config->bench_autorun = false;

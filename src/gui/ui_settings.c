@@ -32,6 +32,7 @@
 #include "../util.h"
 #include "ui_recommended.h"
 #include "../settings.h"
+#include "../i18n/i18n.h"
 extern char* strdup(const char*);
 
 static unsigned int settings_special_codes[] = {0,
@@ -61,30 +62,41 @@ static unsigned int settings_special_codes[] = {0,
   112,  113,  114,  115,  116,  117,  118,  119, 120,   121,   122,   123
 };
 
-// settings_special_names debe ser visible globalmente para sizeof
-char *settings_special_names[] = {
-  "None",
+// The name of each code above: a translated word, or a key name that's the
+// same in every language (STR_NONE with the literal)
+typedef struct {
+  str_id id;
+  const char *literal;
+} special_name;
+
+#define NAME(ID) {STR_##ID, NULL}
+#define KEY(TEXT) {STR_NONE, TEXT}
+static const special_name settings_special_names[] = {
+  NAME(SPECIAL_NONE),
   // special
-  "Special inputs",
-  "Pause stream",
-  "Open keyboard",
+  NAME(SPECIAL_GROUP_SPECIAL),
+  NAME(SPECIAL_PAUSE),
+  NAME(SPECIAL_KEYBOARD),
   // gamepad
-  "Gamepad buttons",
-  "Special (XBox button)",
-  "LB", "RB", "LS", "RS", "LT", "RT",
+  NAME(SPECIAL_GROUP_GAMEPAD),
+  NAME(SPECIAL_GUIDE),
+  KEY("LB"), KEY("RB"), KEY("LS"), KEY("RS"), KEY("LT"), KEY("RT"),
   // mouse
-  "Mouse buttons",
-  "Left",
-  "Right",
-  "Middle(wheel)",
-  "X1(4th)",
-  "X2(5th)",
+  NAME(SPECIAL_GROUP_MOUSE),
+  NAME(SPECIAL_MOUSE_LEFT),
+  NAME(SPECIAL_MOUSE_RIGHT),
+  NAME(SPECIAL_MOUSE_MIDDLE),
+  NAME(SPECIAL_MOUSE_X1),
+  NAME(SPECIAL_MOUSE_X2),
   // keyboard
-  "Keyboard input codes",
-  "Esc",
-  "I", "M", "Tab",
-  "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"
+  NAME(SPECIAL_GROUP_KEYBOARD),
+  KEY("Esc"),
+  KEY("I"), KEY("M"), KEY("Tab"),
+  KEY("F1"), KEY("F2"), KEY("F3"), KEY("F4"), KEY("F5"), KEY("F6"), KEY("F7"), KEY("F8"), KEY("F9"),
+  KEY("F10"), KEY("F11"), KEY("F12"),
 };
+#undef NAME
+#undef KEY
 
 /*
  * Deadzone
@@ -145,7 +157,9 @@ static int deadzone_loop(int cursor, void *context, const input_data *input) {
     config.back_deadzone.left
   };
   for (int i = 0; i < 4; i++) {
-    sprintf(current, "%dpx", numbers[i]);
+    char number[16];
+    snprintf(number, sizeof(number), "%d", numbers[i]);
+    TR_FMT(current, sizeof(current), STR_UNIT_PIXELS, number);
     strcpy(menu[i].subname, current);
   }
 
@@ -158,10 +172,10 @@ static int deadzone_settings_menu() {
   menu_entry menu[16];
   int idx = 0;
   // In the order deadzone_loop adjusts them (it used to label 1 and 3 the wrong way round)
-  menu[idx++] = (menu_entry) { .name = "Top: ", .disabled = false, .id = 0, .adjustable = true };
-  menu[idx++] = (menu_entry) { .name = "Right: ", .disabled = false, .id = 1, .adjustable = true };
-  menu[idx++] = (menu_entry) { .name = "Bottom: ", .disabled = false, .id = 2, .adjustable = true };
-  menu[idx++] = (menu_entry) { .name = "Left: ", .disabled = false, .id = 3, .adjustable = true };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_TOP), .disabled = false, .id = 0, .adjustable = true };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_RIGHT), .disabled = false, .id = 1, .adjustable = true };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_BOTTOM), .disabled = false, .id = 2, .adjustable = true };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_LEFT), .disabled = false, .id = 3, .adjustable = true };
 
   menu_geom geom = make_geom_centered(250, 120);
   geom.x = 50;
@@ -174,26 +188,9 @@ static int deadzone_settings_menu() {
  * Special keys
  */
 
-static int special_keys_ord(char *text) {
-  bool did_find = false;
-  int i = 0;
-  for (; i < sizeof(settings_special_codes) / sizeof(int); i++) {
-    if (strcmp(settings_special_names[i], text) == 0) {
-      did_find = true;
-      break;
-    }
-  }
-
-  if (did_find) {
-    return settings_special_codes[i];
-  } else {
-    return 0;
-  }
-}
-
 static void special_keys_name(int ord, char *text) {
   if (ord == 0) {
-    strcpy(text, "None");
+    strcpy(text, tr(STR_SPECIAL_NONE));
     return;
   }
 
@@ -207,7 +204,8 @@ static void special_keys_name(int ord, char *text) {
   }
 
   if (did_find) {
-    strcpy(text, settings_special_names[i]);
+    const special_name *name = &settings_special_names[i];
+    strcpy(text, name->literal ? name->literal : tr(name->id));
   } else {
     sprintf(text, "%d", ord);
   }
@@ -237,13 +235,15 @@ static int select_special_key_loop(int id, void *context, const input_data *inpu
     return 1;
   }
   char key_code_value[512];
-  if (ime_dialog_number(key_code_value, "Enter key code:", "") == 0) {
+  if (ime_dialog_number(key_code_value, tr(STR_SPECIAL_ENTER_CODE), "") == 0) {
       int key_code = atoi(key_code_value);
       if (key_code) {
         *code = key_code;
         return 1;
       } else {
-        display_error("Incorrect key code entered: %s", key_code_value);
+        char message[256];
+        TR_FMT(message, sizeof(message), STR_SPECIAL_BAD_CODE, key_code_value);
+        display_error("%s", message);
       }
   }
 
@@ -254,7 +254,7 @@ static int select_special_key_menu(int *code) {
   // TODO: sizeof(codes) / sizeof(int) ?
   menu_entry menu[64];
   int idx = 0;
-  for (int i = 0; i < sizeof(settings_special_codes) / sizeof(int); i++) {
+  for (int i = 0; i < (int)(sizeof(settings_special_codes) / sizeof(int)); i++) {
     unsigned int id = settings_special_codes[i];
     menu[idx++] = (menu_entry) {
       .id = id,
@@ -265,7 +265,7 @@ static int select_special_key_menu(int *code) {
   }
 
   menu[idx++] = (menu_entry) { .name = "", .disabled = true, .separator = true };
-  menu[idx++] = (menu_entry) { .name = "Enter manually ...", .id = SETTINGS_SELECT_SPECIAL_KEY_MANUAL };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_ENTER_MANUALLY), .id = SETTINGS_SELECT_SPECIAL_KEY_MANUAL };
 
   int return_code = display_menu(menu, idx, NULL, &select_special_key_loop, NULL, NULL, code);
   for (int i = 0; i < sizeof(settings_special_codes) / sizeof(int); i++) {
@@ -375,13 +375,13 @@ static int special_keys_menu() {
   menu_entry menu[16];
   int idx = 0;
 
-  menu[idx++] = (menu_entry) { .name = "Offset", .id = SETTINGS_SPECIAL_KEYS_OFFSET };
-  menu[idx++] = (menu_entry) { .name = "Size", .id = SETTINGS_SPECIAL_KEYS_SIZE };
-  menu[idx++] = (menu_entry) { .name = "Assignments", .disabled = true, .separator = false };
-  menu[idx++] = (menu_entry) { .name = "Top left", .id = TOUCHSEC_SPECIAL_NW };
-  menu[idx++] = (menu_entry) { .name = "Top right", .id = TOUCHSEC_SPECIAL_NE };
-  menu[idx++] = (menu_entry) { .name = "Bottom left", .id = TOUCHSEC_SPECIAL_SW };
-  menu[idx++] = (menu_entry) { .name = "Bottom right", .id = TOUCHSEC_SPECIAL_SE };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_OFFSET), .id = SETTINGS_SPECIAL_KEYS_OFFSET };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_SIZE), .id = SETTINGS_SPECIAL_KEYS_SIZE };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_ASSIGNMENTS), .disabled = true, .separator = false };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_TOP_LEFT), .id = TOUCHSEC_SPECIAL_NW };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_TOP_RIGHT), .id = TOUCHSEC_SPECIAL_NE };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_BOTTOM_LEFT), .id = TOUCHSEC_SPECIAL_SW };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_BOTTOM_RIGHT), .id = TOUCHSEC_SPECIAL_SE };
 
   return display_menu(menu, idx, NULL, &special_keys_loop, NULL, &special_keys_draw, &menu);
 }
@@ -432,7 +432,7 @@ static void refresh_rows(void) {
 static void show_settings_help(const setting_def *setting) {
   char text[1024];
   setting_help(setting, text, sizeof(text));
-  display_help(setting->label, text);
+  display_help(tr(setting->label), text);
 }
 
 // Asks for a whole number, returning false if the player cancels
@@ -469,22 +469,28 @@ static int run_action(const setting_def *setting) {
       return SETTINGS_REBUILD;
     }
     case SETTING_ACTION_CUSTOM_BITRATE:
-      if (ask_number("Bitrate in kbps (10000 = 10 Mbps)", config.stream.bitrate, &number)) {
+      if (ask_number(tr(STR_SET_BITRATE_PROMPT), config.stream.bitrate, &number)) {
         if (number >= BITRATE_CUSTOM_MIN_KBPS && number <= BITRATE_CUSTOM_MAX_KBPS) {
           config.stream.bitrate = number;
         } else {
-          display_error("Enter a bitrate from %d to %d kbps.", BITRATE_CUSTOM_MIN_KBPS, BITRATE_CUSTOM_MAX_KBPS);
+          char low[16], high[16], message[256];
+          snprintf(low, sizeof(low), "%d", BITRATE_CUSTOM_MIN_KBPS);
+          snprintf(high, sizeof(high), "%d", BITRATE_CUSTOM_MAX_KBPS);
+          TR_FMT(message, sizeof(message), STR_SET_BITRATE_RANGE, low, high);
+          display_error("%s", message);
         }
       }
       return 0;
     case SETTING_ACTION_SPRINT_TIME: {
       char value[512];
-      if (ime_dialog_number(value, "Enter Sprint Step Time in Milliseconds", "") == 0) {
+      if (ime_dialog_number(value, tr(STR_SET_SPRINT_PROMPT), "") == 0) {
         int step_time = atoi(value);
         if (step_time) {
           config.double_tap_sprint_step_time = step_time;
         } else {
-          display_error("Incorrect step time entered: %s", value);
+          char message[256];
+          TR_FMT(message, sizeof(message), STR_SET_SPRINT_BAD, value);
+          display_error("%s", message);
         }
       }
       return 0;
@@ -518,7 +524,7 @@ static int run_action(const setting_def *setting) {
 // Drawn around the settings box: the tabs above it, and the help hint below,
 // so the help is discoverable without taking a row
 static void settings_draw(void) {
-  const char *hint = "Help";
+  const char *hint = tr(STR_HINT_HELP);
   const int glyph_size = 14;
   const int gap = 6;
 
@@ -532,8 +538,8 @@ static void settings_draw(void) {
       continue;
     }
     unsigned int colour = tab == settings_tab ? 0xff00ff00 : 0xffaaaaaa;
-    vita2d_font_draw_text(font, tab_x, tab_y, colour, 18, SETTINGS_TAB_NAMES[tab]);
-    tab_x += vita2d_font_text_width(font, 18, SETTINGS_TAB_NAMES[tab]) + tab_spacing;
+    vita2d_font_draw_text(font, tab_x, tab_y, colour, 18, tr(SETTINGS_TAB_NAMES[tab]));
+    tab_x += vita2d_font_text_width(font, 18, tr(SETTINGS_TAB_NAMES[tab])) + tab_spacing;
   }
   draw_button_glyph(BUTTON_GLYPH_R, tab_x - tab_spacing + gap * 2, tab_y, glyph_size);
 
@@ -557,9 +563,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
     if ((pad.buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) && (pad.buttons & (SCE_CTRL_R1 | SCE_CTRL_R2))) {
       config.developer_mode = !config.developer_mode;
       ui_settings_save_config();
-      display_error(config.developer_mode
-                    ? "Developer options are now shown, in the Developer tab."
-                    : "Developer options are hidden.");
+      display_error("%s", tr(config.developer_mode ? STR_SET_DEVELOPER_SHOWN : STR_SET_DEVELOPER_HIDDEN));
       settings_tab = config.developer_mode ? SETTINGS_TAB_DEVELOPER : SETTINGS_TAB_STREAM;
       return SETTINGS_REBUILD;
     }
@@ -612,6 +616,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
     if (setting->flags & SETTING_SAVE_AT_ONCE) {
       ui_settings_save_config();
     }
+    if (setting->flags & SETTING_REBUILDS) {
+      return SETTINGS_REBUILD;
+    }
     refresh_rows();
   }
   return 0;
@@ -646,7 +653,7 @@ int ui_settings_menu() {
       assert(settings_row_count < SETTINGS_MAX_ROWS);
       menu[settings_row_count++] = (menu_entry) {
         .id = i,
-        .name = (char *)setting->label,
+        .name = (char *)tr(setting->label),
         .separator = setting->kind == SETTING_HEADER,
         .adjustable = setting->kind == SETTING_CHOICE,
         .status = (setting->flags & SETTING_WARNING) ? MENU_STATUS_WARNING : MENU_STATUS_NONE,
