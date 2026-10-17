@@ -1,3 +1,4 @@
+#include "../i18n/i18n.h"
 #include "ui_connect.h"
 
 #include "Limelight.h"
@@ -109,23 +110,28 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
     }
     case CONNECT_PAIRUNPAIR:
       if (server.paired) {
-        flash_message("Unpairing...");
+        flash_message("%s", tr(STR_CONNECT_UNPAIRING));
         ret = gs_unpair(&server);
         if (ret == GS_OK) {
           if (connection_terminate()) {
-            display_error("Reconnect failed: %d", -1);
+            display_error("%s", tr(STR_CONNECT_RECONNECT_FAILED));
             return 0;
           }
           return QUIT_RELOAD;
         }
-        display_error("Unpairing failed: %d", ret);
+        char code[16], message[256];
+        snprintf(code, sizeof(code), "%d", ret);
+        TR_FMT(message, sizeof(message), STR_CONNECT_UNPAIR_FAILED, code);
+        display_error("%s", message);
         return 0;
       }
 
       char pin[5];
       sprintf(pin, "%d%d%d%d",
               (uint32_t)rand() % 10, (uint32_t)rand() % 10, (uint32_t)rand() % 10, (uint32_t)rand() % 10);
-      flash_message("Please enter the following PIN\non the target PC:\n\n%s", pin);
+      char pin_message[256];
+      TR_FMT(pin_message, sizeof(pin_message), STR_CONNECT_ENTER_PIN, pin);
+      flash_message("%s", pin_message);
       vita_debug_log("[UI] gs_pair: calling gs_pair at %u", (unsigned)time(NULL));
       ret = gs_pair(&server, &pin[0]);
       vita_debug_log("[UI] gs_pair: returned ret=%d at %u", ret, (unsigned)time(NULL));
@@ -147,31 +153,39 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
           vita_debug_log("[PAIR] After save_device_info(dev) - time: %u", (unsigned)time(NULL));
           // Notify user pairing succeeded: show a short message so the PIN dialog
           // (which was drawn earlier) is replaced by a success message.
-          flash_message("Paired: %s", device_label(dev));
+          char paired[320];
+          TR_FMT(paired, sizeof(paired), STR_CONNECT_PAIRED_WITH, device_label(dev));
+          flash_message("%s", paired);
         } else {
           vita_debug_log("[PAIR] Dispositivo no encontrado para la IP %s al guardar MAC", server.serverInfo.address);
         }
         if (connection_terminate()) {
-          display_error("Reconnect failed: %d", -2);
+          display_error("%s", tr(STR_CONNECT_RECONNECT_FAILED));
           return 0;
         }
         return QUIT_RELOAD;
       }
-      display_error("Pairing failed: %d\n Error: %s", ret, gs_error);
+      char code[16], message[512];
+      snprintf(code, sizeof(code), "%d", ret);
+      TR_FMT(message, sizeof(message), STR_CONNECT_PAIR_FAILED_DETAIL, code, gs_error ? gs_error : "");
+      display_error("%s", message);
       return 0;
 
     case CONNECT_DISCONNECT:
       goto disconnect;
 
     case CONNECT_QUITAPP:
-      flash_message("Quitting...");
+      flash_message("%s", tr(STR_CONNECT_QUITTING));
       ret = gs_quit_app(&server);
       if (ret == GS_OK) {
         connection_paired();
         server.currentGame = 0;
         return QUIT_RELOAD;
       }
-      display_error("Quitting failed: %d", ret);
+      char quit_code[16], quit_message[256];
+      snprintf(quit_code, sizeof(quit_code), "%d", ret);
+      TR_FMT(quit_message, sizeof(quit_message), STR_CONNECT_QUIT_FAILED, quit_code);
+      display_error("%s", quit_message);
       return 0;
 
     // application launcher / resume
@@ -190,7 +204,7 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
           }
           // TODO: stop previous stream
         case LI_PAIRED:
-          flash_message("Stream starting...");
+          flash_message("%s", tr(STR_CONNECT_STREAM_STARTING));
           // That frame has finished drawing, so the covers can go now: the
           // stream needs the memory and the network more
           ui_boxart_close();
@@ -213,7 +227,7 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
   }
 
 disconnect:
-  flash_message("Disconnecting...");
+  flash_message("%s", tr(STR_CONNECT_DISCONNECTING));
   connection_terminate();
   sceKernelDelayThread(1000 * 1000);
   return 1;
@@ -223,7 +237,10 @@ int ui_connect(char *name, char *address, uint16_t port) {
   int ret;
   if (!connection_is_ready()) {
     const char *label = device_label_for_address(address, name);
-    flash_message("Connecting to %s\n(%s:%d)...", label, address, port);
+    char port_text[8], connecting[512];
+    snprintf(port_text, sizeof(port_text), "%d", port);
+    TR_FMT(connecting, sizeof(connecting), STR_CONNECT_CONNECTING, label, address, port_text);
+    flash_message("%s", connecting);
 
     char key_dir[4096];
     sprintf(key_dir, "%s/%s", config.key_dir, name);
@@ -231,21 +248,35 @@ int ui_connect(char *name, char *address, uint16_t port) {
     ret = gs_init(&server, address, port, key_dir, 0, true);
     session_set_host(name);
     if (ret == GS_OUT_OF_MEMORY) {
-      display_error("Not enough memory");
+      display_error("%s", tr(STR_CONNECT_NO_MEMORY));
       return 0;
     } else if (ret == GS_INVALID) {
-      display_error("Invalid data received from %s (%s): %s", label, address, gs_error);
+      {
+        char message[512];
+        TR_FMT(message, sizeof(message), STR_CONNECT_INVALID_DATA, label, address, gs_error ? gs_error : "");
+        display_error("%s", message);
+      }
       return 0;
     } else if (ret == GS_UNSUPPORTED_VERSION) {
       if (!config.unsupported_version) {
-        display_error("Unsupported version: %s\n", gs_error);
+        {
+          char message[512];
+          TR_FMT(message, sizeof(message), STR_CONNECT_UNSUPPORTED_VERSION, gs_error ? gs_error : "");
+          display_error("%s", message);
+        }
         return 0;
       }
     } else if (ret == GS_ERROR) {
-      display_error("Gamestream error: %s\n", gs_error);
+      {
+        char message[512];
+        TR_FMT(message, sizeof(message), STR_CONNECT_GAMESTREAM_ERROR, gs_error ? gs_error : "");
+        display_error("%s", message);
+      }
       return 0;
     } else if (ret != GS_OK) {
-      display_error("Can't connect to %s\n(%s)", label, address);
+      char message[512];
+      TR_FMT(message, sizeof(message), STR_CONNECT_CANT_REACH, label, address);
+      display_error("%s", message);
       return 0;
     }
 
@@ -263,7 +294,10 @@ int ui_connected_menu() {
   if (server.paired) {
     ret = gs_applist(&server, &server_applist);
     if (ret != GS_OK) {
-      display_error("Can't get applist!\n%d\n%s", ret, gs_error);
+      char code[16], message[512];
+      snprintf(code, sizeof(code), "%d", ret);
+      TR_FMT(message, sizeof(message), STR_CONNECT_NO_APPS, code, gs_error ? gs_error : "");
+      display_error("%s", message);
       return 0;
     }
 
@@ -300,15 +334,13 @@ int ui_connected_menu() {
 
   //header
   //MENU
-  MENU_MESSAGE("Connected to the server:");
+  MENU_MESSAGE((char *)tr(STR_CONNECTED_HEADING));
   char server_info[256];
   unsigned short port = server.httpPort ? server.httpPort : server.httpsPort;
-  snprintf(server_info, sizeof(server_info),
-           "IP: %s  PORT: %d, GPU %s, GFE %s",
-           server.serverInfo.address,
-           port,
-           server.gpuType,
-           server.serverInfo.serverInfoGfeVersion);
+  char port_text[8];
+  snprintf(port_text, sizeof(port_text), "%d", port);
+  TR_FMT(server_info, sizeof(server_info), STR_CONNECTED_SERVER_LINE, server.serverInfo.address, port_text,
+         server.gpuType ? server.gpuType : "", server.serverInfo.serverInfoGfeVersion ? server.serverInfo.serverInfoGfeVersion : "");
 
   MENU_MESSAGE(server_info);
 
@@ -320,10 +352,10 @@ int ui_connected_menu() {
 
   if (!server.paired) {
     // pairing
-    MENU_CATEGORY("Not paired");
-    MENU_ENTRY(CONNECT_PAIRUNPAIR, "Pair");
+    MENU_CATEGORY((char *)tr(STR_CONNECTED_NOT_PAIRED));
+    MENU_ENTRY(CONNECT_PAIRUNPAIR, (char *)tr(STR_CONNECTED_PAIR));
 
-    MENU_ENTRY(CONNECT_DISCONNECT, "Disconnect");
+    MENU_ENTRY(CONNECT_DISCONNECT, (char *)tr(STR_CONNECTED_DISCONNECT));
   } else {
     // current stream
     if (server.currentGame != 0) {
@@ -331,37 +363,37 @@ int ui_connected_menu() {
       char current_status[256];
 
       if (!get_app_name(server_applist, server.currentGame, current_appname)) {
-        strcpy(current_appname, "unknown");
+        snprintf(current_appname, sizeof(current_appname), "%s", tr(STR_CONNECTED_UNKNOWN_APP));
       }
-      sprintf(current_status, "Streaming %s", current_appname);
+      TR_FMT(current_status, sizeof(current_status), STR_CONNECTED_STREAMING, current_appname);
 
       MENU_CATEGORY(current_status);
-      MENU_ENTRY(server.currentGame, "Resume");
-      MENU_ENTRY(CONNECT_SETTINGS, "Settings");
-      MENU_ENTRY(CONNECT_QUITAPP, "Quit");
+      MENU_ENTRY(server.currentGame, (char *)tr(STR_CONNECTED_RESUME));
+      MENU_ENTRY(CONNECT_SETTINGS, (char *)tr(STR_MAIN_SETTINGS));
+      MENU_ENTRY(CONNECT_QUITAPP, (char *)tr(STR_CONNECTED_QUIT_APP));
     }
 
     // pairing
-    MENU_CATEGORY("Paired");
+    MENU_CATEGORY((char *)tr(STR_CONNECTED_PAIRED));
     connection_paired();
     // FIXME: unpair not work
     // MENU_ENTRY(CONNECT_PAIRUNPAIR, "Unpair");
 
     // While streaming, Settings is listed with Resume and Quit instead
     if (server.currentGame == 0) {
-      MENU_ENTRY(CONNECT_SETTINGS, "Settings");
+      MENU_ENTRY(CONNECT_SETTINGS, (char *)tr(STR_MAIN_SETTINGS));
     }
-    MENU_ENTRY(CONNECT_DISCONNECT, "Disconnect");
+    MENU_ENTRY(CONNECT_DISCONNECT, (char *)tr(STR_CONNECTED_DISCONNECT));
 
     // app list
     if (boxart) {
       pos[0] = idx;
-      MENU_ENTRY(CONNECT_BOXART, "Applications");
+      MENU_ENTRY(CONNECT_BOXART, (char *)tr(STR_CONNECTED_APPS));
       menu[idx - 1].suffix = ui_boxart_counter();
       menu[idx - 1].adjustable = true;
       pos[1] = idx;
     } else if (server_applist != NULL) {
-      MENU_CATEGORY("Applications");
+      MENU_CATEGORY((char *)tr(STR_CONNECTED_APPS));
 
       pos[0] = idx;
 
@@ -391,7 +423,9 @@ int ui_connected_menu() {
 }
 
 device_info_t* ui_connect_and_pairing(device_info_t *info) {
-  flash_message("Test connecting to %s\n(%s)...", device_label(info), info->internal);
+  char testing[512];
+  TR_FMT(testing, sizeof(testing), STR_CONNECT_TESTING, device_label(info), info->internal);
+  flash_message("%s", testing);
   vita_debug_log("[CONNECT] Intentando conectar: name=%s, ip=%s, port=%d", info->name, info->internal, info->port);
   char key_dir[4096];
   sprintf(key_dir, "%s/%s", config.key_dir, info->name);
@@ -400,21 +434,35 @@ device_info_t* ui_connect_and_pairing(device_info_t *info) {
   int ret = gs_init(&server, info->internal, info->port, key_dir, 0, true);
 
   if (ret == GS_OUT_OF_MEMORY) {
-    display_error("Not enough memory");
+    display_error("%s", tr(STR_CONNECT_NO_MEMORY));
     return NULL;
   } else if (ret == GS_INVALID) {
-    display_error("Invalid data received from %s (%s): %s", device_label(info), info->internal, gs_error);
+    {
+      char message[512];
+      TR_FMT(message, sizeof(message), STR_CONNECT_INVALID_DATA, device_label(info), info->internal, gs_error ? gs_error : "");
+      display_error("%s", message);
+    }
     return NULL;
   } else if (ret == GS_UNSUPPORTED_VERSION) {
     if (!config.unsupported_version) {
-      display_error("Unsupported version: %s\n", gs_error);
+      {
+        char message[512];
+        TR_FMT(message, sizeof(message), STR_CONNECT_UNSUPPORTED_VERSION, gs_error ? gs_error : "");
+        display_error("%s", message);
+      }
       return NULL;
     }
   } else if (ret == GS_ERROR) {
-    display_error("Gamestream error: %s\n", gs_error);
+    {
+      char message[512];
+      TR_FMT(message, sizeof(message), STR_CONNECT_GAMESTREAM_ERROR, gs_error ? gs_error : "");
+      display_error("%s", message);
+    }
     return NULL;
   } else if (ret != GS_OK) {
-    display_error("Can't connect to %s\n(%s)", device_label(info), info->internal);
+    char message[512];
+    TR_FMT(message, sizeof(message), STR_CONNECT_CANT_REACH, device_label(info), info->internal);
+    display_error("%s", message);
     return NULL;
   }
 
@@ -424,7 +472,7 @@ device_info_t* ui_connect_and_pairing(device_info_t *info) {
   if (p == NULL) {
     ret = update_device(info);
     if (ret == false) {
-      display_error("Could not update device info");
+      display_error("%s", tr(STR_CONNECT_DEVICE_SAVE_FAILED));
     }
 
   } else {
@@ -435,7 +483,9 @@ device_info_t* ui_connect_and_pairing(device_info_t *info) {
   save_device_info(info);
   vita_debug_log("[PAIR] After save_device_info(info) - time: %u", (unsigned)time(NULL));
   // Notify user pairing succeeded
-  flash_message("Paired: %s", device_label(info));
+  char paired[320];
+  TR_FMT(paired, sizeof(paired), STR_CONNECT_PAIRED_WITH, device_label(info));
+  flash_message("%s", paired);
 
   if (server.paired) {
     // no more need, move next action
@@ -445,11 +495,16 @@ device_info_t* ui_connect_and_pairing(device_info_t *info) {
   char pin[5];
   sprintf(pin, "%d%d%d%d",
           (int)rand() % 10, (int)rand() % 10, (int)rand() % 10, (int)rand() % 10);
-  flash_message("Please enter the following PIN\non the target PC:\n\n%s", pin);
+  char pin_message[256];
+  TR_FMT(pin_message, sizeof(pin_message), STR_CONNECT_ENTER_PIN, pin);
+  flash_message("%s", pin_message);
 
   ret = gs_pair(&server, pin);
   if (ret != GS_OK) {
-    display_error("Pairing failed: %d", ret);
+    char code[16], message[256];
+    snprintf(code, sizeof(code), "%d", ret);
+    TR_FMT(message, sizeof(message), STR_CONNECT_PAIR_FAILED, code);
+    display_error("%s", message);
     connection_terminate();
     return NULL;
   }
@@ -471,7 +526,7 @@ paired:
   save_device_info(info);
 
   if (connection_terminate()) {
-    display_error("Reconnect failed: %d", -2);
+    display_error("%s", tr(STR_CONNECT_RECONNECT_FAILED));
     return info;
   }
 
@@ -483,7 +538,7 @@ void ui_connect_restart_stream(void) {
   if (app_id == 0 || connection_get_status() != LI_MINIMIZED) {
     return;
   }
-  flash_message("Restarting the stream with the new settings...");
+  flash_message("%s", tr(STR_CONNECT_RESTARTING));
   // The app keeps running on the host; only our stream ends
   connection_terminate();
   sceKernelDelayThread(500 * 1000);
@@ -504,10 +559,10 @@ void ui_connect_resume() {
 
 void ui_connect_manual() {
   device_info_t info = {0};
-  if (ime_dialog_string(info.name, "Enter Name:", "") != 0) {
+  if (ime_dialog_string(info.name, tr(STR_ADD_ENTER_NAME), "") != 0) {
     return;
   }
-  if (ime_dialog_string(info.internal, "Enter IP or Address:", "") != 0) {
+  if (ime_dialog_string(info.internal, tr(STR_ADD_ENTER_ADDRESS), "") != 0) {
     return;
   }
   info.port = 47989;
@@ -520,7 +575,10 @@ bool check_connection(const char *name, char *addr, uint16_t port) {
     return false;
   }
 
-  flash_message("Checking %s\n(%s:%d)...", device_label_for_address(addr, name), addr, port);
+  char port_text[8], checking[512];
+  snprintf(port_text, sizeof(port_text), "%d", port);
+  TR_FMT(checking, sizeof(checking), STR_CONNECT_CHECKING, device_label_for_address(addr, name), addr, port_text);
+  flash_message("%s", checking);
 
   int log_level = 0;
   if (config.save_debug_log) {
@@ -542,7 +600,9 @@ bool check_connection(const char *name, char *addr, uint16_t port) {
 
 void ui_connect_paired_device(device_info_t *info) {
   if (!info->paired) {
-    display_error("Unpaired device\n%s", device_label(info));
+    char message[512];
+    TR_FMT(message, sizeof(message), STR_CONNECT_UNPAIRED_DEVICE, device_label(info));
+    display_error("%s", message);
     return;
   }
 
@@ -558,7 +618,9 @@ void ui_connect_paired_device(device_info_t *info) {
   save_device_info(info);
 
   if (addr == NULL) {
-    display_error("Can't connect to server\n%s", device_label(info));
+    char message[512];
+    TR_FMT(message, sizeof(message), STR_CONNECT_CANT_CONNECT_SERVER, device_label(info));
+    display_error("%s", message);
     return;
   }
 

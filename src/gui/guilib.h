@@ -164,6 +164,12 @@ void display_help(const char *title, const char *message);
 // baseline y, and returns its width (labelled buttons are wider than size)
 int draw_button_glyph(int glyph, int x, int y, int size);
 
+// Draws text, with {confirm}, {cancel}, {triangle}, {square}, {start}, {l},
+// {r} and the other button names in braces drawn as the button's symbol, and
+// returns its width. confirm and cancel follow Swap X & O.
+int draw_rich_text(int x, int y, unsigned int color, int size, const char *text);
+int rich_text_width(int size, const char *text);
+
 // Splits text into lines no wider than max_width at the UI font size, breaking
 // at spaces and newlines. Returns the number of lines written to lines.
 int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int max_lines);

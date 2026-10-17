@@ -1,3 +1,4 @@
+#include "../i18n/i18n.h"
 #include "ui_keyboard.h"
 #include "../input/keyboardkeys.h"
 #include "ui_settings.h"
@@ -5,10 +6,10 @@
 #include "../config.h"
 #include <psp2/kernel/clib.h>
 
-static const char* keyboard_layout_names[] = {
-    "English (US)",
-    "Spanish (Spain)",
-    "Spanish (Latin America)",
+static const str_id keyboard_layout_names[] = {
+    STR_KEYBOARD_EN_US,
+    STR_KEYBOARD_ES_ES,
+    STR_KEYBOARD_ES_LATAM,
 };
 
 static int keyboard_layout_loop(int id, void *context, const input_data *input) {
@@ -16,7 +17,7 @@ static int keyboard_layout_loop(int id, void *context, const input_data *input) 
         // Selecciona el layout
         keyboardsystem_set_layout((KeyboardLayout)id);
         config.keyboard_layout = id;
-        sceClibPrintf("[Moonlight] Layout de teclado seleccionado: %s (id=%d)\n", keyboard_layout_names[id], id);
+        sceClibPrintf("[Moonlight] Layout de teclado seleccionado: %s (id=%d)\n", tr(keyboard_layout_names[id]), id);
         ui_settings_save_config();
         return 1; // salir del menú
     }
@@ -28,7 +29,7 @@ int keyboard_layout_menu(void) {
     keyboardsystem_set_layout((KeyboardLayout)config.keyboard_layout);
     menu_entry menu[KB_LAYOUT_COUNT] = {0}; // Inicializa todo a cero
     for (int i = 0; i < KB_LAYOUT_COUNT; ++i) {
-        menu[i].name = (char*)keyboard_layout_names[i];
+        menu[i].name = (char*)tr(keyboard_layout_names[i]);
         menu[i].id = i;
         menu[i].disabled = false;
         menu[i].checked = i == config.keyboard_layout;

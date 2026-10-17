@@ -1,3 +1,4 @@
+#include "../i18n/i18n.h"
 #include "ui_settings.h"
 
 #include "guilib.h"
@@ -247,7 +248,8 @@ int ui_search_device_loop() {
   } while(0)
 #define MENU_MESSAGE(MESSAGE) \
   do { \
-    menu[idx] = (menu_entry) { .name = "", .disabled = true, .subname = (MESSAGE) }; \
+    menu[idx] = (menu_entry) { .name = "", .disabled = true }; \
+    snprintf(menu[idx].subname, sizeof(menu[idx].subname), "%s", (MESSAGE)); \
     idx++; \
   } while(0)
 #define MENU_SEPARATOR() \
@@ -257,9 +259,9 @@ int ui_search_device_loop() {
   } while(0)
 
   // Mostrar mensaje de refresco con triángulo
-  MENU_MESSAGE("Press TRIANGLE to refresh the search");
+  MENU_MESSAGE((char *)tr(STR_SEARCH_REFRESH_HINT));
 
-  MENU_CATEGORY("Search device ...");
+  MENU_CATEGORY((char *)tr(STR_SEARCH_TITLE));
   for (int i = 0; i < found_device; i++) {
     if (devices[i].internal[0] == '\0') {
       continue;
@@ -278,7 +280,7 @@ int ui_search_device_loop() {
     MENU_ENTRY(DEVICE_ITEM + i, DEVICE_VIEW_ITEM + i, devices[i].name, suffix);
   }
   MENU_SEPARATOR();
-  MENU_ENTRY(DEVICE_EXIT_SEARCH, DEVICE_VIEW_EXIT_SEARCH, "Return", "");
+  MENU_ENTRY(DEVICE_EXIT_SEARCH, DEVICE_VIEW_EXIT_SEARCH, (char *)tr(STR_SEARCH_BACK), "");
 
   return display_menu(menu, idx, NULL, &ui_search_device_callback, &ui_search_device_back, NULL, &menu);
 }

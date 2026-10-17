@@ -1,3 +1,4 @@
+#include "../i18n/i18n.h"
 #include <stdio.h>
 #include "ui_check.h"
 #include "guilib.h"
@@ -15,10 +16,8 @@ void start_host_scan_thread();
 int ui_check_ip_update(device_info_t *info, const char *new_ip) {
     vita_debug_log("[UI_CHECK] Al entrar: name=%s, internal=%s, external=%s", info->name, info->internal, info->external);
     // Siempre pedir confirmación, aunque internal esté vacío
-    char msg[256];
-    snprintf(msg, sizeof(msg),
-        "Your host changed its IP address.\nOld: %s\nNew: %s",
-        info->internal[0] ? info->internal : "(none)", new_ip);
+    char msg[512];
+    TR_FMT(msg, sizeof(msg), STR_HOST_IP_CHANGED_ASK, info->internal[0] ? info->internal : tr(STR_HOST_NO_ADDRESS), new_ip);
     int confirm = display_confirm(msg);
     vita_debug_log("[UI_CHECK] Host %s display_confirm result: %d", info->name, confirm);
     if (confirm) {
@@ -36,7 +35,7 @@ int ui_check_ip_update(device_info_t *info, const char *new_ip) {
         device_info_t *updated = find_device(info->name);
         if (updated) info = updated;
         vita_debug_log("[UI_CHECK] Después de guardar y recargar: name=%s, internal=%s, external=%s, port=%d, paired=%d, prefer_external=%d", info->name, info->internal, info->external, info->port, info->paired, info->prefer_external);
-        flash_message("Host IP updated!");
+        flash_message("%s", tr(STR_HOST_IP_UPDATED));
 #ifdef __vita__
         start_host_scan_thread();
 #endif
@@ -45,7 +44,7 @@ int ui_check_ip_update(device_info_t *info, const char *new_ip) {
         return 1;
     } else {
         vita_debug_log("[UI_CHECK] Host %s IP update cancelled by user.", info->name);
-        flash_message("Host IP not updated.");
+        flash_message("%s", tr(STR_HOST_IP_NOT_UPDATED));
 #ifdef __vita__
         start_host_scan_thread();
 #endif

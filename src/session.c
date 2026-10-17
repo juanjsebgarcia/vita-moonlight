@@ -1,3 +1,4 @@
+#include "i18n/i18n.h"
 #include "session.h"
 
 #include "config.h"
@@ -66,11 +67,20 @@ int session_start_stream(int appId, char *err, size_t err_len) {
   int ret = gs_start_app(&server, &config.stream, appId, config.sops, config.localaudio, 1);
   if (ret < 0) {
     if (ret == GS_NOT_SUPPORTED_4K)
-      snprintf(err, err_len, "Server doesn't support 4K");
+      snprintf(err, err_len, "%s", tr(STR_STREAM_NO_4K));
     else if (ret == GS_NOT_SUPPORTED_MODE)
-      snprintf(err, err_len, "Server doesn't support %dx%d (%d fps)", config.stream.width, config.stream.height, config.stream.fps);
+    {
+      char mode[32], fps[8];
+      snprintf(mode, sizeof(mode), "%dx%d", config.stream.width, config.stream.height);
+      snprintf(fps, sizeof(fps), "%d", config.stream.fps);
+      TR_FMT(err, err_len, STR_STREAM_MODE_UNSUPPORTED, mode, fps);
+    }
     else
-      snprintf(err, err_len, "Errorcode starting app: %d", ret);
+    {
+      char code[16];
+      snprintf(code, sizeof(code), "%d", ret);
+      TR_FMT(err, err_len, STR_STREAM_START_FAILED, code);
+    }
 
     return ret;
   }
@@ -121,8 +131,9 @@ int session_start_stream(int appId, char *err, size_t err_len) {
   }
 
   const char* connection_failed_stage_name = LiGetStageName(connection_stage);
-  snprintf(err, err_len, "Failed to start stream:\nFailed stage: %s\n(error code %d)",
-           connection_failed_stage_name, ret);
+  char code[16];
+  snprintf(code, sizeof(code), "%d", ret);
+  TR_FMT(err, err_len, STR_STREAM_FAILED_STAGE, connection_failed_stage_name, code);
   return ret < 0 ? ret : -1;
 }
 
@@ -146,7 +157,7 @@ int session_open_headless(device_info_t *info, char *err, size_t err_len) {
     ret = gs_init(&server, (char *)addresses[i], info->port, key_dir, 0, true);
   }
   if (ret != GS_OK) {
-    snprintf(err, err_len, "Can't connect to %s: %s", info->name, gs_error ? gs_error : "no response");
+    TR_FMT(err, err_len, STR_CONNECT_FAILED, info->name, gs_error ? gs_error : tr(STR_CONNECT_NO_RESPONSE));
     return -1;
   }
   snprintf(current_host, sizeof(current_host), "%s", info->name);
@@ -157,7 +168,7 @@ int session_open_headless(device_info_t *info, char *err, size_t err_len) {
   // Not freed, as elsewhere: menu rows may still point at its names.
   server_applist = NULL;
   if (gs_applist(&server, &server_applist) != GS_OK) {
-    snprintf(err, err_len, "Can't read the app list from %s: %s", info->name, gs_error ? gs_error : "");
+    TR_FMT(err, err_len, STR_CONNECT_NO_APP_LIST, info->name, gs_error ? gs_error : "");
     return -1;
   }
   connection_paired();
@@ -215,8 +226,7 @@ int session_start_app_by_id(int app_id, char *err, size_t err_len) {
   // Auto-detect and the benchmark quit their app afterwards. Over a running
   // app, the host would resume that one instead, and they'd then close it.
   if (server.currentGame != 0) {
-    snprintf(err, err_len, "An app is already running on %s. Quit it from the "
-             "PC's menu first.", session_server_name());
+    TR_FMT(err, err_len, STR_STREAM_APP_RUNNING, session_server_name());
     return -1;
   }
   vitapower_config(config);
