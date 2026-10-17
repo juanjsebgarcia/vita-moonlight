@@ -73,6 +73,7 @@ typedef struct _CONFIGURATION {
   bool bench_autorun; // run once at launch, write the report and exit (cleared after)
   bool bench_quit_app; // quit the app on the host when the run ends
   char *bench_input;  // what a timed press sends: key, mouse or gamepad
+  bool bench_grab;    // save decoded frames at fixed page ticks, to compare picture quality
   bool jp_layout;
   int stats_overlay; // STATS_OVERLAY_* from stats.h
   bool enable_frame_pacer;

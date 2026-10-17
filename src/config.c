@@ -144,6 +144,8 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->bench_quit_app = BOOL(value);
     } else if (strcmp(name, "bench_input") == 0) {
       config->bench_input = STR(value);
+    } else if (strcmp(name, "bench_grab") == 0) {
+      config->bench_grab = BOOL(value);
     } else if (strcmp(name, "jp_layout") == 0) {
       config->jp_layout = BOOL(value);
     } else if (strcmp(name, "stats_overlay") == 0) {
@@ -243,6 +245,7 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_bool(fd, "bench_autorun", config->bench_autorun);
   write_config_bool(fd, "bench_quit_app", config->bench_quit_app);
   write_config_string(fd, "bench_input", config->bench_input);
+  write_config_bool(fd, "bench_grab", config->bench_grab);
   write_config_bool(fd, "jp_layout", config->jp_layout);
   write_config_int(fd, "stats_overlay", config->stats_overlay);
   write_config_bool(fd, "save_debug_log", config->save_debug_log);
@@ -327,6 +330,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->bench_autorun = false;
   config->bench_quit_app = true;
   config->bench_input = "key";
+  config->bench_grab = false;
   config->jp_layout = false;
   config->stats_overlay = STATS_OVERLAY_OFF;
   // Off by default: it counts frames in ~1 s windows and drops any excess, so jitter
