@@ -62,8 +62,12 @@ def main() -> int:
     by_label: dict[str, list[dict]] = defaultdict(list)
     failures = []
     for path in sys.argv[1:]:
-        with open(path, encoding="utf-8") as f:
-            report = json.load(f)
+        try:
+            with open(path, encoding="utf-8") as f:
+                report = json.load(f)
+        except (OSError, json.JSONDecodeError) as error:
+            failures.append(f"{path}: unreadable report ({error})")
+            continue
         label = report.get("label") or "(no label)"
         if not report.get("ok", False):
             failures.append(f"{path}: {report.get('error', 'unknown error')}")

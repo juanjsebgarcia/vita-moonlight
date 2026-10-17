@@ -158,7 +158,13 @@ run_variant() {
   local report="$out/$label-$round.json"
   while [ "$(date +%s)" -lt "$deadline" ]; do
     sleep 5
-    if fetch "$REPORT_PATH" "$report" 2>/dev/null && [ "$(report_id "$report")" != "$old_id" ]; then
+    # Only a report that parses and wasn't there before counts; report_id
+    # prints nothing for a file that's missing, partial or corrupt
+    local new_id=""
+    if fetch "$REPORT_PATH" "$report" 2>/dev/null; then
+      new_id="$(report_id "$report")"
+    fi
+    if [ -n "$new_id" ] && [ "$new_id" != "$old_id" ]; then
       python3 -I -c 'import json, sys
 r = json.load(open(sys.argv[1]))
 if r.get("ok"):
