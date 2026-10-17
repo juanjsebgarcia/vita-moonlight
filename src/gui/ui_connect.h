@@ -21,6 +21,9 @@ const char *ui_connect_server_name(void);
 // match on preferred, otherwise the first app with "bench" in its name.
 // Returns its id with its name in found, or -1 if there isn't one.
 int ui_connect_find_bench_app(const char *preferred, char *found, size_t found_len);
+// Finds an app on the connected host by name, ignoring case. Returns its id,
+// or -1 if there isn't one.
+int ui_connect_find_app(const char *name);
 // Starts streaming an app on the connected host. Returns 0, or a negative
 // code with a message in err.
 int ui_connect_start_app_by_id(int app_id, char *err, size_t err_len);
