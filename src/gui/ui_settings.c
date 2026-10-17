@@ -30,6 +30,7 @@
 #include <Limelight.h>
 #include "debug.h"
 #include "../util.h"
+#include "ui_recommended.h"
 extern char* strdup(const char*);
 
 static unsigned int settings_special_codes[] = {0,
@@ -461,7 +462,8 @@ enum {
   SETTINGS_BENCH_SECONDS,
   SETTINGS_HIDE_DEVELOPER,
   SETTINGS_DECODE_YUV,
-  SETTINGS_BLUETOOTH_WARNING
+  SETTINGS_BLUETOOTH_WARNING,
+  SETTINGS_RECOMMENDED
 };
 
 enum {
@@ -503,6 +505,7 @@ enum {
   SETTINGS_VIEW_HIDE_DEVELOPER,
   SETTINGS_VIEW_DECODE_YUV,
   SETTINGS_VIEW_BLUETOOTH_WARNING,
+  SETTINGS_VIEW_RECOMMENDED,
 
   SETTINGS_VIEW_MAX_COUNT,
 };
@@ -589,6 +592,10 @@ static const char *settings_help_text(int id) {
     case SETTINGS_ENABLE_FRAME_PACER:
       return "Throws away extra frames when more arrive than your FPS setting. It can cause a "
              "small hitch every few seconds, so off is recommended.";
+    case SETTINGS_RECOMMENDED:
+      return "Sets resolution, frame rate and bitrate to what worked best in testing, for good or "
+             "weak Wi-Fi. Auto-detect measures the signal where you'll play and picks for you. "
+             "Can't be used while a game is streaming.";
     case SETTINGS_BLUETOOTH_WARNING:
       return "Bluetooth and Wi-Fi share the Vita's 2.4 GHz radio, so while Bluetooth is on the "
              "stream can stutter or lose frames, more so with a Bluetooth controller or headphones "
@@ -775,6 +782,16 @@ static int settings_loop(int id, void *context, const input_data *input) {
       SET_ROW_VALUE(SETTINGS_VIEW_BENCH_SECONDS, value);
     }
     return 0;
+  }
+  if (id == SETTINGS_RECOMMENDED) {
+    if ((input->buttons & config.btn_confirm) == 0 || (input->buttons & SCE_CTRL_HOLD)) {
+      return 0;
+    }
+    if (ui_recommended_settings_menu() == RECOMMENDED_NONE) {
+      return 0;
+    }
+    // Carry on to the refresh at the end, which redraws every row's value
+    settings_loop_setup = 1;
   }
   // The Bluetooth warning has nothing to change, so confirm explains it too
   if (id == SETTINGS_BLUETOOTH_WARNING) {
@@ -1329,7 +1346,7 @@ static int settings_back(void *context) {
 // Eliminado: hotkeys_menu y referencias, ya que los atajos ahora son fijos
 
 int ui_settings_menu() {
-  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (41 at most today). Each
+  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (42 at most today). Each
   // entry is about 1 KB of the main thread stack, so do not oversize it
   menu_entry menu[44];
   int idx;
@@ -1374,6 +1391,7 @@ rebuild:
     MENU_MESSAGE("Settings that need a new stream return once this one ends.");
   }
   MENU_CATEGORY("Stream");
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_RECOMMENDED, SETTINGS_VIEW_RECOMMENDED, "Apply recommended settings", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_RESOLUTION, SETTINGS_VIEW_RESOLUTION, "Resolution", ICON_LEFT_RIGHT_ARROWS);
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_FPS, SETTINGS_VIEW_FPS, "FPS", ICON_LEFT_RIGHT_ARROWS);
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE, SETTINGS_VIEW_BITRATE, "Bitrate", "");
