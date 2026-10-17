@@ -464,7 +464,8 @@ enum {
   SETTINGS_BLUETOOTH_WARNING,
   SETTINGS_RECOMMENDED,
   SETTINGS_BITRATE_CUSTOM,
-  SETTINGS_ABOUT
+  SETTINGS_ABOUT,
+  SETTINGS_APP_LIST_STYLE
 };
 
 enum {
@@ -508,6 +509,7 @@ enum {
   SETTINGS_VIEW_BLUETOOTH_WARNING,
   SETTINGS_VIEW_RECOMMENDED,
   SETTINGS_VIEW_BITRATE_CUSTOM,
+  SETTINGS_VIEW_APP_LIST_STYLE,
 
   SETTINGS_VIEW_MAX_COUNT,
 };
@@ -713,6 +715,10 @@ static const char *settings_help_text(int id) {
              "frame rate, bitrate, lost frames, delays and Wi-Fi signal, to help track down stutter "
              "or lag. The Wi-Fi signal turns yellow below 60%, a sign to move closer to your router. "
              "Use left and right to change.";
+    case SETTINGS_APP_LIST_STYLE:
+      return "How a PC's games and apps are listed when you connect to it. Box art: a row of "
+             "game covers to scroll through with left and right. Text: a plain list, which "
+             "uses less memory. Covers are saved on the memory card after the first visit.";
     case SETTINGS_INPUT_SYNC:
       return "Reads your buttons in step with the Vita's controls, which saves battery without "
              "adding lag. If touch controls feel slower than before, turn it off.";
@@ -1222,6 +1228,15 @@ static int settings_loop(int id, void *context, const input_data *input) {
       }
       did_change = 1;
       break;
+    case SETTINGS_APP_LIST_STYLE:
+      // Only two styles, so left, right and confirm all switch between them
+      if (left || right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0)) {
+        config.app_list_style = (config.app_list_style + 1) % APP_LIST_STYLE_COUNT;
+      } else {
+        break;
+      }
+      did_change = 1;
+      break;
     case SETTINGS_LOCAL_AUDIO:
       if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
         break;
@@ -1399,6 +1414,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
   sprintf(current, "%s", stats_overlay_names[config.stats_overlay]);
   MENU_REPLACE(SETTINGS_VIEW_SHOW_FPS, current);
 
+  sprintf(current, "%s", config.app_list_style == APP_LIST_TEXT ? "text" : "box art");
+  MENU_REPLACE(SETTINGS_VIEW_APP_LIST_STYLE, current);
+
   sprintf(current, "%s", config.localaudio ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_LOCAL_AUDIO, current);
 
@@ -1461,7 +1479,7 @@ static int settings_back(void *context) {
 // Eliminado: hotkeys_menu y referencias, ya que los atajos ahora son fijos
 
 int ui_settings_menu() {
-  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (42 at most today). Each
+  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (43 at most today). Each
   // entry is about 1 KB of the main thread stack, so do not oversize it
   menu_entry menu[44];
   int idx;
@@ -1558,6 +1576,7 @@ rebuild:
   MENU_ENTRY(SETTINGS_BOOST_CLOCKS, SETTINGS_VIEW_BOOST_CLOCKS, "Boost CPU/GPU clocks while streaming", "");
   MENU_ENTRY(SETTINGS_JP_LAYOUT, SETTINGS_VIEW_JP_LAYOUT, "Swap X & O for Moonlight", "");
   MENU_ENTRY(SETTINGS_SHOW_FPS, SETTINGS_VIEW_SHOW_FPS, "Stats overlay", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY(SETTINGS_APP_LIST_STYLE, SETTINGS_VIEW_APP_LIST_STYLE, "App list", ICON_LEFT_RIGHT_ARROWS);
 
   MENU_TAB(TAB_CONTROLS);
 

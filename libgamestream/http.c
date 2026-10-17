@@ -20,11 +20,15 @@
 #include "http.h"
 #include "errors.h"
 
+#include <pthread.h>
 #include <stdbool.h>
 #include <string.h>
 #include <curl/curl.h>
 
 static CURL *curl;
+// There is one curl handle, and the box art loader uses it from its own thread
+// while the menu may make requests too, so one request runs at a time
+static pthread_mutex_t curl_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static bool debug;
 
@@ -71,8 +75,15 @@ int http_init(const char* keyDirectory, int logLevel) {
 }
 
 int http_request(char* url, PHTTP_DATA data) {
+  return http_request_timeout(url, data, 0);
+}
+
+int http_request_timeout(char* url, PHTTP_DATA data, long timeout_seconds) {
+  pthread_mutex_lock(&curl_lock);
+  int ret = GS_OK;
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, data);
   curl_easy_setopt(curl, CURLOPT_URL, url);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_seconds);
 //#ifdef __FreeBSD__
   curl_easy_setopt(curl, CURLOPT_FORBID_REUSE, 1);
 //#endif
@@ -83,8 +94,10 @@ int http_request(char* url, PHTTP_DATA data) {
   if (data->size > 0) {
     free(data->memory);
     data->memory = malloc(1);
-    if(data->memory == NULL)
-      return GS_OUT_OF_MEMORY;
+    if(data->memory == NULL) {
+      ret = GS_OUT_OF_MEMORY;
+      goto done;
+    }
 
     data->size = 0;
   }
@@ -92,15 +105,16 @@ int http_request(char* url, PHTTP_DATA data) {
 
   if(res != CURLE_OK) {
     gs_error = curl_easy_strerror(res);
-    return GS_FAILED;
+    ret = GS_FAILED;
   } else if (data->memory == NULL) {
-    return GS_OUT_OF_MEMORY;
+    ret = GS_OUT_OF_MEMORY;
+  } else if (debug) {
+    printf("Response:\n%s\n\n", data->memory);
   }
 
-  if (debug)
-    printf("Response:\n%s\n\n", data->memory);
-
-  return GS_OK;
+done:
+  pthread_mutex_unlock(&curl_lock);
+  return ret;
 }
 
 void http_cleanup() {
