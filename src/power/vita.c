@@ -119,6 +119,9 @@ void vitapower_start() {
   // Read the global config so a change made in the settings menu applies to the next stream
   if (config.boost_clocks) {
     boost_clocks();
+  } else {
+    // Turned off from the pause menu during this stream
+    restore_clocks();
   }
 }
 

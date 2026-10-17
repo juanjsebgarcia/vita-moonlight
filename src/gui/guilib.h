@@ -19,12 +19,48 @@ typedef struct menu_entry {
   char *name, *suffix;
   char subname[1024];
   bool disabled, separator;
+  bool warning; // drawn in yellow when not selected
   bool is_host_entry; // Nuevo: solo true para hosts emparejados
 } menu_entry;
 
 typedef struct menu_geom {
   int x, y, width, height, el, total_y;
 } menu_geom;
+
+// Vita control symbols, drawn as shapes because the UI font has no glyphs for them
+enum {
+  // Face buttons, in their usual colours
+  BUTTON_GLYPH_CROSS,
+  BUTTON_GLYPH_CIRCLE,
+  BUTTON_GLYPH_TRIANGLE,
+  BUTTON_GLYPH_SQUARE,
+  // D-pad, with the named direction highlighted, or all four for BUTTON_GLYPH_DPAD
+  BUTTON_GLYPH_DPAD,
+  BUTTON_GLYPH_DPAD_UP,
+  BUTTON_GLYPH_DPAD_DOWN,
+  BUTTON_GLYPH_DPAD_LEFT,
+  BUTTON_GLYPH_DPAD_RIGHT,
+  // Labelled buttons; these are wider than they are tall
+  BUTTON_GLYPH_L,
+  BUTTON_GLYPH_R,
+  BUTTON_GLYPH_L2,
+  BUTTON_GLYPH_R2,
+  BUTTON_GLYPH_START,
+  BUTTON_GLYPH_SELECT,
+  // Round controls
+  BUTTON_GLYPH_PS,
+  BUTTON_GLYPH_LEFT_STICK,
+  BUTTON_GLYPH_RIGHT_STICK,
+  BUTTON_GLYPH_L3,
+  BUTTON_GLYPH_R3,
+  // Touch surfaces
+  BUTTON_GLYPH_FRONT_TOUCH,
+  BUTTON_GLYPH_REAR_TOUCH,
+  BUTTON_GLYPH_COUNT
+};
+
+// Longest line wrap_text() produces, in bytes
+#define WRAP_LINE_MAX 256
 
 extern vita2d_font *font;
 
@@ -64,6 +100,17 @@ void display_alert(
         );
 
 void display_error(char *format, ...);
+// Shows a larger dialog with a title and explanatory text, closed with
+// confirm, cancel or triangle
+void display_help(const char *title, const char *message);
+
+// Draws a control symbol size pixels tall whose bottom sits on the text
+// baseline y, and returns its width (labelled buttons are wider than size)
+int draw_button_glyph(int glyph, int x, int y, int size);
+
+// Splits text into lines no wider than max_width at the UI font size, breaking
+// at spaces and newlines. Returns the number of lines written to lines.
+int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int max_lines);
 
 void flash_message(char *format, ...);
 

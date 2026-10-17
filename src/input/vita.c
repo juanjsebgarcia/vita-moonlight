@@ -50,7 +50,8 @@
 #define WIDTH 960
 #define HEIGHT 544
 #define MOUSE_SENSITIVITY 2400.0
-// Poll interval when the input thread is idle, or if the blocking controller read fails
+// Poll interval when the input thread is idle, when input_sync_to_controller is off,
+// or if the blocking controller read fails
 #define INPUT_FALLBACK_POLL_US 2000
 
 const short Y_MAXIMIUM_DEADZONE = -32383;
@@ -778,7 +779,10 @@ inline void vitainput_process(void) {
   // Blocks until the controller produces its next sample (once per vblank), which
   // paces this thread to the hardware instead of re-reading the same sample many
   // times. The sampling mode is set once in vitainput_init().
-  if (sceCtrlReadBufferPositiveExt2(controller_port, &pad, 1) < 0) {
+  if (!config.input_sync_to_controller) {
+    sceCtrlPeekBufferPositiveExt2(controller_port, &pad, 1);
+    sceKernelDelayThread(INPUT_FALLBACK_POLL_US);
+  } else if (sceCtrlReadBufferPositiveExt2(controller_port, &pad, 1) < 0) {
     sceCtrlPeekBufferPositiveExt2(controller_port, &pad, 1);
     sceKernelDelayThread(INPUT_FALLBACK_POLL_US);
   }
@@ -901,7 +905,7 @@ int vitainput_thread(SceSize args, void *argp) {
         vita_debug_log_thread("input");
         input_thread_logged = true;
       }
-      // Paced by the blocking controller read inside
+      // Paced inside, by the blocking controller read or the 2 ms poll
       vitainput_process();
     } else {
       sceKernelDelayThread(INPUT_FALLBACK_POLL_US);

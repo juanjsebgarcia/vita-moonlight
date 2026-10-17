@@ -59,6 +59,10 @@ add_executable(${PROJECT_NAME}.elf
 	src/debug.c
 	src/main.c
 	src/platform.c
+	src/stats.c
+	src/bench.c
+	src/netcount.c
+	src/devshot.c
 	src/util.c
 	src/device.c
 	src/check_dir.c
@@ -75,6 +79,8 @@ add_executable(${PROJECT_NAME}.elf
 	src/gui/ime.c
 	src/gui/ui.c
 	src/gui/ui_settings.c
+	src/gui/ui_recommended.c
+	src/gui/ui_boxart.c
 	src/gui/ui_connect.c
 	src/gui/ui_device.c
 	src/gui/ui_hotkey.c
@@ -145,6 +151,11 @@ add_executable(${PROJECT_NAME}.elf
 
 # Por defecto, solo enlazamos curl y el resto de libs estándar:
 target_link_libraries(${PROJECT_NAME}.elf
+	# Lets the benchmark time the Vita's send path (src/bench.c)
+	-Wl,--wrap=enet_peer_send
+	-Wl,--wrap=enet_socket_send
+	# Counts video packets as they arrive (src/netcount.c)
+	-Wl,--wrap=recvUdpSocket
 	-lexpat
 	-lcurl
 	moonlight-common-c
@@ -164,6 +175,7 @@ target_link_libraries(${PROJECT_NAME}.elf
 	-lSceTouch_stub
 	-lSceNet_stub
 	-lSceNetCtl_stub
+	-lSceRegistryMgr_stub
 	-lScePower_stub
 	-lSceVideodec_stub
 	-lSceCommonDialog_stub
