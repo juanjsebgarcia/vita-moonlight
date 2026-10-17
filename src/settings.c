@@ -7,7 +7,7 @@
 #include "video/vita.h"
 #include "input/touchabsolute.h"
 #include "input/swap_shoulder_buttons.h"
-#include "gui/ui_connect.h"
+#include "session.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -372,19 +372,19 @@ static void mapping_help(char *out, size_t size) {
  */
 
 static bool bench_not_ready(void) {
-  return !settings_streaming() && !ui_connect_server_ready();
+  return !settings_streaming() && !session_server_ready();
 }
 
 static bool bench_ready(void) {
-  return !settings_streaming() && ui_connect_server_ready();
+  return !settings_streaming() && session_server_ready();
 }
 
 static void bench_target_value(char *out, size_t size) {
   char app_name[128];
-  if (ui_connect_find_bench_app(config.bench_app, app_name, sizeof(app_name)) >= 0) {
-    snprintf(out, size, "%s on %s", app_name, ui_connect_server_name());
+  if (session_find_bench_app(config.bench_app, app_name, sizeof(app_name)) >= 0) {
+    snprintf(out, size, "%s on %s", app_name, session_server_name());
   } else {
-    snprintf(out, size, "no benchmark app on %s", ui_connect_server_name());
+    snprintf(out, size, "no benchmark app on %s", session_server_name());
   }
 }
 
