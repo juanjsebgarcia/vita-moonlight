@@ -264,8 +264,12 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
   switch (id) {
     case CONNECT_SETTINGS:
       // Settings that apply to a running stream take effect on Resume, which
-      // reloads the input and power settings and restarts output
-      ui_settings_menu();
+      // reloads the input and power settings and restarts output. The rest
+      // need a new stream, which Settings can ask for.
+      if (ui_settings_menu() == SETTINGS_RESTART_STREAM) {
+        ui_connect_restart_stream();
+        return connection_get_status() == LI_DISCONNECTED ? 1 : QUIT_RELOAD;
+      }
       return 0;
     case CONNECT_PAIRUNPAIR:
       if (server.paired) {
@@ -606,6 +610,26 @@ paired:
   }
 
   return info;
+}
+
+void ui_connect_restart_stream(void) {
+  int app_id = server.currentGame;
+  if (app_id == 0 || connection_get_status() != LI_MINIMIZED) {
+    return;
+  }
+  flash_message("Restarting the stream with the new settings...");
+  // The app keeps running on the host; only our stream ends
+  connection_terminate();
+  sceKernelDelayThread(500 * 1000);
+  connection_reset();
+  connection_paired();
+  vitapower_config(config);
+  vitainput_config(config);
+  // A resume carries the new resolution, frame rate and bitrate
+  ui_connect_stream(app_id);
+  while (connection_is_connected()) {
+    sceKernelDelayThread(500 * 1000);
+  }
 }
 
 void ui_connect_resume() {

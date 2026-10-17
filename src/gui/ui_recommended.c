@@ -86,6 +86,27 @@ enum {
 
 static int chosen;
 static int priority = PRIORITY_BALANCED;
+static bool restart_requested = false;
+
+// A stream paused behind Settings: the new settings need it restarted
+static bool stream_paused(void) {
+  return connection_get_status() == LI_MINIMIZED;
+}
+
+// After applying, offer to restart a paused stream so the settings take effect
+static void offer_restart(void) {
+  if (!stream_paused()) {
+    return;
+  }
+  restart_requested = display_confirm("These take effect on a new stream. Restart the stream now "
+                                      "with the new settings? The game keeps running on your PC.");
+}
+
+bool ui_recommended_take_restart(void) {
+  bool requested = restart_requested;
+  restart_requested = false;
+  return requested;
+}
 
 // A PS TV runs off the mains and usually sits on Ethernet
 static bool is_pstv(void) {
@@ -171,6 +192,9 @@ static void refresh(menu_entry *menu) {
   bool good = wired || (!mobile && percent >= GOOD_WIFI_PERCENT);
   strcpy(menu[ROW_GOOD].subname, known && good ? "(fits now)" : "");
   strcpy(menu[ROW_WEAK].subname, known && !good ? "(fits now)" : "");
+  // Auto-detect streams the PC's desktop, which can't happen while a game is
+  menu[ROW_AUTO].disabled = stream_paused();
+  strcpy(menu[ROW_AUTO].subname, stream_paused() ? "(quit the game first)" : "");
 }
 
 static int start_choice;
@@ -390,6 +414,7 @@ static int auto_detect(void) {
   }
   apply(which);
   show_applied(which);
+  offer_restart();
   return which;
 }
 
@@ -466,6 +491,7 @@ static int menu_loop(int id, void *context, const input_data *input) {
     chosen = id == ROW_GOOD ? RECOMMENDED_GOOD : RECOMMENDED_WEAK;
     apply(chosen);
     show_applied(chosen);
+    offer_restart();
     return 1;
   }
   return 0;
@@ -485,6 +511,7 @@ int ui_recommended_settings_menu(void) {
   refresh(menu);
 
   chosen = RECOMMENDED_NONE;
+  restart_requested = false;
   // A row of 24 px each, plus margins
   menu_geom geom = make_geom_centered(620, (ROW_COUNT + 1) * 24);
   display_menu(menu, ROW_COUNT, &geom, menu_loop, NULL, NULL, menu);
