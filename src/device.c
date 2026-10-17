@@ -81,6 +81,11 @@ const char *device_label(const device_info_t *info) {
   return info->display_name[0] != '\0' ? info->display_name : info->name;
 }
 
+const char *device_label_for_address(const char *address, const char *fallback) {
+  device_info_t *info = find_device_by_address(address);
+  return info != NULL ? device_label(info) : fallback;
+}
+
 device_info_t* find_device_by_address(const char *address) {
   if (address == NULL)
     return NULL;

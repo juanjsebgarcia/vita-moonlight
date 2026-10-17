@@ -140,7 +140,7 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
       }
       if (host_idx >= 0 && pending_ip_update_idx == host_idx && pending_ip_update[0] != '\0') {
         char msg[320];
-        snprintf(msg, sizeof(msg), "Host IP changed!\nOld: %s\nNew: %s\nDo you want to pair with the new IP?", info->internal, pending_ip_update);
+        snprintf(msg, sizeof(msg), "%s's IP changed!\nOld: %s\nNew: %s\nDo you want to pair with the new IP?", device_label(info), info->internal, pending_ip_update);
         int res = display_confirm(msg);
         if (res) {
           ui_check_ip_update(info, pending_ip_update);
@@ -182,7 +182,7 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
         info->external[sizeof(info->external)-1] = '\0';
         info->prefer_external = false;
         save_device_info(info);
-        flash_message("IP updated: %s", new_ip);
+        flash_message("IP updated for %s: %s", device_label(info), new_ip);
       } else {
         flash_message("IP change cancelled");
       }
@@ -468,7 +468,7 @@ int ui_main_menu() {
   if (ui_connect_connected()) {
     MENU_SEPARATOR("Current connection");
     ui_connect_address(addr);
-    sprintf(resume_msg, "Resume connection to %s", addr);
+    snprintf(resume_msg, sizeof(resume_msg), "Resume connection to %s (%s)", device_label_for_address(addr, addr), addr);
     MENU_ENTRY(MAIN_MENU_CONNECT_RESUME, resume_msg, false);
   } else {
     MENU_SEPARATOR("Add new computer");
