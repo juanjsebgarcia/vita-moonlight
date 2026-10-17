@@ -64,3 +64,20 @@ size_t ime_text_utf8(uint32_t c, char *out) {
   out[3] = (char)(0x80 | (c & 0x3F));
   return 4;
 }
+
+size_t ime_text_without(const uint16_t *text, size_t length, size_t start,
+                        size_t count, uint16_t *out) {
+  if (start > length) {
+    start = length;
+  }
+  if (count > length - start) {
+    count = length - start;
+  }
+  size_t copied = 0;
+  for (size_t i = 0; i < length; ++i) {
+    if (i < start || i >= start + count) {
+      out[copied++] = text[i];
+    }
+  }
+  return copied;
+}

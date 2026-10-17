@@ -28,3 +28,8 @@ size_t ime_text_next(const uint16_t *text, size_t length, uint32_t *code_point);
 
 // Encodes a code point as UTF-8 into out (room for 4 bytes); returns its length
 size_t ime_text_utf8(uint32_t code_point, char *out);
+
+// Copies text into out, leaving out the `count` units from `start` (an
+// active composition); returns the length copied. out has room for `length`.
+size_t ime_text_without(const uint16_t *text, size_t length, size_t start,
+                        size_t count, uint16_t *out);

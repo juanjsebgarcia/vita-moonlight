@@ -30,6 +30,8 @@ static SceWChar16 output_text[IME_TEXT_MAX + 1];      // Buffer para recibir el 
 // The text as last acted on: what an update is compared with
 static SceWChar16 committed_text[IME_TEXT_MAX + 1];
 static size_t committed_length = 0;
+// The keyboard's text without its composition
+static SceWChar16 visible_text[IME_TEXT_MAX + 1];
 // A composition (kana before conversion, and the like) is in the keyboard
 static int composing = 0;
 #include "input/keyboard.h"
@@ -110,12 +112,22 @@ static void reset_committed_text(void) {
     committed_length = IME_PLACEHOLDERS;
 }
 
-// Acts on the keyboard's committed text: units removed since the last time
-// become Backspaces, units added are sent as text. Returns whether anything
-// changed, so the placeholders can be put back.
-static int send_text_changes(void) {
-    size_t length = ime_text_length(output_text, IME_TEXT_MAX);
-    ime_text_edit edit = ime_text_diff(committed_text, committed_length, output_text, length);
+static int committed_is_placeholders(void) {
+    if (committed_length != IME_PLACEHOLDERS) return 0;
+    for (int i = 0; i < IME_PLACEHOLDERS; ++i) {
+        if (committed_text[i] != 1) return 0;
+    }
+    return 1;
+}
+
+// Acts on the keyboard's committed text, that is all of it but the active
+// composition (preedit_length units from preedit_index): units removed since
+// the last time become Backspaces, units added are sent as text. Returns
+// whether anything changed.
+static int send_text_changes(SceUInt32 preedit_index, SceUInt32 preedit_length) {
+    size_t length = ime_text_without(output_text, ime_text_length(output_text, IME_TEXT_MAX), preedit_index, preedit_length, visible_text);
+    visible_text[length] = 0;
+    ime_text_edit edit = ime_text_diff(committed_text, committed_length, visible_text, length);
     if (edit.deleted == 0 && edit.inserted_length == 0) {
         return 0;
     }
@@ -124,8 +136,8 @@ static int send_text_changes(void) {
         LiSendKeyboardEvent(0x08, KEY_ACTION_DOWN, 0);
         LiSendKeyboardEvent(0x08, KEY_ACTION_UP, 0);
     }
-    send_text(output_text + edit.index, edit.inserted_length);
-    memcpy(committed_text, output_text, length * sizeof(SceWChar16));
+    send_text(visible_text + edit.index, edit.inserted_length);
+    memcpy(committed_text, visible_text, length * sizeof(SceWChar16));
     committed_text[length] = 0;
     committed_length = length;
     return 1;
@@ -172,21 +184,20 @@ static void keyboardsystem_ime_event_handler(void *arg, const SceImeEventData *e
     // --- TEXTO: borrado y caracteres escritos ---
     // Compared with the text before: removed units are Backspaces, added ones
     // are sent as text, however many a single update brings (a conversion
-    // such as 日本 is committed at once). A composition stays in the keyboard,
-    // untouched, until it is committed.
+    // such as 日本 is committed at once). The active composition is left out
+    // and stays in the keyboard, untouched, until it is committed; text
+    // committed beside it (a Korean syllable while the next is composed) is
+    // sent straight away. The placeholders come back once nothing is composed.
     if (e->id == 1) {
-        if (e->param.text.preeditLength > 0) {
-            composing = 1;
-            return;
-        }
-        composing = 0;
-        if (ime_text_length(output_text, IME_TEXT_MAX) == 0) {
+        composing = e->param.text.preeditLength > 0;
+        if (!composing && ime_text_length(output_text, IME_TEXT_MAX) == 0) {
             // Not a key press: the keyboard dropped its text. Restore it.
             reset_committed_text();
             forzar_centro = 1;
             return;
         }
-        if (send_text_changes()) {
+        int changed = send_text_changes(e->param.text.preeditIndex, e->param.text.preeditLength);
+        if (!composing && (changed || !committed_is_placeholders())) {
             forzar_centro = 1;
         }
         return;
@@ -217,7 +228,7 @@ static void keyboardsystem_ime_event_handler(void *arg, const SceImeEventData *e
             // Enter confirms the composition: send it as typed
             vita_debug_log("[IME MOONLIGHT] Enter confirms the composition");
             composing = 0;
-            send_text_changes();
+            send_text_changes(0, 0);
             forzar_centro = 1;
             return;
         }
