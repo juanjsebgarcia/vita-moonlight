@@ -104,7 +104,6 @@ typedef struct _CONFIGURATION {
   SceCtrlButtons btn_cancel;
   int pin;
   uint16_t port;
-  int keyboard_layout; // 0=EN_US, 1=ES_ES, 2=ES_LATAM
   char *language;      // a language tag such as "de", or "auto" for the system's
   int touchscreen_mode; // 0=off, 1=DS4, 2=Mouse absoluto, 3=Tableta multitouch
   int controller_type; // 1: Xbox, 2: PS (default), 3: Nintendo, 4: Generic

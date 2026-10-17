@@ -205,7 +205,6 @@ int main(int argc, char* argv[]) {
   touchabsolute_enable(config.touchscreen_mode == 2);
 
   // Aplicar el layout guardado después de cargar la config
-  keyboardsystem_set_layout((KeyboardLayout)config.keyboard_layout);
 
   vitapower_config(config);
   vitainput_config(config);

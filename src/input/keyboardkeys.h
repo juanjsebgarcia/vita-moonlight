@@ -10,17 +10,7 @@ struct CharVKMap {
     int needs_shift;
 };
 
-// Enumeración de layouts soportados
-typedef enum {
-    KB_LAYOUT_EN_US = 0,
-    KB_LAYOUT_ES_ES,
-    KB_LAYOUT_ES_LATAM,
-    KB_LAYOUT_COUNT
-} KeyboardLayout;
-
-// Devuelve el diccionario y el tamaño para el layout seleccionado
-const struct CharVKMap* get_char_vk_dict(KeyboardLayout layout, int* out_count);
-
-void keyboardsystem_set_layout(KeyboardLayout layout);
+// The key presses for each character on a US keyboard, and how many there are
+const struct CharVKMap* get_char_vk_dict(int* out_count);
 
 #endif // KEYBOARDKEYS_H

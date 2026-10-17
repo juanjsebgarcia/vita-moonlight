@@ -12,6 +12,7 @@
 #include "Limelight.h" // Asegúrate de que la ruta sea correcta según tu proyecto
 #include "input/keyboardkeys.h"
 #include "config.h"
+#include "session.h"
 #include "../src/debug.h"
 
 #define WORK_BUFFER_SIZE (SCE_IME_WORK_BUFFER_SIZE)
@@ -22,16 +23,8 @@ static SceWChar16 output_text[4];      // Buffer para recibir el texto (aunque n
 #include "input/keyboard.h"
 #include <stddef.h>
 
-// Layout seleccionado (por defecto EN_US)
-static KeyboardLayout g_keyboard_layout = KB_LAYOUT_EN_US;
-
-
 // Estado interno del overlay de teclado virtual
 static bool _keyboard_overlay_open = false;
-
-void keyboardsystem_set_layout(KeyboardLayout layout) {
-    g_keyboard_layout = layout;
-}
 
 // Exponer el estado para otros módulos
 bool keyboardsystem_is_open(void) {
@@ -40,7 +33,7 @@ bool keyboardsystem_is_open(void) {
 
 static int find_vk_for_char(wchar_t ch, int* vk, int* needs_shift) {
     int count = 0;
-    const struct CharVKMap* dict = get_char_vk_dict(g_keyboard_layout, &count);
+    const struct CharVKMap* dict = get_char_vk_dict(&count);
     for (int i = 0; i < count; ++i) {
         if (dict[i].ch == ch) {
             *vk = dict[i].vk;
@@ -49,6 +42,61 @@ static int find_vk_for_char(wchar_t ch, int* vk, int* needs_shift) {
         }
     }
     return 0;
+}
+
+// The character just typed: the first in the buffer that isn't a placeholder,
+// joining a UTF-16 surrogate pair (emoji and the like) into one code point
+static uint32_t typed_character(void) {
+    for (int i = 0; i < 4; ++i) {
+        uint32_t c = output_text[i];
+        if (c == 0 || c == 1) {
+            continue;
+        }
+        if (c >= 0xD800 && c <= 0xDBFF && i + 1 < 4 && output_text[i + 1] >= 0xDC00 && output_text[i + 1] <= 0xDFFF) {
+            return 0x10000 + ((c - 0xD800) << 10) + (output_text[i + 1] - 0xDC00);
+        }
+        return c;
+    }
+    return 0;
+}
+
+// Sends a typed character. Sunshine takes it as text, whatever its keyboard
+// layout or language; other hosts get the key presses for it on a US keyboard.
+static void send_character(uint32_t c) {
+    if (c >= 0x20 && session_host_takes_text()) {
+        char utf8[4];
+        unsigned int length;
+        if (c < 0x80) {
+            utf8[0] = (char)c;
+            length = 1;
+        } else if (c < 0x800) {
+            utf8[0] = (char)(0xC0 | (c >> 6));
+            utf8[1] = (char)(0x80 | (c & 0x3F));
+            length = 2;
+        } else if (c < 0x10000) {
+            utf8[0] = (char)(0xE0 | (c >> 12));
+            utf8[1] = (char)(0x80 | ((c >> 6) & 0x3F));
+            utf8[2] = (char)(0x80 | (c & 0x3F));
+            length = 3;
+        } else {
+            utf8[0] = (char)(0xF0 | (c >> 18));
+            utf8[1] = (char)(0x80 | ((c >> 12) & 0x3F));
+            utf8[2] = (char)(0x80 | ((c >> 6) & 0x3F));
+            utf8[3] = (char)(0x80 | (c & 0x3F));
+            length = 4;
+        }
+        vita_debug_log("[IME MOONLIGHT] text U+%04X", c);
+        LiSendUtf8TextEvent(utf8, length);
+        return;
+    }
+    int vk = 0, needs_shift = 0;
+    if (c <= 0xFFFF && find_vk_for_char((wchar_t)c, &vk, &needs_shift)) {
+        vita_debug_log("[IME MOONLIGHT] key U+%04X -> VK 0x%02X", c, vk);
+        if (needs_shift) LiSendKeyboardEvent(0x10, KEY_ACTION_DOWN, 0);
+        LiSendKeyboardEvent(vk, KEY_ACTION_DOWN, 0);
+        LiSendKeyboardEvent(vk, KEY_ACTION_UP, 0);
+        if (needs_shift) LiSendKeyboardEvent(0x10, KEY_ACTION_UP, 0);
+    }
 }
 
 static int prev_caret_index = 1;
@@ -87,7 +135,9 @@ static void keyboardsystem_ime_event_handler(void *arg, const SceImeEventData *e
         }
     }
     // --- BACKSPACE (borrado) y TECLA NORMAL/ESPECIAL ---
-    if (e->id == 1 && (caret == 0 || caret == 1)) {
+    // A character outside the basic range (an emoji) takes two UTF-16 units,
+    // so the caret ends one further on
+    if (e->id == 1 && (caret == 0 || caret == 1 || (caret == 2 && typed_character() > 0xFFFF))) {
         wchar_t ch = 0;
         for (int i = 0; i < 4; ++i) {
             if (output_text[i] != 0 && output_text[i] != 1) {
@@ -104,30 +154,9 @@ static void keyboardsystem_ime_event_handler(void *arg, const SceImeEventData *e
             forzar_centro = 1;
             return;
         }
-        // TECLA LETRA NORMAL (a-z, A-Z)
-        if (caret == 1 && ch && ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'))) {
-            int vk = 0, needs_shift = 0;
-            if (find_vk_for_char(ch, &vk, &needs_shift)) {
-                vita_debug_log("[IME MOONLIGHT] TECLA LETRA: '%lc' (U+%04X) -> VK: 0x%02X", ch, ch, vk);
-                if (needs_shift) LiSendKeyboardEvent(0x10, KEY_ACTION_DOWN, 0);
-                LiSendKeyboardEvent(vk, KEY_ACTION_DOWN, 0);
-                LiSendKeyboardEvent(vk, KEY_ACTION_UP, 0);
-                if (needs_shift) LiSendKeyboardEvent(0x10, KEY_ACTION_UP, 0);
-            }
-            for (int i = 0; i < 4; ++i) output_text[i] = 1;
-            forzar_centro = 1;
-            return;
-        }
-        // TECLA ESPECIAL (símbolos, números, acentos, etc)
-        if (ch && !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'))) {
-            int vk = 0, needs_shift = 0;
-            if (find_vk_for_char(ch, &vk, &needs_shift)) {
-                vita_debug_log("[IME MOONLIGHT] TECLA ESPECIAL: '%lc' (U+%04X) -> VK: 0x%02X", ch, ch, vk);
-                if (needs_shift) LiSendKeyboardEvent(0x10, KEY_ACTION_DOWN, 0);
-                LiSendKeyboardEvent(vk, KEY_ACTION_DOWN, 0);
-                LiSendKeyboardEvent(vk, KEY_ACTION_UP, 0);
-                if (needs_shift) LiSendKeyboardEvent(0x10, KEY_ACTION_UP, 0);
-            }
+        // A typed character
+        if (ch && (caret == 1 || !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')))) {
+            send_character(typed_character());
             for (int i = 0; i < 4; ++i) output_text[i] = 1;
             forzar_centro = 1;
             return;
@@ -185,8 +214,6 @@ void keyboardsystem_open_keyboard(void) {
     // Marcar overlay como abierto
     _keyboard_overlay_open = true;
 
-    // Asegura que el layout global esté sincronizado con la config antes de abrir el IME
-    keyboardsystem_set_layout((KeyboardLayout)config.keyboard_layout);
     sceClibPrintf("[IME MOONLIGHT] Teclado abierto\n");
     // Inicializar buffer y caret IME robustos para movimiento infinito
     ime_working_buffer[0] = 1;
@@ -209,23 +236,10 @@ void keyboardsystem_open_keyboard(void) {
     sceImeParamInit(&param);
 
     // 3) Configurar campos obligatorios de SceImeParam
-    KeyboardLayout layout = config.keyboard_layout;
-    g_keyboard_layout = layout;
-    switch (layout) {
-        case KB_LAYOUT_EN_US:
-            param.supportedLanguages = SCE_IME_LANGUAGE_ENGLISH;
-            break;
-        case KB_LAYOUT_ES_ES:
-            param.supportedLanguages = SCE_IME_LANGUAGE_SPANISH;
-            break;
-        case KB_LAYOUT_ES_LATAM:
-            param.supportedLanguages = SCE_IME_LANGUAGE_SPANISH;
-            break;
-        default:
-            param.supportedLanguages = SCE_IME_LANGUAGE_ENGLISH;
-            break;
-    }
-    param.languagesForced   = SCE_TRUE;
+    // Text is sent as text, so any keyboard language works: offer the ones
+    // the player chose in the Vita's keyboard settings
+    param.supportedLanguages = 0x000FFFFF;
+    param.languagesForced   = SCE_FALSE;
     param.type              = SCE_IME_TYPE_DEFAULT;
     param.option            = SCE_IME_OPTION_NO_ASSISTANCE;
     param.work              = work_buffer;

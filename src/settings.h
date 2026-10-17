@@ -38,7 +38,6 @@ typedef enum {
   SETTING_ACTION_SPRINT_TIME,     // enter the double tap time in ms
   SETTING_ACTION_BACK_DEADZONE,   // the rear touch dead zone screen
   SETTING_ACTION_SPECIAL_KEYS,    // the touch corner buttons screen
-  SETTING_ACTION_KEYBOARD_LAYOUT, // the keyboard layout screen
   SETTING_ACTION_RUN_BENCHMARK,
   SETTING_ACTION_HIDE_DEVELOPER,
   SETTING_ACTION_SHOW_HELP,       // nothing to change: confirm explains it

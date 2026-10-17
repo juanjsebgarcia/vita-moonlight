@@ -22,6 +22,10 @@ void session_set_host(const char *name);
 int get_app_id(PAPP_LIST list, char *name);
 int get_app_name(PAPP_LIST list, int id, char *name);
 
+// Whether the connected host takes typed text as text (Sunshine does), rather
+// than only key presses
+bool session_host_takes_text(void);
+
 // Starts streaming appId on the connected host. Returns 0, or a negative
 // code with a message in err.
 int session_start_stream(int appId, char *err, size_t err_len);

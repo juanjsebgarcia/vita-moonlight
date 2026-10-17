@@ -175,6 +175,13 @@ int session_open_headless(device_info_t *info, char *err, size_t err_len) {
   return 0;
 }
 
+bool session_host_takes_text(void) {
+  // Sunshine reports a negative last part in its version, as
+  // moonlight-common-c's IS_SUNSHINE() checks
+  const char *version = server.serverInfo.serverInfoAppVersion;
+  return version != NULL && strstr(version, ".-") != NULL;
+}
+
 bool session_server_ready(void) {
   int status = connection_get_status();
   return server.paired && server_applist != NULL && (status == LI_READY || status == LI_PAIRED);

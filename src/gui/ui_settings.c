@@ -2,7 +2,6 @@
 
 #include "guilib.h"
 #include "ime.h"
-#include "ui_keyboard.h"
 
 #include "../config.h"
 #include "../input/vita.h"
@@ -500,9 +499,6 @@ static int run_action(const setting_def *setting) {
       return 0;
     case SETTING_ACTION_SPECIAL_KEYS:
       special_keys_menu();
-      return 0;
-    case SETTING_ACTION_KEYBOARD_LAYOUT:
-      keyboard_layout_menu();
       return 0;
     case SETTING_ACTION_RUN_BENCHMARK:
       ui_settings_save_config();

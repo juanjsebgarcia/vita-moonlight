@@ -586,10 +586,6 @@ const setting_def SETTINGS[] = {
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,
    .label = STR_SET_TOUCH_MODE_SELECT, .value = touch_mode_value, .change = touch_mode_change,
    .help = STR_SET_TOUCH_MODE_SELECT_HELP},
-  {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_HEADER, .label = STR_SET_HEADER_KEYBOARD},
-  {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_ACTION,
-   .label = STR_SET_KEYBOARD_LAYOUT, .action = SETTING_ACTION_KEYBOARD_LAYOUT,
-   .help = STR_SET_KEYBOARD_LAYOUT_HELP},
 
   // Developer, shown after holding L and R and pressing triangle
   {.tab = SETTINGS_TAB_DEVELOPER, .kind = SETTING_NOTE,

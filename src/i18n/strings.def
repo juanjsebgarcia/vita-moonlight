@@ -92,9 +92,6 @@ S(SET_SPECIAL_KEYS, "Touchscreen special keys", "Settings row")
 S(SET_SPECIAL_KEYS_HELP, "Choose what each corner of the front screen does, such as opening the pause menu or pressing the PS button. Only works when Enable touchscreen special keys is on.", "Help for the row above")
 S(SET_TOUCH_MODE_SELECT, "Touchscreen mode", "Settings row")
 S(SET_TOUCH_MODE_SELECT_HELP, "How the front screen works in games. Off: a trackpad for the mouse. DS4 Touchpad: a PlayStation controller touchpad. Mouse Absolute: the cursor jumps to your finger. Tablet: full multi-touch (Sunshine).", "Help for the row above")
-S(SET_HEADER_KEYBOARD, "Keyboard", "Settings heading")
-S(SET_KEYBOARD_LAYOUT, "Keyboard layout", "Settings row")
-S(SET_KEYBOARD_LAYOUT_HELP, "The language layout of the on-screen keyboard, which you open with {start} + {left} while streaming.", "Help for the row above")
 S(SET_NOTE_BENCH_STREAMING, "The benchmark can't run during a stream.", "Settings message")
 S(SET_NOTE_BENCH_CONNECT, "To benchmark, open Settings from a connected computer's menu.", "Settings message")
 S(SET_BENCH_RUN, "Run benchmark", "Settings row")
@@ -192,10 +189,6 @@ S(SEARCH_REFRESH_HINT, "Press {triangle} to refresh the search", "{triangle} is 
 S(SEARCH_TITLE, "Search devices ...", "Heading")
 S(SEARCH_BACK, "Return", "Menu row that goes back")
 
-/* Keyboard layouts */
-S(KEYBOARD_EN_US, "English (US)", "Keyboard layout")
-S(KEYBOARD_ES_ES, "Spanish (Spain)", "Keyboard layout")
-S(KEYBOARD_ES_LATAM, "Spanish (Latin America)", "Keyboard layout")
 
 /* A PC at a new address */
 S(HOST_IP_CHANGED_ASK, "Your host changed its IP address.\nOld: {0}\nNew: {1}", "{0}, {1} = IP addresses")
