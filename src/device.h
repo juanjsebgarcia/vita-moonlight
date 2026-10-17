@@ -29,6 +29,8 @@ extern device_infos_t known_devices;
 device_info_t* find_device(const char *name);
 // The name to show the user: the display name if one is set, otherwise name
 const char *device_label(const device_info_t *info);
+// The label of the known device at this address, or fallback if there isn't one
+const char *device_label_for_address(const char *address, const char *fallback);
 device_info_t* find_device_by_address(const char *address);
 device_info_t* append_device(device_info_t *info);
 bool update_device(device_info_t *info);

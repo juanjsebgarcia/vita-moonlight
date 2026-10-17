@@ -384,7 +384,8 @@ disconnect:
 int ui_connect(char *name, char *address, uint16_t port) {
   int ret;
   if (!connection_is_ready()) {
-    flash_message("Connecting to:\n %s:%d...", address, port);
+    const char *label = device_label_for_address(address, name);
+    flash_message("Connecting to %s\n(%s:%d)...", label, address, port);
 
     char key_dir[4096];
     sprintf(key_dir, "%s/%s", config.key_dir, name);
@@ -395,7 +396,7 @@ int ui_connect(char *name, char *address, uint16_t port) {
       display_error("Not enough memory");
       return 0;
     } else if (ret == GS_INVALID) {
-      display_error("Invalid data received from server: %s\n", address, gs_error);
+      display_error("Invalid data received from %s (%s): %s", label, address, gs_error);
       return 0;
     } else if (ret == GS_UNSUPPORTED_VERSION) {
       if (!config.unsupported_version) {
@@ -406,7 +407,7 @@ int ui_connect(char *name, char *address, uint16_t port) {
       display_error("Gamestream error: %s\n", gs_error);
       return 0;
     } else if (ret != GS_OK) {
-      display_error("Can't connect to server\n%s", address);
+      display_error("Can't connect to %s\n(%s)", label, address);
       return 0;
     }
 
@@ -528,7 +529,7 @@ int ui_connected_menu() {
 }
 
 device_info_t* ui_connect_and_pairing(device_info_t *info) {
-  flash_message("Test connecting to:\n %s...", info->internal);
+  flash_message("Test connecting to %s\n(%s)...", device_label(info), info->internal);
   vita_debug_log("[CONNECT] Intentando conectar: name=%s, ip=%s, port=%d", info->name, info->internal, info->port);
   char key_dir[4096];
   sprintf(key_dir, "%s/%s", config.key_dir, info->name);
@@ -540,7 +541,7 @@ device_info_t* ui_connect_and_pairing(device_info_t *info) {
     display_error("Not enough memory");
     return NULL;
   } else if (ret == GS_INVALID) {
-    display_error("Invalid data received from server: %s\n", info->internal, gs_error);
+    display_error("Invalid data received from %s (%s): %s", device_label(info), info->internal, gs_error);
     return NULL;
   } else if (ret == GS_UNSUPPORTED_VERSION) {
     if (!config.unsupported_version) {
@@ -551,7 +552,7 @@ device_info_t* ui_connect_and_pairing(device_info_t *info) {
     display_error("Gamestream error: %s\n", gs_error);
     return NULL;
   } else if (ret != GS_OK) {
-    display_error("Can't connect to server\n%s", info->internal);
+    display_error("Can't connect to %s\n(%s)", device_label(info), info->internal);
     return NULL;
   }
 
@@ -657,7 +658,7 @@ bool check_connection(const char *name, char *addr, uint16_t port) {
     return false;
   }
 
-  flash_message("Check connecting to:\n %s:%d...", addr, port);
+  flash_message("Checking %s\n(%s:%d)...", device_label_for_address(addr, name), addr, port);
 
   int log_level = 0;
   if (config.save_debug_log) {
