@@ -26,6 +26,7 @@
 #include "vita.h"
 #include "sps.h"
 #include "../stats.h"
+#include "../bench.h"
 
 #include <Limelight.h>
 
@@ -117,6 +118,15 @@ static bool active_video_thread = true;
 static bool active_pacer_thread = false;
 static indicator_status poor_net_indicator = {0};
 static bool decode_thread_logged = false;
+// Fixed for a stream at setup, since the textures are created for one format
+static bool decode_yuv = false;
+
+// A reminder of how to reach the menu, shown at the start of each stream
+#define STREAM_HINT_DURATION_US 5000000
+#define STREAM_HINT_FADE_US 1000000
+static const char *STREAM_HINT_TEXT = "Press START + L + R for the menu and to quit";
+// When the first frame of this stream was drawn, or 0 before that
+static uint64_t stream_hint_start_us = 0;
 
 uint32_t frame_count = 0;
 uint32_t need_drop = 0;
@@ -316,7 +326,10 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
   int ret;
   printf("vita video setup\n");
   decode_thread_logged = false;
+  stream_hint_start_us = 0;
   vitastats_reset();
+  decode_yuv = config.decode_yuv;
+  printf("video output: %s\n", decode_yuv ? "YUV420 (NV21), converted by the GPU" : "RGBA8888 from the decoder");
 
   if (video_status == NOT_INIT) {
     // INIT_GS
@@ -339,7 +352,15 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
     }
 
     for (int i = 0; i < FRAME_TEXTURE_COUNT; i++) {
-      frame_textures[i] = vita2d_create_empty_texture_format(image_scaling.texture_width, image_scaling.texture_height, SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR);
+      // In YUV mode the decoder writes NV21 (a Y plane, then interleaved V/U,
+      // so the YVU format: YUV swaps red and blue) and the GPU's texture unit
+      // converts it while sampling. CSC0 is BT.601, which is what we ask the
+      // host to encode; measured against the decoder's own RGBA output.
+      // vita2d sizes unknown formats at 4 bytes per pixel, which is more than
+      // the 1.5 that NV21 needs.
+      frame_textures[i] = vita2d_create_empty_texture_format(image_scaling.texture_width, image_scaling.texture_height,
+                                                             decode_yuv ? SCE_GXM_TEXTURE_FORMAT_YVU420P2_CSC0
+                                                                        : SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR);
       if (frame_textures[i] == NULL) {
         printf("frame_textures[%d]: not enough memory\n", i);
         ret = VITA_VIDEO_ERROR_NO_MEM;
@@ -470,7 +491,7 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   vitastats_frame_received(decodeUnit, submit_us);
 
   if (!decode_thread_logged) {
-    // Runs on common-c's VideoDec thread
+    // Runs on common-c's VideoDec thread, or VideoRecv with config.direct_decode
     vita_debug_log_thread("video decode");
     decode_thread_logged = true;
   }
@@ -485,11 +506,16 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   //frame->time = decodeUnit->receiveTimeMs;
 
   picture.size = sizeof(picture);
-  picture.frame.pixelType = 0;
+  picture.frame.pixelType = decode_yuv ? SCE_AVCDEC_PIXELFORMAT_YUV420_PACKED_RASTER : SCE_AVCDEC_PIXELFORMAT_RGBA8888;
   picture.frame.framePitch = image_scaling.texture_width;
   picture.frame.frameWidth = image_scaling.texture_width;
   picture.frame.frameHeight = image_scaling.texture_height;
   picture.frame.pPicture[0] = vita2d_texture_get_datap(frame_textures[back_texture_idx]);
+  if (decode_yuv) {
+    // GXM's two-plane YUV420 texture expects the V/U plane straight after Y
+    picture.frame.pPicture[1] = (uint8_t *)picture.frame.pPicture[0]
+                                + image_scaling.texture_width * image_scaling.texture_height;
+  }
 
   //ensure_buf_size((void *)&decoder_buffer, &decoder_buffer_size, decodeUnit->fullLength + 64);
 
@@ -532,6 +558,8 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   au.pts.upper = 0xFFFFFFFF;
 
   int ret = 0;
+  // Separates assembling the frame from the hardware decode, for the benchmark
+  uint64_t hw_start_us = LiGetMicroseconds();
   ret = sceAvcdecDecode(decoder, &au, &array_picture);
   uint64_t decoded_us = LiGetMicroseconds();
   vitastats_frame_decoded(decoded_us - submit_us);
@@ -543,6 +571,19 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   if (array_picture.numOfOutput != 1) {
     //printf("numOfOutput %d\n", array_picture.numOfOutput);
     return DR_OK;
+  }
+
+  if (vitabench_active()) {
+    // Read the benchmark page's strip from the texture this frame was decoded into
+    vita2d_texture *decoded = frame_textures[back_texture_idx];
+    vitabench_frame_decoded(decodeUnit, submit_us, hw_start_us, decoded_us,
+                            vita2d_texture_get_datap(decoded),
+                            // In YUV mode the probes read the Y (luma) plane, one byte per pixel
+                            decode_yuv ? (int)image_scaling.texture_width : vita2d_texture_get_stride(decoded),
+                            decode_yuv ? 1 : 4,
+                            image_scaling.texture_height,
+                            image_scaling.region_x1, image_scaling.region_y1,
+                            image_scaling.region_x2, image_scaling.region_y2);
   }
 
   //TODO: Seems silly to decode the unit if we're going to drop the frame?
@@ -567,7 +608,11 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
 
       vita2d_end_drawing();
       vita2d_swap_buffers();
-      vitastats_frame_rendered(LiGetMicroseconds() - decoded_us);
+      uint64_t rendered_us = LiGetMicroseconds();
+      vitastats_frame_rendered(rendered_us - decoded_us);
+      if (vitabench_active()) {
+        vitabench_frame_rendered(rendered_us);
+      }
 
       // Only flip after drawing, so a dropped frame's texture is simply reused
       back_texture_idx = (back_texture_idx + 1) % FRAME_TEXTURE_COUNT;
@@ -597,7 +642,34 @@ void draw_fps() {
   vitastats_draw();
 }
 
+static void draw_stream_hint(void) {
+  uint64_t now = LiGetMicroseconds();
+  if (stream_hint_start_us == 0) {
+    stream_hint_start_us = now;
+  }
+  uint64_t shown_for = now - stream_hint_start_us;
+  if (shown_for >= STREAM_HINT_DURATION_US) {
+    return;
+  }
+
+  // Fade out over the last second
+  uint64_t remaining = STREAM_HINT_DURATION_US - shown_for;
+  float opacity = remaining < STREAM_HINT_FADE_US ? (float)remaining / STREAM_HINT_FADE_US : 1.0f;
+
+  const int font_size = 20;
+  int text_width = vita2d_font_text_width(font, font_size, STREAM_HINT_TEXT);
+  int box_width = text_width + 32;
+  int box_height = 36;
+  int box_x = (SCREEN_WIDTH - box_width) / 2;
+  int box_y = SCREEN_HEIGHT - box_height - 24;
+  vita2d_draw_rectangle(box_x, box_y, box_width, box_height, RGBA8(0, 0, 0, (uint8_t)(0xB0 * opacity)));
+  vita2d_font_draw_text(font, box_x + 16, box_y + 25, RGBA8(0xFF, 0xFF, 0xFF, (uint8_t)(0xFF * opacity)),
+                        font_size, STREAM_HINT_TEXT);
+}
+
 void draw_indicators() {
+  draw_stream_hint();
+
   if (poor_net_indicator.activated) {
     vita2d_font_draw_text(font, 40, 500, RGBA8(0xFF, 0xFF, 0xFF, poor_net_indicator.alpha), 64, ICON_NETWORK);
     poor_net_indicator.alpha += (0x4 * (poor_net_indicator.plus ? 1 : -1));
@@ -640,8 +712,9 @@ DECODER_RENDERER_CALLBACKS decoder_callbacks_vita = {
   .setup = vita_setup,
   .cleanup = vita_cleanup,
   .submitDecodeUnit = vita_submit_decode_unit,
-  // No CAPABILITY_DIRECT_SUBMIT: common-c then runs submitDecodeUnit on its own
-  // VideoDec thread behind a frame queue, so the blocking decode, GPU wait and
-  // buffer swap never stop VideoRecv from draining the socket
+  // No CAPABILITY_DIRECT_SUBMIT by default: common-c then runs submitDecodeUnit on
+  // its own VideoDec thread behind a frame queue, so the blocking decode, GPU wait
+  // and buffer swap never stop VideoRecv from draining the socket. ui_connect.c
+  // sets the flag when config.direct_decode asks for the old behaviour.
   .capabilities = CAPABILITY_SLICES_PER_FRAME(2)
 };
