@@ -22,10 +22,13 @@ static uint8_t work_buffer[WORK_BUFFER_SIZE];
 // static SceWChar16 input_text_dummy[1];   // Eliminado: no se usa
 // The keyboard's text is kept at three placeholders (U+0001) with the caret
 // after the first, so Backspace and both arrows always have something to act
-// on. Room for those, a full composition (SCE_IME_MAX_PREEDIT_LENGTH units)
-// and a long conversion committed at once, surrogate pairs included.
+// on. They come back after each edit, but not during a composition: text
+// committed beside it (Korean commits each syllable while composing the
+// next) stays in the keyboard until the composition ends, at a space or
+// punctuation, say. sceImeSetText can't be told to keep a composition, so
+// the keyboard gets the most room the API allows.
 #define IME_PLACEHOLDERS 3
-#define IME_TEXT_MAX 64
+#define IME_TEXT_MAX SCE_IME_MAX_TEXT_LENGTH
 static SceWChar16 output_text[IME_TEXT_MAX + 1];      // Buffer para recibir el texto (aunque no lo mostraremos)
 // The text as last acted on: what an update is compared with
 static SceWChar16 committed_text[IME_TEXT_MAX + 1];
