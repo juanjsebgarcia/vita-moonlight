@@ -42,7 +42,7 @@ add_definitions(-DVERSION_PATCH=${VERSION_PATCH})
 # This replaces CMAKE_C_FLAGS outright and no CMAKE_BUILD_TYPE is used, so the
 # optimisation level must be set here or everything is built at -O0
 set(VITA_OPT_LEVEL "-O2" CACHE STRING "Optimisation flag for all C sources, e.g. -O0 for debugging")
-set(CMAKE_C_FLAGS "-Wl,-q -g ${VITA_OPT_LEVEL} -std=c99 -D__vita__")
+set(CMAKE_C_FLAGS "-Wl,-q -g ${VITA_OPT_LEVEL} -std=gnu99 -D__vita__")
 
 
 
@@ -103,6 +103,8 @@ add_executable(${PROJECT_NAME}.elf
 
 # Por defecto, solo enlazamos curl y el resto de libs estándar:
 target_link_libraries(${PROJECT_NAME}.elf
+	# Room for vita-elf-create's module tables before the data segment (sce_gap.ld)
+	-Wl,-T,${CMAKE_SOURCE_DIR}/sce_gap.ld
 	-lexpat
 	-lcurl
 	moonlight-common-c
@@ -112,6 +114,7 @@ target_link_libraries(${PROJECT_NAME}.elf
 	libuuid
 	mdnsniff
 	-lz
+	-lzstd
 	-lssl
 	-lcrypto
 	-lopus
@@ -142,6 +145,9 @@ target_link_libraries(${PROJECT_NAME}.elf
 	-lm
 	-lc
 )
+# Passed through -Wl, the linker script isn't a dependency by itself, so
+# editing it would not relink
+set_target_properties(${PROJECT_NAME}.elf PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/sce_gap.ld)
 
 add_custom_target(${PROJECT_NAME}.velf ALL
 	COMMAND vita-elf-create ${PROJECT_NAME}.elf ${PROJECT_NAME}.velf
