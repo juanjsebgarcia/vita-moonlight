@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <psp2/registrymgr.h>
 
 void swap_app_list_entries(PAPP_LIST a, PAPP_LIST b) {
     PAPP_LIST tmp = malloc(sizeof(APP_LIST));
@@ -55,4 +56,10 @@ int ensure_buf_size(void **buf, size_t *buf_size, size_t required_size) {
   }
 
   return 0;
+}
+
+bool vita_bluetooth_enabled(void) {
+  // The switch in Settings > Bluetooth Devices, as the system stores it
+  int enabled = 0;
+  return sceRegMgrGetKeyInt("/CONFIG/BT", "bt_enable", &enabled) >= 0 && enabled != 0;
 }
