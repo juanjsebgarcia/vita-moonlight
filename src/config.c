@@ -29,6 +29,7 @@
 #include "input/vita.h"
 #include "debug.h"
 #include "stats.h"
+#include "bench.h"
 
 extern char* strdup(const char*);
 
@@ -127,10 +128,32 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->direct_decode = BOOL(value);
     } else if (strcmp(name, "input_sync_to_controller") == 0) {
       config->input_sync_to_controller = BOOL(value);
+    } else if (strcmp(name, "developer_mode") == 0) {
+      config->developer_mode = BOOL(value);
+    } else if (strcmp(name, "bench_seconds") == 0) {
+      config->bench_seconds = INT(value);
+    } else if (strcmp(name, "bench_app") == 0) {
+      config->bench_app = STR(value);
+    } else if (strcmp(name, "bench_host") == 0) {
+      config->bench_host = STR(value);
+    } else if (strcmp(name, "bench_label") == 0) {
+      config->bench_label = STR(value);
+    } else if (strcmp(name, "bench_autorun") == 0) {
+      config->bench_autorun = BOOL(value);
+    } else if (strcmp(name, "bench_quit_app") == 0) {
+      config->bench_quit_app = BOOL(value);
+    } else if (strcmp(name, "bench_input") == 0) {
+      config->bench_input = STR(value);
+    } else if (strcmp(name, "bench_grab") == 0) {
+      config->bench_grab = BOOL(value);
+    } else if (strcmp(name, "bench_idr_hz") == 0) {
+      config->bench_idr_hz = INT(value);
     } else if (strcmp(name, "jp_layout") == 0) {
       config->jp_layout = BOOL(value);
     } else if (strcmp(name, "stats_overlay") == 0) {
       config->stats_overlay = INT(value);
+    } else if (strcmp(name, "app_list_style") == 0) {
+      config->app_list_style = INT(value);
     } else if (strcmp(name, "show_fps") == 0) {
       // Older configs only had an FPS on/off switch
       if (BOOL(value) && config->stats_overlay == STATS_OVERLAY_OFF) {
@@ -218,8 +241,19 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_bool(fd, "boost_clocks", config->boost_clocks);
   write_config_bool(fd, "direct_decode", config->direct_decode);
   write_config_bool(fd, "input_sync_to_controller", config->input_sync_to_controller);
+  write_config_bool(fd, "developer_mode", config->developer_mode);
+  write_config_int(fd, "bench_seconds", config->bench_seconds);
+  write_config_string(fd, "bench_app", config->bench_app);
+  write_config_string(fd, "bench_host", config->bench_host);
+  write_config_string(fd, "bench_label", config->bench_label);
+  write_config_bool(fd, "bench_autorun", config->bench_autorun);
+  write_config_bool(fd, "bench_quit_app", config->bench_quit_app);
+  write_config_string(fd, "bench_input", config->bench_input);
+  write_config_bool(fd, "bench_grab", config->bench_grab);
+  write_config_int(fd, "bench_idr_hz", config->bench_idr_hz);
   write_config_bool(fd, "jp_layout", config->jp_layout);
   write_config_int(fd, "stats_overlay", config->stats_overlay);
+  write_config_int(fd, "app_list_style", config->app_list_style);
   write_config_bool(fd, "save_debug_log", config->save_debug_log);
   write_config_bool(fd, "enable_front_touchzones", config->enable_front_touchzones);
 
@@ -294,8 +328,19 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->boost_clocks = true;
   config->direct_decode = false;
   config->input_sync_to_controller = true;
+  config->developer_mode = false;
+  config->bench_seconds = BENCH_DEFAULT_SECONDS;
+  config->bench_app = "Moonlight Bench";
+  config->bench_host = "";
+  config->bench_label = "";
+  config->bench_autorun = false;
+  config->bench_quit_app = true;
+  config->bench_input = "key";
+  config->bench_grab = false;
+  config->bench_idr_hz = 0;
   config->jp_layout = false;
   config->stats_overlay = STATS_OVERLAY_OFF;
+  config->app_list_style = APP_LIST_BOXART;
   // Off by default: it counts frames in ~1 s windows and drops any excess, so jitter
   // around 60 fps periodically discards a decoded frame and causes a visible hitch
   config->enable_frame_pacer = false;
@@ -368,8 +413,16 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
       config->stream.bitrate = 5000;
   }
 
+  if (config->bench_seconds < BENCH_MIN_SECONDS || config->bench_seconds > BENCH_MAX_SECONDS) {
+    config->bench_seconds = BENCH_DEFAULT_SECONDS;
+  }
+
   if (config->stats_overlay < STATS_OVERLAY_OFF || config->stats_overlay >= STATS_OVERLAY_COUNT) {
     config->stats_overlay = STATS_OVERLAY_OFF;
+  }
+
+  if (config->app_list_style < 0 || config->app_list_style >= APP_LIST_STYLE_COUNT) {
+    config->app_list_style = APP_LIST_BOXART;
   }
 
   // Larger packets would be IP-fragmented on a standard 1500-byte MTU
