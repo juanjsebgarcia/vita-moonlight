@@ -163,6 +163,9 @@ void draw_menu(menu_entry menu[], int total_elements, menu_geom geom, int cursor
       text_color = 0xff00ff00; // Verde para seleccionado
     }
     if (!menu[i].disabled) {
+      if (menu[i].warning && cursor != cursor_idx) {
+        text_color = 0xff00d0ff;
+      }
       cursor_idx++;
     } else {
       text_color = 0xffaaaaaa;

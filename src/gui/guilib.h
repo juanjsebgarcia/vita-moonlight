@@ -19,6 +19,7 @@ typedef struct menu_entry {
   char *name, *suffix;
   char subname[1024];
   bool disabled, separator;
+  bool warning; // drawn in yellow when not selected
   bool is_host_entry; // Nuevo: solo true para hosts emparejados
 } menu_entry;
 

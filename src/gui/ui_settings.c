@@ -29,6 +29,7 @@
 #include <vita2d.h>
 #include <Limelight.h>
 #include "debug.h"
+#include "../util.h"
 extern char* strdup(const char*);
 
 static unsigned int settings_special_codes[] = {0,
@@ -459,7 +460,8 @@ enum {
   SETTINGS_BENCH_RUN,
   SETTINGS_BENCH_SECONDS,
   SETTINGS_HIDE_DEVELOPER,
-  SETTINGS_DECODE_YUV
+  SETTINGS_DECODE_YUV,
+  SETTINGS_BLUETOOTH_WARNING
 };
 
 enum {
@@ -500,6 +502,7 @@ enum {
   SETTINGS_VIEW_BENCH_SECONDS,
   SETTINGS_VIEW_HIDE_DEVELOPER,
   SETTINGS_VIEW_DECODE_YUV,
+  SETTINGS_VIEW_BLUETOOTH_WARNING,
 
   SETTINGS_VIEW_MAX_COUNT,
 };
@@ -586,6 +589,11 @@ static const char *settings_help_text(int id) {
     case SETTINGS_ENABLE_FRAME_PACER:
       return "Throws away extra frames when more arrive than your FPS setting. It can cause a "
              "small hitch every few seconds, so off is recommended.";
+    case SETTINGS_BLUETOOTH_WARNING:
+      return "Bluetooth and Wi-Fi share the Vita's 2.4 GHz radio, so while Bluetooth is on the "
+             "stream can stutter or lose frames, more so with a Bluetooth controller or headphones "
+             "in use. If you aren't using a Bluetooth device, turn it off in the Vita's Settings, "
+             "under Bluetooth Devices.";
     case SETTINGS_PACKET_SIZE:
       return "How big each chunk of video sent over Wi-Fi is. 1392 sends fewer chunks per frame, "
              "which can be smoother on a good connection. If the video breaks up or won't start, "
@@ -765,6 +773,13 @@ static int settings_loop(int id, void *context, const input_data *input) {
       char value[32];
       snprintf(value, sizeof(value), "%d s", config.bench_seconds);
       SET_ROW_VALUE(SETTINGS_VIEW_BENCH_SECONDS, value);
+    }
+    return 0;
+  }
+  // The Bluetooth warning has nothing to change, so confirm explains it too
+  if (id == SETTINGS_BLUETOOTH_WARNING) {
+    if ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+      show_settings_help(menu, id);
     }
     return 0;
   }
@@ -1314,7 +1329,7 @@ static int settings_back(void *context) {
 // Eliminado: hotkeys_menu y referencias, ya que los atajos ahora son fijos
 
 int ui_settings_menu() {
-  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (40 at most today). Each
+  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (41 at most today). Each
   // entry is about 1 KB of the main thread stack, so do not oversize it
   menu_entry menu[44];
   int idx;
@@ -1350,6 +1365,11 @@ rebuild:
     idx++; \
   } while(0)
 
+  if (vita_bluetooth_enabled()) {
+    MENU_ENTRY(SETTINGS_BLUETOOTH_WARNING, SETTINGS_VIEW_BLUETOOTH_WARNING,
+               "Bluetooth is on, which can disturb Wi-Fi", "");
+    menu[idx - 1].warning = true;
+  }
   if (streaming) {
     MENU_MESSAGE("Settings that need a new stream return once this one ends.");
   }
