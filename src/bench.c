@@ -76,6 +76,13 @@ static const float CURSOR_TARGET_X[2] = {0.930f, 0.965f};
 #define PRESS_TIMEOUT_US 800000ULL
 // Room for frames at up to 120 fps
 #define MAX_FPS_RECORDED 120
+// Frame grabs (config.bench_grab): the decoded frame at these page ticks
+// after the reset. The page draws the same picture at the same tick, so runs
+// with different settings can be compared picture for picture
+// (tools/bench/quality.py).
+#define GRAB_COUNT 5
+#define GRAB_FIRST_TICK 600
+#define GRAB_TICK_STEP 600
 // Report paths start with the config folder, which can be up to 4 KB
 #define REPORT_PATH_MAX (sizeof(config.key_dir) + 64)
 
@@ -116,6 +123,20 @@ typedef struct {
 
 static pthread_mutex_t bench_mutex;
 static volatile int phase = PHASE_IDLE;
+
+// A copy of one decoded frame, as the decoder wrote it
+typedef struct {
+  uint8_t *data;       // NULL until grabbed
+  size_t bytes;
+  int tick;
+  int stride_bytes;
+  int texture_height;
+  float region[4];     // the part shown on screen: x1, y1, x2, y2
+} frame_grab;
+
+// Only touched by the decode thread while measuring, and by the run's own
+// thread before and after it
+static frame_grab grabs[GRAB_COUNT];
 
 // Written by the decode thread under bench_mutex
 static struct {
@@ -309,8 +330,54 @@ static int probe_box_max(const uint8_t *pixels, int stride_bytes, float x1, floa
   return max;
 }
 
+// The decoder writes RGBA, 4 bytes per pixel, or in YUV mode NV21: the Y
+// plane, then a half-height plane of interleaved V and U
+static size_t frame_bytes(int stride_bytes, int texture_height) {
+  size_t plane = (size_t)stride_bytes * texture_height;
+  return probe_bpp == 1 ? plane + plane / 2 : plane;
+}
+
+static const char *frame_format(void) {
+  return probe_bpp == 1 ? "nv21" : "rgba";
+}
+
+// Copies the frame if tick is one of the grab ticks, exactly, so every run
+// grabs the same picture. A few MB, a few times per run.
+static void grab_frame(int tick, const uint8_t *pixels, int stride_bytes, int texture_height,
+                       float x1, float y1, float x2, float y2) {
+  if (tick < GRAB_FIRST_TICK || (tick - GRAB_FIRST_TICK) % GRAB_TICK_STEP != 0) {
+    return;
+  }
+  int slot = (tick - GRAB_FIRST_TICK) / GRAB_TICK_STEP;
+  if (slot >= GRAB_COUNT || grabs[slot].data != NULL) {
+    return;
+  }
+  size_t bytes = frame_bytes(stride_bytes, texture_height);
+  frame_grab *g = &grabs[slot];
+  g->data = malloc(bytes);
+  if (g->data == NULL) {
+    return;
+  }
+  memcpy(g->data, pixels, bytes);
+  g->bytes = bytes;
+  g->tick = tick;
+  g->stride_bytes = stride_bytes;
+  g->texture_height = texture_height;
+  g->region[0] = x1;
+  g->region[1] = y1;
+  g->region[2] = x2;
+  g->region[3] = y2;
+}
+
+static void free_grabs(void) {
+  for (int i = 0; i < GRAB_COUNT; i++) {
+    free(grabs[i].data);
+    grabs[i].data = NULL;
+  }
+}
+
 void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t hw_start_us, uint64_t decoded_us,
-                             const uint8_t *pixels, int stride_bytes, int bytes_per_pixel,
+                             const uint8_t *pixels, int stride_bytes, int bytes_per_pixel, int texture_height,
                              float region_x1, float region_y1, float region_x2, float region_y2) {
   if (phase == PHASE_IDLE || pixels == NULL) {
     return;
@@ -394,6 +461,10 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
       }
       state.last_tick = tick;
       state.have_tick = true;
+
+      if (config.bench_grab) {
+        grab_frame(tick, pixels, stride_bytes, texture_height, region_x1, region_y1, region_x2, region_y2);
+      }
 
       if (active_input != INPUT_CURSOR && marker && state.last_marker == 0 && state.awaiting_marker) {
         // The marker turning white after a press means the press got through
@@ -722,6 +793,17 @@ static void write_report(FILE *f, const char *started, const char *host, const c
             r->to_enet_ms, r->to_wire_ms, r->lag_ms);
   }
   fprintf(f, "\n  ],\n");
+  fprintf(f, "  \"grabs\": [");
+  for (int i = 0, written = 0; i < GRAB_COUNT; i++) {
+    const frame_grab *g = &grabs[i];
+    if (g->data != NULL) {
+      fprintf(f, "%s\n    {\"tick\": %d, \"file\": \"grab-%d.raw\", \"format\": \"%s\", \"stride\": %d, "
+                 "\"height\": %d, \"region\": [%.0f, %.0f, %.0f, %.0f]}",
+              written++ ? "," : "", g->tick, g->tick, frame_format(), g->stride_bytes, g->texture_height,
+              g->region[0], g->region[1], g->region[2], g->region[3]);
+    }
+  }
+  fprintf(f, "\n  ],\n");
   fprintf(f, "  \"wifi\": {\"rssi_avg_percent\": %d, \"rssi_min_percent\": %d, \"channel\": %d}\n",
           link->rssi_samples ? link->rssi_sum / link->rssi_samples : -1,
           link->rssi_samples ? link->rssi_min : -1, link->channel);
@@ -746,6 +828,28 @@ static void write_report_file(const char *path, const char *started, const char 
   sceIoRename(tmp, path);
 }
 
+// Written before the report, so a report that lists a grab means it's saved
+static void save_grabs(const char *dir) {
+  char path[REPORT_PATH_MAX + 32];
+  for (int i = 0; i < GRAB_COUNT; i++) {
+    frame_grab *g = &grabs[i];
+    snprintf(path, sizeof(path), "%s/grab-%d.raw", dir, GRAB_FIRST_TICK + i * GRAB_TICK_STEP);
+    sceIoRemove(path);
+    if (g->data == NULL) {
+      continue;
+    }
+    FILE *f = fopen(path, "wb");
+    bool written = f != NULL && fwrite(g->data, 1, g->bytes, f) == g->bytes;
+    if (f != NULL) {
+      fclose(f);
+    }
+    if (!written) {
+      free(g->data);
+      g->data = NULL;
+    }
+  }
+}
+
 static void save_report(const char *started_compact, const char *started, const char *host, const char *app,
                         const char *error, float seconds, const link_samples *link, report_summary *summary) {
   char dir[REPORT_PATH_MAX];
@@ -754,6 +858,7 @@ static void save_report(const char *started_compact, const char *started, const 
   snprintf(summary->path, sizeof(summary->path), "%.*s/bench-%s.json",
            (int)(sizeof(summary->path) - 64), dir, started_compact);
 
+  save_grabs(dir);
   write_report_file(summary->path, started, host, app, error, seconds, link, summary);
   // A fixed name too, so tools can always find the latest run. write_report
   // sorts the series in place, which the first write already did.
@@ -795,6 +900,7 @@ int vitabench_run(bool automated) {
   if (state.presses == NULL) {
     state.press_capacity = 0;
   }
+  free_grabs();
   reset_measurements();
 
   char app_name[256] = "";
@@ -958,6 +1064,7 @@ done:
   series_free(&send_to_wire_ms);
   free(state.presses);
   state.presses = NULL;
+  free_grabs();
   state.press_capacity = 0;
 
   if (!automated) {
