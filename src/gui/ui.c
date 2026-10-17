@@ -398,8 +398,9 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
         exit_menu = 2;
         break;
       }
-      exit_menu = 0;
-      start_host_scan();
+      // Rebuilt, which restarts the host scan: Auto-detect may have connected
+      // to a PC, and the menu should offer to resume that connection
+      exit_menu = 2;
       break;
     case MAIN_MENU_QUIT:
       vita_debug_log("[UI] Seleccionado: Quit");

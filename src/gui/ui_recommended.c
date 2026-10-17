@@ -221,8 +221,16 @@ static bool have_test_pc(void) {
   }
   for (int i = 0; i < known_devices.count && i < MAX_HOSTS; i++) {
     device_info_t *host = &known_devices.devices[i];
-    if (!host->paired || g_host_status[i].status != HOST_ONLINE) {
+    if (!host->paired) {
       continue;
+    }
+    // The host scan stops while Settings is open, so check again in case the
+    // PC was switched on since
+    if (g_host_status[i].status != HOST_ONLINE) {
+      flash_message("Looking for %s...", host->name);
+      if (check_host_status(host).status != HOST_ONLINE) {
+        continue;
+      }
     }
     flash_message("Connecting to %s...", host->name);
     char err[256] = "";

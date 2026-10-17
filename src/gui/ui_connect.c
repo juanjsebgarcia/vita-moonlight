@@ -237,8 +237,8 @@ int ui_connect_start_app_by_id(int app_id, char *err, size_t err_len) {
   int ret = start_stream(app_id, err, err_len);
   if (ret != 0 && start_launched_app) {
     // The app started but its stream didn't: close it again, since the host
-    // was idle before
-    gs_quit_app(&server);
+    // was idle before (this also clears server.currentGame)
+    ui_connect_quit_app();
     ui_connect_return_to_server();
   }
   return ret;
