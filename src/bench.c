@@ -19,6 +19,7 @@
 #include "config.h"
 #include "connection.h"
 #include "debug.h"
+#include "netcount.h"
 #include "device.h"
 #include "gui/guilib.h"
 #include "gui/ui_connect.h"
@@ -156,6 +157,9 @@ static struct {
   uint64_t present_pending_us;
   int present_pending_count;
   uint32_t frames_received, frames_rendered, frames_lost, idr_frames;
+  // Separate runs of missing frames: each is one freeze while the Vita waits
+  // for a keyframe after a frame couldn't be rebuilt
+  uint32_t freezes;
   uint64_t bytes;
   uint32_t ticks_read, ticks_unreadable, ticks_repeated, ticks_skipped, ticks_backwards;
   // Total forward ticks between frames, to work out the page's tick rate
@@ -432,6 +436,7 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
     }
     if (state.last_frame_number > 0 && du->frameNumber > state.last_frame_number + 1) {
       state.frames_lost += du->frameNumber - state.last_frame_number - 1;
+      state.freezes++;
     }
     state.last_frame_number = du->frameNumber;
 
@@ -563,6 +568,7 @@ static void reset_measurements(void) {
   state.frames_replaced = 0;
   state.present_pending_count = 0;
   state.frames_received = state.frames_rendered = state.frames_lost = state.idr_frames = 0;
+  state.freezes = 0;
   state.bytes = 0;
   state.ticks_read = state.ticks_unreadable = state.ticks_repeated = 0;
   state.ticks_skipped = state.ticks_backwards = 0;
@@ -691,8 +697,11 @@ typedef struct {
   double rtt_var_sum;
   uint32_t rtt_var_max;
   int rtt_samples;
-  // Video and error-correction packets while measuring (common-c's counters)
+  // Video and error-correction packets the host announced while measuring
+  // (common-c's counters), and those it sent and that arrived, from the RTP
+  // sequence numbers (src/netcount.c)
   RTP_VIDEO_STATS rtp_start, rtp_end;
+  netcount net_start, net_end;
   int rssi_sum;
   int rssi_min;
   int rssi_samples;
@@ -776,10 +785,10 @@ static void write_report(FILE *f, const char *started, const char *host, const c
           config.enable_frame_pacer ? "true" : "false", config.enable_vita_vblank_wait ? "true" : "false",
           config.stats_overlay, config.save_debug_log ? "true" : "false");
   fprintf(f, "  \"frames\": {\"received\": %u, \"rendered\": %u, \"fps_received\": %.2f, \"fps_rendered\": %.2f, "
-             "\"lost_network\": %u, \"idr\": %u, \"replaced_before_shown\": %u},\n",
+             "\"lost_network\": %u, \"idr\": %u, \"replaced_before_shown\": %u, \"freezes\": %u},\n",
           state.frames_received, state.frames_rendered,
           seconds > 0 ? state.frames_received / seconds : 0, summary->fps_rendered,
-          state.frames_lost, state.idr_frames, state.frames_replaced);
+          state.frames_lost, state.idr_frames, state.frames_replaced, state.freezes);
   // The page ticks at its own rate (60 by default), so a slower stream skips
   // ticks even when nothing is lost. Work out how many, and report the rest.
   float tick_rate = seconds > 0 ? state.ticks_advanced / seconds : 0;
@@ -825,15 +834,19 @@ static void write_report(FILE *f, const char *started, const char *host, const c
           link->rtt_samples ? link->rtt_var_sum / link->rtt_samples : 0.0, link->rtt_var_max);
   // What actually crossed the Wi-Fi, error correction included (payload only,
   // without IP, UDP and RTP headers), against bitrate_mbps, the video alone
+  // common-c only keeps recovered and failed counts for audio, so loss comes
+  // from gaps in the RTP sequence numbers (src/netcount.c)
   uint32_t video_packets = link->rtp_end.packetCountVideo - link->rtp_start.packetCountVideo;
   uint32_t fec_packets = link->rtp_end.packetCountFec - link->rtp_start.packetCountFec;
-  fprintf(f, "  \"packets\": {\"video\": %u, \"fec\": %u, \"fec_recovered\": %u, \"fec_failed\": %u, "
-             "\"out_of_sequence\": %u, \"payload_mbps\": %.2f, \"idr_requests_per_s\": %d},\n",
-          video_packets, fec_packets,
-          link->rtp_end.packetCountFecRecovered - link->rtp_start.packetCountFecRecovered,
-          link->rtp_end.packetCountFecFailed - link->rtp_start.packetCountFecFailed,
-          link->rtp_end.packetCountOOS - link->rtp_start.packetCountOOS,
-          seconds > 0 ? (video_packets + fec_packets) * (double)config.stream.packetSize * 8 / seconds / 1000000 : 0.0,
+  uint32_t received = link->net_end.received - link->net_start.received;
+  uint32_t lost = netcount_lost(&link->net_start, &link->net_end);
+  uint32_t late = link->net_end.late - link->net_start.late;
+  uint32_t repeats = link->net_end.repeats - link->net_start.repeats;
+  fprintf(f, "  \"packets\": {\"video\": %u, \"fec\": %u, \"received\": %u, \"lost\": %u, \"late\": %u, "
+             "\"repeats\": %u, \"loss_percent\": %.3f, \"payload_mbps\": %.2f, \"idr_requests_per_s\": %d},\n",
+          video_packets, fec_packets, received, lost, late, repeats,
+          received + lost ? 100.0f * lost / (received + lost) : 0.0f,
+          seconds > 0 ? received * (double)config.stream.packetSize * 8 / seconds / 1000000 : 0.0,
           config.bench_idr_hz);
   // Each press, so a strange result can be traced frame by frame
   fprintf(f, "  \"presses\": [");
@@ -1037,6 +1050,7 @@ int vitabench_run(bool automated) {
   if (rtp != NULL) {
     link.rtp_start = *rtp;
   }
+  netcount_read(&link.net_start);
   phase = PHASE_MEASURING;
   vblank_started = pthread_create(&vblank_tid, NULL, vblank_thread, NULL) == 0;
   uint64_t start = LiGetMicroseconds();
@@ -1097,6 +1111,7 @@ int vitabench_run(bool automated) {
   if (rtp != NULL) {
     link.rtp_end = *rtp;
   }
+  netcount_read(&link.net_end);
 
 done:
   phase = PHASE_IDLE;
