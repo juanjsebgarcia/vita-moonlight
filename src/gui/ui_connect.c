@@ -4,6 +4,7 @@
 #include "errors.h"
 #include "guilib.h"
 #include "ime.h"
+#include "ui_boxart.h"
 #include "ui_settings.h"
 
 #include "../connection.h"
@@ -270,7 +271,9 @@ enum {
   CONNECT_PAIRUNPAIR = 13,
   CONNECT_DISCONNECT,
   CONNECT_QUITAPP,
-  CONNECT_SETTINGS
+  CONNECT_SETTINGS,
+  // The row of box art covers, which stands for every app
+  CONNECT_BOXART
 };
 
 #define QUIT_RELOAD 2
@@ -287,14 +290,28 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
     menu[i].disabled = (server.currentGame != 0);
   }
 
+  ui_boxart_set_focus(id == CONNECT_BOXART);
+  if (id == CONNECT_BOXART) {
+    ui_boxart_input(input->buttons);
+  }
+
   if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
     return 0;
+  }
+
+  if (id == CONNECT_BOXART) {
+    // Starts the selected cover's app, as choosing it in the text list does
+    id = ui_boxart_selected_app();
+    if (id == 0) {
+      return 0;
+    }
   }
 
   int ret;
 
   switch (id) {
-    case CONNECT_SETTINGS:
+    case CONNECT_SETTINGS: {
+      int app_list_style = config.app_list_style;
       // Settings that apply to a running stream take effect on Resume, which
       // reloads the input and power settings and restarts output. The rest
       // need a new stream, which Settings can ask for.
@@ -302,7 +319,9 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
         ui_connect_restart_stream();
         return connection_get_status() == LI_DISCONNECTED ? 1 : QUIT_RELOAD;
       }
-      return 0;
+      // Rebuild to show the apps in the newly chosen style
+      return config.app_list_style != app_list_style ? QUIT_RELOAD : 0;
+    }
     case CONNECT_PAIRUNPAIR:
       if (server.paired) {
         flash_message("Unpairing...");
@@ -378,6 +397,8 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
       switch (status) {
         case LI_MINIMIZED:
           if (server.currentGame == id) {
+            // The covers drawn this frame stay in memory until the menu closes
+            ui_boxart_stop_loading();
             sceKernelDelayThread(500 * 1000);
             connection_resume();
             break;
@@ -385,6 +406,9 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
           // TODO: stop previous stream
         case LI_PAIRED:
           flash_message("Stream starting...");
+          // That frame has finished drawing, so the covers can go now: the
+          // stream needs the memory and the network more
+          ui_boxart_close();
           ui_connect_stream(id);
           break;
       }
@@ -447,6 +471,9 @@ int ui_connect(char *name, char *address, uint16_t port) {
 int ui_connected_menu() {
   int ret;
   int app_count = 0;
+  // pos[] marks the app rows, which ui_connect_loop disables mid-stream; clear
+  // it so a menu without them never uses the last menu's rows
+  pos[0] = pos[1] = 0;
   if (server.paired) {
     ret = gs_applist(&server, &server_applist);
     if (ret != GS_OK) {
@@ -498,7 +525,12 @@ int ui_connected_menu() {
            server.serverInfo.serverInfoGfeVersion);
 
   MENU_MESSAGE(server_info, 0xffffffff);
-  MENU_MESSAGE("", 0);
+
+  // Covers need the room under the menu, so the menu is kept short
+  bool boxart = config.app_list_style == APP_LIST_BOXART && server.paired && server_applist != NULL;
+  if (!boxart) {
+    MENU_MESSAGE("", 0);
+  }
 
   if (!server.paired) {
     // pairing
@@ -536,7 +568,12 @@ int ui_connected_menu() {
     MENU_ENTRY(CONNECT_DISCONNECT, "Disconnect");
 
     // app list
-    if (server_applist != NULL) {
+    if (boxart) {
+      pos[0] = idx;
+      MENU_ENTRY(CONNECT_BOXART, "Applications");
+      menu[idx - 1].suffix = ui_boxart_counter();
+      pos[1] = idx;
+    } else if (server_applist != NULL) {
       MENU_CATEGORY("Applications");
 
       pos[0] = idx;
@@ -548,12 +585,22 @@ int ui_connected_menu() {
       }
 
       pos[1] = idx;
-    } else {
-      pos[0] = -1;
     }
   }
 
-  return display_menu(menu, idx, NULL, &ui_connect_loop, NULL, NULL, &menu);
+  if (!boxart) {
+    return display_menu(menu, idx, NULL, &ui_connect_loop, NULL, NULL, &menu);
+  }
+
+  // The menu sits at the top, as tall as its rows, with the covers beneath it
+  menu_geom geom = make_geom_centered(600, (idx + 1) * 24);
+  geom.y = 30;
+  geom.total_y = geom.y + geom.height;
+  ui_boxart_open(&server, current_host, server_applist, server.currentGame);
+  ret = display_menu(menu, idx, &geom, &ui_connect_loop, NULL, &ui_boxart_draw, &menu);
+  // display_menu has finished its last frame, so the textures can be freed
+  ui_boxart_close();
+  return ret;
 }
 
 device_info_t* ui_connect_and_pairing(device_info_t *info) {
