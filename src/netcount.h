@@ -2,9 +2,9 @@
 
 #include <stdint.h>
 
-// Video packets that actually arrived from the host, counted where
-// moonlight-common-c receives them. Its own recovered and failed counters are
-// only kept for audio, so this is the way to see video packet loss: compare
-// it with the packets the host announced (RTP_VIDEO_STATS packetCountVideo
-// plus packetCountFec) over the same stretch.
-uint32_t netcount_video_packets(void);
+// Video packet loss, measured where moonlight-common-c receives packets (its
+// own recovered and failed counters are only kept for audio). received counts
+// the video packets that arrived; expected counts those the host sent, from
+// the RTP sequence numbers, so expected minus received is the packets lost on
+// the way. Compare two readings to measure a stretch of the stream.
+void netcount_read(uint32_t *received, uint32_t *expected);

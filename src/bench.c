@@ -693,9 +693,10 @@ typedef struct {
   uint32_t rtt_var_max;
   int rtt_samples;
   // Video and error-correction packets the host announced while measuring
-  // (common-c's counters), and how many actually arrived
+  // (common-c's counters), and those it sent and that arrived, from the RTP
+  // sequence numbers (src/netcount.c)
   RTP_VIDEO_STATS rtp_start, rtp_end;
-  uint32_t received_start, received_end;
+  uint32_t received_start, received_end, expected_start, expected_end;
   int rssi_sum;
   int rssi_min;
   int rssi_samples;
@@ -828,17 +829,17 @@ static void write_report(FILE *f, const char *started, const char *host, const c
           link->rtt_samples ? link->rtt_var_sum / link->rtt_samples : 0.0, link->rtt_var_max);
   // What actually crossed the Wi-Fi, error correction included (payload only,
   // without IP, UDP and RTP headers), against bitrate_mbps, the video alone
-  // common-c only keeps recovered and failed counts for audio, so loss is the
-  // announced packets against those that arrived (src/netcount.c)
+  // common-c only keeps recovered and failed counts for audio, so loss comes
+  // from gaps in the RTP sequence numbers (src/netcount.c)
   uint32_t video_packets = link->rtp_end.packetCountVideo - link->rtp_start.packetCountVideo;
   uint32_t fec_packets = link->rtp_end.packetCountFec - link->rtp_start.packetCountFec;
-  uint32_t announced = video_packets + fec_packets;
   uint32_t received = link->received_end - link->received_start;
-  float loss_percent = announced > received ? 100.0f * (announced - received) / announced : 0.0f;
-  fprintf(f, "  \"packets\": {\"video\": %u, \"fec\": %u, \"received\": %u, \"loss_percent\": %.3f, "
-             "\"payload_mbps\": %.2f, \"idr_requests_per_s\": %d},\n",
-          video_packets, fec_packets, received, loss_percent,
-          seconds > 0 ? (video_packets + fec_packets) * (double)config.stream.packetSize * 8 / seconds / 1000000 : 0.0,
+  uint32_t expected = link->expected_end - link->expected_start;
+  uint32_t lost = expected > received ? expected - received : 0;
+  fprintf(f, "  \"packets\": {\"video\": %u, \"fec\": %u, \"sent\": %u, \"received\": %u, \"lost\": %u, "
+             "\"loss_percent\": %.3f, \"payload_mbps\": %.2f, \"idr_requests_per_s\": %d},\n",
+          video_packets, fec_packets, expected, received, lost, expected ? 100.0f * lost / expected : 0.0f,
+          seconds > 0 ? received * (double)config.stream.packetSize * 8 / seconds / 1000000 : 0.0,
           config.bench_idr_hz);
   // Each press, so a strange result can be traced frame by frame
   fprintf(f, "  \"presses\": [");
@@ -1042,7 +1043,7 @@ int vitabench_run(bool automated) {
   if (rtp != NULL) {
     link.rtp_start = *rtp;
   }
-  link.received_start = netcount_video_packets();
+  netcount_read(&link.received_start, &link.expected_start);
   phase = PHASE_MEASURING;
   vblank_started = pthread_create(&vblank_tid, NULL, vblank_thread, NULL) == 0;
   uint64_t start = LiGetMicroseconds();
@@ -1103,7 +1104,7 @@ int vitabench_run(bool automated) {
   if (rtp != NULL) {
     link.rtp_end = *rtp;
   }
-  link.received_end = netcount_video_packets();
+  netcount_read(&link.received_end, &link.expected_end);
 
 done:
   phase = PHASE_IDLE;
