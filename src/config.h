@@ -73,7 +73,7 @@ typedef struct _CONFIGURATION {
   bool bench_autorun; // run once at launch, write the report and exit (cleared after)
   bool bench_quit_app; // quit the app on the host when the run ends
   char *bench_input;  // what a timed press sends: key, mouse or gamepad
-  // Decode to YUV (NV12) and let the GPU convert it while drawing; about 45%
+  // Decode to YUV (NV21) and let the GPU convert it while drawing; about 45%
   // less hardware decode time than RGBA output
   bool decode_yuv;
   bool jp_layout;

@@ -329,7 +329,7 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
   stream_hint_start_us = 0;
   vitastats_reset();
   decode_yuv = config.decode_yuv;
-  printf("video output: %s\n", decode_yuv ? "YUV420 (NV12), converted by the GPU" : "RGBA8888 from the decoder");
+  printf("video output: %s\n", decode_yuv ? "YUV420 (NV21), converted by the GPU" : "RGBA8888 from the decoder");
 
   if (video_status == NOT_INIT) {
     // INIT_GS
@@ -352,12 +352,14 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
     }
 
     for (int i = 0; i < FRAME_TEXTURE_COUNT; i++) {
-      // In YUV mode the decoder writes NV12 (a Y plane, then interleaved U/V)
-      // and the GPU's texture unit converts it while sampling (BT.601, CSC0).
+      // In YUV mode the decoder writes NV21 (a Y plane, then interleaved V/U,
+      // so the YVU format: YUV swaps red and blue) and the GPU's texture unit
+      // converts it while sampling. CSC0 is BT.601, which is what we ask the
+      // host to encode; measured against the decoder's own RGBA output.
       // vita2d sizes unknown formats at 4 bytes per pixel, which is more than
-      // the 1.5 that NV12 needs.
+      // the 1.5 that NV21 needs.
       frame_textures[i] = vita2d_create_empty_texture_format(image_scaling.texture_width, image_scaling.texture_height,
-                                                             decode_yuv ? SCE_GXM_TEXTURE_FORMAT_YUV420P2_CSC0
+                                                             decode_yuv ? SCE_GXM_TEXTURE_FORMAT_YVU420P2_CSC0
                                                                         : SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR);
       if (frame_textures[i] == NULL) {
         printf("frame_textures[%d]: not enough memory\n", i);
@@ -510,7 +512,7 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   picture.frame.frameHeight = image_scaling.texture_height;
   picture.frame.pPicture[0] = vita2d_texture_get_datap(frame_textures[back_texture_idx]);
   if (decode_yuv) {
-    // GXM's two-plane YUV420 texture expects the U/V plane straight after Y
+    // GXM's two-plane YUV420 texture expects the V/U plane straight after Y
     picture.frame.pPicture[1] = (uint8_t *)picture.frame.pPicture[0]
                                 + image_scaling.texture_width * image_scaling.texture_height;
   }
