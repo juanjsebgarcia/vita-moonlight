@@ -1,4 +1,5 @@
 #include "guilib.h"
+#include "../devshot.h"
 
 #include "../config.h"
 #include "../platform.h"
@@ -548,6 +549,7 @@ void ui_end() {
   vita2d_end_drawing();
   vita2d_wait_rendering_done();
   vita2d_swap_buffers();
+  devshot_after_swap();
 }
 
 int read_buttons() {

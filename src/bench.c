@@ -19,6 +19,7 @@
 #include "config.h"
 #include "connection.h"
 #include "debug.h"
+#include "netcount.h"
 #include "device.h"
 #include "gui/guilib.h"
 #include "gui/ui_connect.h"
@@ -33,6 +34,7 @@
 #include <psp2/io/stat.h>
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/net/netctl.h>
+#include <psp2/power.h>
 #include <psp2/rtc.h>
 
 // The page's machine-readable strip, as fractions of the frame. These must
@@ -101,6 +103,8 @@ enum {
   // Moves the pointer between two targets and watches for it, which times
   // the host's input and capture without the page drawing anything
   INPUT_CURSOR,
+  // No presses at all: just stream and measure, for any app
+  INPUT_NONE,
 };
 
 typedef struct {
@@ -154,6 +158,9 @@ static struct {
   uint64_t present_pending_us;
   int present_pending_count;
   uint32_t frames_received, frames_rendered, frames_lost, idr_frames;
+  // Separate runs of missing frames: each is one freeze while the Vita waits
+  // for a keyframe after a frame couldn't be rebuilt
+  uint32_t freezes;
   uint64_t bytes;
   uint32_t ticks_read, ticks_unreadable, ticks_repeated, ticks_skipped, ticks_backwards;
   // Total forward ticks between frames, to work out the page's tick rate
@@ -438,6 +445,7 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
     }
     if (state.last_frame_number > 0 && du->frameNumber > state.last_frame_number + 1) {
       state.frames_lost += du->frameNumber - state.last_frame_number - 1;
+      state.freezes++;
     }
     state.last_frame_number = du->frameNumber;
 
@@ -569,6 +577,7 @@ static void reset_measurements(void) {
   state.frames_replaced = 0;
   state.present_pending_count = 0;
   state.frames_received = state.frames_rendered = state.frames_lost = state.idr_frames = 0;
+  state.freezes = 0;
   state.bytes = 0;
   state.ticks_read = state.ticks_unreadable = state.ticks_repeated = 0;
   state.ticks_skipped = state.ticks_backwards = 0;
@@ -604,12 +613,15 @@ static int bench_input_type(void) {
   if (config.bench_input && strcmp(config.bench_input, "cursor") == 0) {
     return INPUT_CURSOR;
   }
+  if (config.bench_input && strcmp(config.bench_input, "none") == 0) {
+    return INPUT_NONE;
+  }
   return INPUT_KEY;
 }
 
 static const char *bench_input_name(int type) {
   return type == INPUT_MOUSE ? "mouse" : type == INPUT_GAMEPAD ? "gamepad"
-       : type == INPUT_CURSOR ? "cursor" : "key";
+       : type == INPUT_CURSOR ? "cursor" : type == INPUT_NONE ? "none" : "key";
 }
 
 static void move_cursor_to(int target) {
@@ -690,11 +702,26 @@ static bool page_is_visible(void) {
 typedef struct {
   double rtt_sum;
   uint32_t rtt_max;
+  // The round trip's variation, as common-c estimates it: a measure of jitter
+  double rtt_var_sum;
+  uint32_t rtt_var_max;
   int rtt_samples;
+  // Video and error-correction packets the host announced while measuring
+  // (common-c's counters), and those it sent and that arrived, from the RTP
+  // sequence numbers (src/netcount.c)
+  RTP_VIDEO_STATS rtp_start, rtp_end;
+  // The battery while measuring, to compare settings by power use. Only
+  // meaningful on battery: charging or a charger plugged in spoils it.
+  int battery_mah_start, battery_mah_end;
+  int battery_percent_start, battery_percent_end;
+  int battery_mv_start, battery_mv_end;
+  bool on_charger;
+  netcount net_start, net_end;
   int rssi_sum;
   int rssi_min;
   int rssi_samples;
   int channel;
+  int device; // SceNetCtlInfo.device: the network interface type, unnamed in VitaSDK
 } link_samples;
 
 static void sample_link(link_samples *link) {
@@ -702,6 +729,8 @@ static void sample_link(link_samples *link) {
   if (LiGetEstimatedRttInfo(&rtt, &variance)) {
     link->rtt_sum += rtt;
     link->rtt_max = rtt > link->rtt_max ? rtt : link->rtt_max;
+    link->rtt_var_sum += variance;
+    link->rtt_var_max = variance > link->rtt_var_max ? variance : link->rtt_var_max;
     link->rtt_samples++;
   }
   SceNetCtlInfo info;
@@ -713,6 +742,9 @@ static void sample_link(link_samples *link) {
   }
   if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_CHANNEL, &info) >= 0) {
     link->channel = info.channel;
+  }
+  if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_DEVICE, &info) >= 0) {
+    link->device = (int)info.device;
   }
 }
 
@@ -772,10 +804,10 @@ static void write_report(FILE *f, const char *started, const char *host, const c
           config.enable_frame_pacer ? "true" : "false", config.enable_vita_vblank_wait ? "true" : "false",
           config.stats_overlay, config.save_debug_log ? "true" : "false", config.decode_yuv ? "true" : "false");
   fprintf(f, "  \"frames\": {\"received\": %u, \"rendered\": %u, \"fps_received\": %.2f, \"fps_rendered\": %.2f, "
-             "\"lost_network\": %u, \"idr\": %u, \"replaced_before_shown\": %u},\n",
+             "\"lost_network\": %u, \"idr\": %u, \"replaced_before_shown\": %u, \"freezes\": %u},\n",
           state.frames_received, state.frames_rendered,
           seconds > 0 ? state.frames_received / seconds : 0, summary->fps_rendered,
-          state.frames_lost, state.idr_frames, state.frames_replaced);
+          state.frames_lost, state.idr_frames, state.frames_replaced, state.freezes);
   // The page ticks at its own rate (60 by default), so a slower stream skips
   // ticks even when nothing is lost. Work out how many, and report the rest.
   float tick_rate = seconds > 0 ? state.ticks_advanced / seconds : 0;
@@ -816,8 +848,25 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   write_timing(f, "hw_decode_ms", &state.hw_decode_ms, false);
   write_timing(f, "render_ms", &state.render_ms, false);
   write_timing(f, "vblank_wait_ms", &state.vblank_wait_ms, false);
-  fprintf(f, "  \"rtt_ms\": {\"avg\": %.2f, \"max\": %u},\n",
-          link->rtt_samples ? link->rtt_sum / link->rtt_samples : 0.0, link->rtt_max);
+  fprintf(f, "  \"rtt_ms\": {\"avg\": %.2f, \"max\": %u, \"variance_avg\": %.2f, \"variance_max\": %u},\n",
+          link->rtt_samples ? link->rtt_sum / link->rtt_samples : 0.0, link->rtt_max,
+          link->rtt_samples ? link->rtt_var_sum / link->rtt_samples : 0.0, link->rtt_var_max);
+  // What actually crossed the Wi-Fi, error correction included (payload only,
+  // without IP, UDP and RTP headers), against bitrate_mbps, the video alone
+  // common-c only keeps recovered and failed counts for audio, so loss comes
+  // from gaps in the RTP sequence numbers (src/netcount.c)
+  uint32_t video_packets = link->rtp_end.packetCountVideo - link->rtp_start.packetCountVideo;
+  uint32_t fec_packets = link->rtp_end.packetCountFec - link->rtp_start.packetCountFec;
+  uint32_t received = link->net_end.received - link->net_start.received;
+  uint32_t lost = netcount_lost(&link->net_start, &link->net_end);
+  uint32_t late = link->net_end.late - link->net_start.late;
+  uint32_t repeats = link->net_end.repeats - link->net_start.repeats;
+  fprintf(f, "  \"packets\": {\"video\": %u, \"fec\": %u, \"received\": %u, \"lost\": %u, \"late\": %u, "
+             "\"repeats\": %u, \"loss_percent\": %.3f, \"payload_mbps\": %.2f, \"idr_requests_per_s\": %d},\n",
+          video_packets, fec_packets, received, lost, late, repeats,
+          received + lost ? 100.0f * lost / (received + lost) : 0.0f,
+          seconds > 0 ? received * (double)config.stream.packetSize * 8 / seconds / 1000000 : 0.0,
+          config.bench_idr_hz);
   // Each press, so a strange result can be traced frame by frame
   fprintf(f, "  \"presses\": [");
   int recorded = state.presses_sent < (uint32_t)state.press_capacity ? (int)state.presses_sent : state.press_capacity;
@@ -840,9 +889,18 @@ static void write_report(FILE *f, const char *started, const char *host, const c
     }
   }
   fprintf(f, "\n  ],\n");
-  fprintf(f, "  \"wifi\": {\"rssi_avg_percent\": %d, \"rssi_min_percent\": %d, \"channel\": %d}\n",
+  // Average current from the capacity used, and power from that at the mean voltage
+  int used_mah = link->battery_mah_start - link->battery_mah_end;
+  float hours = seconds / 3600.0f;
+  float drain_ma = hours > 0 ? used_mah / hours : 0;
+  float drain_mw = drain_ma * (link->battery_mv_start + link->battery_mv_end) / 2000.0f;
+  fprintf(f, "  \"battery\": {\"mah_start\": %d, \"mah_end\": %d, \"percent_start\": %d, \"percent_end\": %d, "
+             "\"drain_ma\": %.0f, \"drain_mw\": %.0f, \"on_charger\": %s},\n",
+          link->battery_mah_start, link->battery_mah_end, link->battery_percent_start, link->battery_percent_end,
+          drain_ma, drain_mw, link->on_charger ? "true" : "false");
+  fprintf(f, "  \"wifi\": {\"rssi_avg_percent\": %d, \"rssi_min_percent\": %d, \"channel\": %d, \"device\": %d}\n",
           link->rssi_samples ? link->rssi_sum / link->rssi_samples : -1,
-          link->rssi_samples ? link->rssi_min : -1, link->channel);
+          link->rssi_samples ? link->rssi_min : -1, link->channel, link->device);
   fprintf(f, "}\n");
 }
 
@@ -985,9 +1043,9 @@ int vitabench_run(bool automated) {
     goto done;
   }
   int input_type = bench_input_type();
-  if (input_type == INPUT_CURSOR) {
-    // The pointer test needs only a dark screen, not the page, so don't wait
-    // for the page or reset it; just let the stream settle
+  if (input_type == INPUT_CURSOR || input_type == INPUT_NONE) {
+    // The pointer test needs only a dark screen, and none needs nothing, so
+    // don't wait for the page or reset it; just let the stream settle
     sceKernelDelayThread(RESET_SETTLE_US * 2);
   } else {
     if (!wait_for(page_is_visible, PAGE_TIMEOUT_US)) {
@@ -1016,12 +1074,22 @@ int vitabench_run(bool automated) {
     }
     sceKernelDelayThread(RESET_SETTLE_US);
   }
+  const RTP_VIDEO_STATS *rtp = LiGetRTPVideoStats();
+  if (rtp != NULL) {
+    link.rtp_start = *rtp;
+  }
+  netcount_read(&link.net_start);
+  link.battery_mah_start = scePowerGetBatteryRemainCapacity();
+  link.battery_percent_start = scePowerGetBatteryLifePercent();
+  link.battery_mv_start = scePowerGetBatteryVolt();
+  link.on_charger = scePowerIsPowerOnline() || scePowerIsBatteryCharging();
   phase = PHASE_MEASURING;
   vblank_started = pthread_create(&vblank_tid, NULL, vblank_thread, NULL) == 0;
   uint64_t start = LiGetMicroseconds();
   uint64_t end = start + (uint64_t)config.bench_seconds * 1000000;
   uint64_t next_press = start + 500000;
   uint64_t next_sample = start;
+  uint64_t next_idr = start;
   uint64_t t;
   while ((t = LiGetMicroseconds()) < end) {
     if (connection_get_status() != LI_CONNECTED) {
@@ -1032,7 +1100,13 @@ int vitabench_run(bool automated) {
       sample_link(&link);
       next_sample += 1000000;
     }
-    if (t >= next_press) {
+    // Keyframes are whole pictures, so even a still screen sends real-sized
+    // bursts, which loads the Wi-Fi like a game would
+    if (config.bench_idr_hz > 0 && t >= next_idr) {
+      LiRequestIdrFrame();
+      next_idr += 1000000 / config.bench_idr_hz;
+    }
+    if (input_type != INPUT_NONE && t >= next_press) {
       pthread_mutex_lock(&bench_mutex);
       if (state.awaiting_marker && t - state.press_sent_us > PRESS_TIMEOUT_US) {
         state.presses_missed++;
@@ -1065,6 +1139,15 @@ int vitabench_run(bool automated) {
     sceKernelDelayThread(POLL_US);
   }
   measured_seconds = (LiGetMicroseconds() - start) / 1000000.0f;
+  rtp = LiGetRTPVideoStats();
+  if (rtp != NULL) {
+    link.rtp_end = *rtp;
+  }
+  netcount_read(&link.net_end);
+  link.battery_mah_end = scePowerGetBatteryRemainCapacity();
+  link.battery_percent_end = scePowerGetBatteryLifePercent();
+  link.battery_mv_end = scePowerGetBatteryVolt();
+  link.on_charger |= scePowerIsPowerOnline() || scePowerIsBatteryCharging();
 
 done:
   phase = PHASE_IDLE;

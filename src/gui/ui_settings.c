@@ -720,7 +720,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
     // read_buttons() only reports newly pressed buttons, so check L and R are held directly
     SceCtrlData pad = {0};
     sceCtrlPeekBufferPositive(0, &pad, 1);
-    if ((pad.buttons & SCE_CTRL_L1) && (pad.buttons & SCE_CTRL_R1)) {
+    // The menus' sceCtrlPeekBufferPositive reports the shoulder buttons on the
+    // L2/R2 bits (the old LTRIGGER/RTRIGGER names), so accept either pair
+    if ((pad.buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) && (pad.buttons & (SCE_CTRL_R1 | SCE_CTRL_R2))) {
       config.developer_mode = !config.developer_mode;
       ui_settings_save_config();
       display_error(config.developer_mode
