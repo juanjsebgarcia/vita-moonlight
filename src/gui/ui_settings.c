@@ -560,10 +560,13 @@ static int settings_menu_count = 0;
 // Plain-language help for each setting, shown with triangle. Written for the
 // player, not the developer: what it does, and when to change it.
 // Bitrate steps on the Bitrate row, in kbps, then Custom, which enables the
-// Custom bitrate row below it for any value
+// Custom bitrate row below it for any value in kbps, as the setting has always
+// been entered. A saved value that isn't a step opens on Custom unchanged, so
+// upgrading never alters anyone's bitrate; the range only applies to new entries.
 static const int BITRATE_STEPS_KBPS[] = {5000, 10000, 15000, 20000, 25000, 30000};
 #define BITRATE_STEP_COUNT ((int)(sizeof(BITRATE_STEPS_KBPS) / sizeof(BITRATE_STEPS_KBPS[0])))
-#define BITRATE_CUSTOM_MAX_MBPS 100
+#define BITRATE_CUSTOM_MIN_KBPS 500
+#define BITRATE_CUSTOM_MAX_KBPS 100000
 static bool bitrate_custom = false;
 
 static int bitrate_step_index(int kbps) {
@@ -588,8 +591,10 @@ static void format_mbps(char *out, size_t size, int kbps) {
 static void sync_bitrate_rows(menu_entry *menu) {
   char value[32];
   format_mbps(value, sizeof(value), config.stream.bitrate);
+  char kbps[32];
+  snprintf(kbps, sizeof(kbps), "%d kbps", config.stream.bitrate);
   SET_ROW_VALUE(SETTINGS_VIEW_BITRATE, bitrate_custom ? "Custom" : value);
-  SET_ROW_VALUE(SETTINGS_VIEW_BITRATE_CUSTOM, value);
+  SET_ROW_VALUE(SETTINGS_VIEW_BITRATE_CUSTOM, kbps);
   if (SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM] > 0) {
     menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM]].disabled = !bitrate_custom;
   }
@@ -610,7 +615,8 @@ static const char *settings_help_text(int id) {
              "about 15 to 20 Mbps. 10 suits weaker Wi-Fi, 20 a strong signal. Lower it if the "
              "picture goes blocky or stutters. Custom lets you type any value below.";
     case SETTINGS_BITRATE_CUSTOM:
-      return "Any bitrate, in Mbps (1 to 100). Choose Custom on the Bitrate row above to use it.";
+      return "Any bitrate, in kilobits per second (10000 = 10 Mbps), from 500 to 100000. Choose "
+             "Custom on the Bitrate row above to use it.";
     case SETTINGS_SOPS:
       return "Lets GeForce Experience change your game's own graphics settings to suit the stream. "
              "Only does anything with NVIDIA GeForce Experience; Sunshine ignores it. Turn it off "
@@ -1012,15 +1018,15 @@ static int settings_loop(int id, void *context, const input_data *input) {
       }
       {
         char value[512];
-        char current_mbps[16];
-        snprintf(current_mbps, sizeof(current_mbps), "%d", config.stream.bitrate / 1000);
-        if (ime_dialog_number(value, "Bitrate in Mbps (1 to 100)", current_mbps) == 0) {
-          int mbps = atoi(value);
-          if (mbps >= 1 && mbps <= BITRATE_CUSTOM_MAX_MBPS) {
-            config.stream.bitrate = mbps * 1000;
+        char current_kbps[16];
+        snprintf(current_kbps, sizeof(current_kbps), "%d", config.stream.bitrate);
+        if (ime_dialog_number(value, "Bitrate in kbps (10000 = 10 Mbps)", current_kbps) == 0) {
+          int kbps = atoi(value);
+          if (kbps >= BITRATE_CUSTOM_MIN_KBPS && kbps <= BITRATE_CUSTOM_MAX_KBPS) {
+            config.stream.bitrate = kbps;
             did_change = 1;
           } else {
-            display_error("Enter a bitrate from 1 to %d Mbps.", BITRATE_CUSTOM_MAX_MBPS);
+            display_error("Enter a bitrate from %d to %d kbps.", BITRATE_CUSTOM_MIN_KBPS, BITRATE_CUSTOM_MAX_KBPS);
           }
         }
       }
