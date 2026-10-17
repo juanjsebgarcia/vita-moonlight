@@ -157,6 +157,9 @@ static struct {
   uint64_t present_pending_us;
   int present_pending_count;
   uint32_t frames_received, frames_rendered, frames_lost, idr_frames;
+  // Separate runs of missing frames: each is one freeze while the Vita waits
+  // for a keyframe after a frame couldn't be rebuilt
+  uint32_t freezes;
   uint64_t bytes;
   uint32_t ticks_read, ticks_unreadable, ticks_repeated, ticks_skipped, ticks_backwards;
   // Total forward ticks between frames, to work out the page's tick rate
@@ -433,6 +436,7 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
     }
     if (state.last_frame_number > 0 && du->frameNumber > state.last_frame_number + 1) {
       state.frames_lost += du->frameNumber - state.last_frame_number - 1;
+      state.freezes++;
     }
     state.last_frame_number = du->frameNumber;
 
@@ -564,6 +568,7 @@ static void reset_measurements(void) {
   state.frames_replaced = 0;
   state.present_pending_count = 0;
   state.frames_received = state.frames_rendered = state.frames_lost = state.idr_frames = 0;
+  state.freezes = 0;
   state.bytes = 0;
   state.ticks_read = state.ticks_unreadable = state.ticks_repeated = 0;
   state.ticks_skipped = state.ticks_backwards = 0;
@@ -780,10 +785,10 @@ static void write_report(FILE *f, const char *started, const char *host, const c
           config.enable_frame_pacer ? "true" : "false", config.enable_vita_vblank_wait ? "true" : "false",
           config.stats_overlay, config.save_debug_log ? "true" : "false");
   fprintf(f, "  \"frames\": {\"received\": %u, \"rendered\": %u, \"fps_received\": %.2f, \"fps_rendered\": %.2f, "
-             "\"lost_network\": %u, \"idr\": %u, \"replaced_before_shown\": %u},\n",
+             "\"lost_network\": %u, \"idr\": %u, \"replaced_before_shown\": %u, \"freezes\": %u},\n",
           state.frames_received, state.frames_rendered,
           seconds > 0 ? state.frames_received / seconds : 0, summary->fps_rendered,
-          state.frames_lost, state.idr_frames, state.frames_replaced);
+          state.frames_lost, state.idr_frames, state.frames_replaced, state.freezes);
   // The page ticks at its own rate (60 by default), so a slower stream skips
   // ticks even when nothing is lost. Work out how many, and report the rest.
   float tick_rate = seconds > 0 ? state.ticks_advanced / seconds : 0;
