@@ -721,6 +721,7 @@ typedef struct {
   int rssi_min;
   int rssi_samples;
   int channel;
+  int device; // SceNetCtlInfo.device: the network interface type, unnamed in VitaSDK
 } link_samples;
 
 static void sample_link(link_samples *link) {
@@ -741,6 +742,9 @@ static void sample_link(link_samples *link) {
   }
   if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_CHANNEL, &info) >= 0) {
     link->channel = info.channel;
+  }
+  if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_DEVICE, &info) >= 0) {
+    link->device = (int)info.device;
   }
 }
 
@@ -894,9 +898,9 @@ static void write_report(FILE *f, const char *started, const char *host, const c
              "\"drain_ma\": %.0f, \"drain_mw\": %.0f, \"on_charger\": %s},\n",
           link->battery_mah_start, link->battery_mah_end, link->battery_percent_start, link->battery_percent_end,
           drain_ma, drain_mw, link->on_charger ? "true" : "false");
-  fprintf(f, "  \"wifi\": {\"rssi_avg_percent\": %d, \"rssi_min_percent\": %d, \"channel\": %d}\n",
+  fprintf(f, "  \"wifi\": {\"rssi_avg_percent\": %d, \"rssi_min_percent\": %d, \"channel\": %d, \"device\": %d}\n",
           link->rssi_samples ? link->rssi_sum / link->rssi_samples : -1,
-          link->rssi_samples ? link->rssi_min : -1, link->channel);
+          link->rssi_samples ? link->rssi_min : -1, link->channel, link->device);
   fprintf(f, "}\n");
 }
 
