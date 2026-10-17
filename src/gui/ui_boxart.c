@@ -398,6 +398,11 @@ void ui_boxart_open(PSERVER_DATA server, const char *host, PAPP_LIST apps, int r
     cover_slot *slot = &slots[slot_count++];
     slot->id = app->id;
     slot->name = strdup(app->name ? app->name : "");
+    if (slot->name == NULL) {
+      // Out of memory: the labels would dereference it, so show no covers
+      ui_boxart_close();
+      return;
+    }
   }
 
   if (host == NULL || host[0] == '\0') {
