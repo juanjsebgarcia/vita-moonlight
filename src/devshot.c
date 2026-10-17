@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <psp2/io/fcntl.h>
 #include <psp2/io/stat.h>
+#include <psp2/kernel/processmgr.h>
 #include <stdio.h>
 #include <vita2d.h>
 
@@ -20,6 +21,11 @@ void devshot_after_swap(void) {
     return;
   }
   frames = 0;
+
+  // With nobody touching the Vita during remote checks, it turns the screen
+  // off after a while, and the menus stop drawing (they wait for screen
+  // refreshes that don't come). Tell it someone's active, as input would.
+  sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DEFAULT);
 
   char request[DEVSHOT_PATH_MAX];
   snprintf(request, sizeof(request), "%sshot.req", config.key_dir);
