@@ -41,14 +41,19 @@ die() {
 
 require_vita() {
   [ -n "${VITA_IP:-}" ] || die "set VITA_IP to the Vita's address"
-  nc -z -w 3 "$VITA_IP" "$FTP_PORT" 2>/dev/null \
-    || die "nothing listening on $VITA_IP:$FTP_PORT; is vitacompanion loaded and the Vita awake?"
+  local port
+  for port in "$FTP_PORT" "$CMD_PORT"; do
+    nc -z -w 3 "$VITA_IP" "$port" 2>/dev/null \
+      || die "nothing listening on $VITA_IP:$port; is vitacompanion loaded and the Vita awake?"
+  done
 }
 
 # vitacompanion takes one command per connection, terminated by a newline, and
-# replies with a line of text. `help` lists the commands it supports.
+# replies with a line of text. `help` lists the commands it supports. A failed
+# connection is fatal, so push never uploads over an app it couldn't stop.
 vita_cmd() {
-  printf '%s\n' "$1" | nc -w 3 "$VITA_IP" "$CMD_PORT" || true
+  printf '%s\n' "$1" | nc -w 3 "$VITA_IP" "$CMD_PORT" \
+    || die "couldn't send '$1' to $VITA_IP:$CMD_PORT"
 }
 
 ftp_url() {
@@ -119,9 +124,9 @@ cmd_log() {
   require_vita
   local out="${1:-}"
   local found=""
-  # The log lives next to the config, which is ux0:data/moonlight unless that
-  # could not be created
-  for path in "ux0:/data/moonlight/moonlight.log" "uma0:/data/moonlight/moonlight.log" "ux0:/data/moonlight.log"; do
+  # The log lives next to the config, in the first of these the app could
+  # create (src/check_dir.c), with ux0:data as the last resort
+  for path in "ux0:/data/moonlight/moonlight.log" "ux0:/moonlight/moonlight.log" "uma0:/data/moonlight/moonlight.log" "ux0:/data/moonlight.log"; do
     if curl -sf --max-time 10 "$(ftp_url "$path")" -o "${out:-/dev/stdout}"; then
       found="$path"
       break
@@ -148,6 +153,8 @@ case "${1:-}" in
   kill) cmd_kill ;;
   log) shift; cmd_log "${1:-}" ;;
   crash) cmd_crash ;;
-  all) cmd_build && cmd_push ;;
+  # One after the other, not joined with &&, which would turn off set -e inside
+  # cmd_build and let a failed build upload the previous eboot.bin
+  all) cmd_build; cmd_push ;;
   *) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
