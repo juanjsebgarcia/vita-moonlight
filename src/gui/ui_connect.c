@@ -13,6 +13,7 @@
 #include "../util.h"
 #include "../device.h"
 #include "../debug.h"
+#include "../netcount.h"
 
 #include "client.h"
 #include "errors.h"
@@ -63,9 +64,14 @@ int get_app_name(PAPP_LIST list, int id, char *name) {
   return 0;
 }
 
+// Set by start_stream once the host has launched the app, even if the stream
+// then fails to start
+static bool start_launched_app = false;
+
 // Starts streaming appId. Returns 0, or a negative code with a message in err,
 // so callers decide whether to show it (the benchmark runs without dialogs).
 static int start_stream(int appId, char *err, size_t err_len) {
+  start_launched_app = false;
   // TODO support force controller id
   vita_debug_log("Running gs_start_app...");
   int ret = gs_start_app(&server, &config.stream, appId, config.sops, config.localaudio, 1);
@@ -80,6 +86,7 @@ static int start_stream(int appId, char *err, size_t err_len) {
     return ret;
   }
   vita_debug_log("App started.");
+  start_launched_app = true;
 
   enum platform system = VITA;
   int drFlags = 0;
@@ -215,10 +222,26 @@ int ui_connect_find_app(const char *name) {
 }
 
 int ui_connect_start_app_by_id(int app_id, char *err, size_t err_len) {
+  // Auto-detect and the benchmark quit their app afterwards. Over a running
+  // app, the host would resume that one instead, and they'd then close it.
+  if (server.currentGame != 0) {
+    snprintf(err, err_len, "An app is already running on %s. Quit it from the "
+             "PC's menu first.", ui_connect_server_name());
+    return -1;
+  }
   vitapower_config(config);
   vitainput_config(config);
   connection_paired();
-  return start_stream(app_id, err, err_len);
+  // Count this stream's video packets afresh (src/netcount.c)
+  netcount_reset();
+  int ret = start_stream(app_id, err, err_len);
+  if (ret != 0 && start_launched_app) {
+    // The app started but its stream didn't: close it again, since the host
+    // was idle before
+    gs_quit_app(&server);
+    ui_connect_return_to_server();
+  }
+  return ret;
 }
 
 void ui_connect_return_to_server(void) {
@@ -231,7 +254,12 @@ void ui_connect_return_to_server(void) {
 }
 
 int ui_connect_quit_app(void) {
-  return gs_quit_app(&server);
+  int ret = gs_quit_app(&server);
+  if (ret == GS_OK) {
+    // As the menu's Quit does, so the apps can be started again
+    server.currentGame = 0;
+  }
+  return ret;
 }
 
 enum {

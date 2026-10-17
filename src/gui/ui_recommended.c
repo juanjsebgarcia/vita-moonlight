@@ -326,8 +326,13 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
     snprintf(err, err_len, "No video arrived during the test stream.");
     goto done;
   }
+  if (variance_samples == 0) {
+    // No round-trip readings: don't pass the jitter check unmeasured
+    snprintf(err, err_len, "The connection's delay couldn't be measured.");
+    goto done;
+  }
   result->loss_percent = 100.0f * lost / packets;
-  result->jitter_ms = variance_samples ? variance_sum / variance_samples : 0;
+  result->jitter_ms = variance_sum / variance_samples;
   ok = true;
 
 done:
