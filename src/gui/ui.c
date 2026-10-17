@@ -21,6 +21,7 @@
 #include "../bench.h"
 #include "../hosts.h"
 #include "../ui_ops.h"
+#include "../devshot.h"
 
 #include <stdarg.h>
 #include <psp2/kernel/processmgr.h>
@@ -636,6 +637,8 @@ void gui_loop() {
     vitabench_run(true);
     sceKernelExitProcess(0);
   }
+
+  devshot_open_requested_screen();
 
   while (ui_main_menu() == 2);
 
