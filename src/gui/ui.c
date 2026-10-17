@@ -225,18 +225,18 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
   device_info_t *info = (device_info_t *)context;
   host_manage_cursor = cursor;
   // Permitir regresar con el botón cancelar (O)
-  if ((input->buttons & config.btn_cancel) != 0) {
+  if (ui_held(input, UI_INTENT_CANCEL)) {
     return 1; // Salir del menú
   }
   // Square on the Wake row: only send the packet, as Wake on LAN used to
-  if (cursor == HOST_MANAGE_WAKE && (input->buttons & SCE_CTRL_SQUARE) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+  if (cursor == HOST_MANAGE_WAKE && ui_pressed(input, UI_INTENT_SECONDARY)) {
     if (send_wake_packet(info)) {
       flash_message("Wake on LAN sent to %s.", info->name);
       sceKernelDelayThread(1500 * 1000);
     }
     return 0;
   }
-  if ((input->buttons & config.btn_confirm) == 0 || (input->buttons & SCE_CTRL_HOLD) != 0) {
+  if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
     return 0;
   }
   switch (cursor) {
@@ -343,8 +343,8 @@ void ui_host_manage_menu(device_info_t *info) {
   char title[256];
   snprintf(title, sizeof(title), "Host: %s", device_label(info));
   // Mensaje principal
-  menu[idx++] = (menu_entry){ .name = "Host management", .disabled = true, .color = 0xFFFFFFFF };
-  menu[idx++] = (menu_entry){ .name = title, .disabled = true, .color = 0xFF00AAFF };
+  menu[idx++] = (menu_entry){ .name = "Host management", .disabled = true };
+  menu[idx++] = (menu_entry){ .name = title, .disabled = true };
   // Info IP y estado con punto de color
   char ipinfo[320];
   char status_text[64] = "Unpaired";
@@ -397,7 +397,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
   extern volatile int g_host_status_changed;
   extern volatile int g_host_scan_thread_status;
   // Refresco manual con Triángulo
-  if ((input->buttons & SCE_CTRL_TRIANGLE) != 0) {
+  if (ui_pressed(input, UI_INTENT_HELP)) {
     vita_debug_log("[UI] Refresco manual solicitado (Triángulo): reiniciando escaneo de hosts");
     stop_host_scan();
     start_host_scan();
@@ -433,7 +433,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
     return 2; // Forzar refresco del menú
   }
 
-  if ((input->buttons & config.btn_confirm) == 0 || (input->buttons & SCE_CTRL_HOLD) != 0) {
+  if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
     return 0;
   }
   // Permitir acceder al menú de gestión de host siempre, incluso si está offline o la IP cambió
@@ -555,7 +555,7 @@ int ui_main_menu() {
 
 #define MENU_TITLE(NAME) \
   do { \
-    menu[idx] = (menu_entry) { .name = "", .disabled = true, .color = 0xff00aa00 }; \
+    menu[idx] = (menu_entry) { .name = "", .disabled = true }; \
     strcpy(menu[idx].subname, (NAME)); \
     idx++; \
   } while (0)
@@ -610,40 +610,22 @@ int ui_main_menu() {
         struct host_status st;
         st = g_host_status[i];
 
-        // unsigned int color = 0; // No usado
-        // const char* color_str = ""; // No usado
-        // bool ip_changed = (st.current_ip[0] && strcmp(cur->internal, st.current_ip) != 0); // No usado
-        // bool ip_pending = (pending_ip_update_idx == i && pending_ip_update[0] != '\0'); // No usado
         MENU_ENTRY(MAIN_MENU_CONNECT_PAIRED + i, (char *)device_label(cur), false);
-        int real_idx = idx - 1;
-        menu[real_idx].is_host_entry = true;
-        // Si hay cambio de IP pendiente para este host, forzar amarillo y saltar el resto
-        if (pending_ip_update_idx == i && pending_ip_update[0] != '\0') {
-          strcpy(menu[real_idx].subname, "[IP changed]");
-          menu[real_idx].color = 0xFF00FFFF;
-          vita_debug_log("[UI] Host %s menu idx=%d, color=0x%08X (YELLOW, IP pendiente), archivo=ui.c", cur->name, real_idx, 0xFF00FFFF);
-          continue;
+        menu_entry *row = &menu[idx - 1];
+        bool ip_pending = pending_ip_update_idx == i && pending_ip_update[0] != '\0';
+        bool ip_changed = st.current_ip[0] && strcmp(cur->internal, st.current_ip) != 0;
+        if (ip_changed && !ip_pending && strcmp(last_ip_logged, st.current_ip) != 0) {
+          vita_debug_log("[UI] Host %s IP changed: old=%s, new=%s", cur->name, cur->internal, st.current_ip);
+          strncpy(last_ip_logged, st.current_ip, sizeof(last_ip_logged)-1);
+          last_ip_logged[sizeof(last_ip_logged)-1] = '\0';
         }
-        // ...lógica normal de color...
-        if (st.current_ip[0] && strcmp(cur->internal, st.current_ip) != 0) {
-          if (strcmp(last_ip_logged, st.current_ip) != 0) {
-            vita_debug_log("[UI] Host %s IP changed: old=%s, new=%s", cur->name, cur->internal, st.current_ip);
-            strncpy(last_ip_logged, st.current_ip, sizeof(last_ip_logged)-1);
-            last_ip_logged[sizeof(last_ip_logged)-1] = '\0';
-          }
-          strcpy(menu[real_idx].subname, "[IP changed]");
-          menu[real_idx].color = 0xFF00FFFF;
-          vita_debug_log("[UI] Host %s menu idx=%d, color=0x%08X (YELLOW), archivo=ui.c", cur->name, real_idx, 0xFF00FFFF);
-        } else if (strcmp(menu[real_idx].subname, "[IP changed]") == 0) {
-          menu[real_idx].color = 0xFF00FFFF;
-          vita_debug_log("[UI] Host %s menu idx=%d, color=0x%08X (YELLOW), archivo=ui.c", cur->name, real_idx, 0xFF00FFFF);
-        } else if (st.status == HOST_ONLINE) {
-          menu[real_idx].color = 0xFF00FF00;
-          vita_debug_log("[UI] Host %s menu idx=%d, color=0x%08X (GREEN), archivo=ui.c", cur->name, real_idx, 0xFF00FF00);
+        if (ip_pending || ip_changed) {
+          strcpy(row->subname, "[IP changed]");
+          row->status = MENU_STATUS_CHANGED;
         } else {
-          menu[real_idx].color = 0xFF0000FF;
-          vita_debug_log("[UI] Host %s menu idx=%d, color=0x%08X (RED), archivo=ui.c", cur->name, real_idx, 0xFF0000FF);
+          row->status = st.status == HOST_ONLINE ? MENU_STATUS_ONLINE : MENU_STATUS_OFFLINE;
         }
+        vita_debug_log("[UI] Host %s menu row %d, status %d", cur->name, idx - 1, row->status);
       }
     }
 

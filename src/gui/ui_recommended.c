@@ -299,6 +299,9 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
   config.stream.width = 1280;
   config.stream.height = 720;
   config.stream.bitrate = 20000;
+  // The packet counter (src/netcount.c) only sees full-size video packets,
+  // so test at the default size even if the player set a small one
+  config.stream.packetSize = 1024;
 
   bool ok = false;
   if (ui_connect_start_app_by_id(app_id, err, err_len) != 0) {
@@ -476,8 +479,7 @@ static int menu_loop(int id, void *context, const input_data *input) {
     refresh(menu);
   }
 
-  bool pressed_once = (input->buttons & SCE_CTRL_HOLD) == 0;
-  if ((input->buttons & SCE_CTRL_TRIANGLE) && pressed_once) {
+  if (ui_pressed(input, UI_INTENT_HELP)) {
     const char *help = help_text(id);
     if (help) {
       display_help(menu[id].name, help);
@@ -485,8 +487,8 @@ static int menu_loop(int id, void *context, const input_data *input) {
     return 0;
   }
   if (id == ROW_PRIORITY) {
-    bool left = (input->buttons & SCE_CTRL_LEFT) && pressed_once;
-    bool right = ((input->buttons & SCE_CTRL_RIGHT) || (input->buttons & config.btn_confirm)) && pressed_once;
+    bool left = ui_pressed(input, UI_INTENT_LEFT);
+    bool right = ui_pressed(input, UI_INTENT_RIGHT | UI_INTENT_CONFIRM);
     if (left || right) {
       // No battery on a PS TV, so no battery option
       int count = is_pstv() ? PRIORITY_BATTERY : PRIORITY_COUNT;
@@ -495,7 +497,7 @@ static int menu_loop(int id, void *context, const input_data *input) {
     }
     return 0;
   }
-  if ((input->buttons & config.btn_confirm) == 0 || !pressed_once) {
+  if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
     return 0;
   }
   if (id == ROW_AUTO) {
@@ -519,7 +521,7 @@ int ui_recommended_settings_menu(void) {
     priority = PRIORITY_BALANCED;
   }
   menu[ROW_NOW] = (menu_entry) { .name = "", .disabled = true };
-  menu[ROW_PRIORITY] = (menu_entry) { .name = "What matters most", .id = ROW_PRIORITY, .suffix = ICON_LEFT_RIGHT_ARROWS };
+  menu[ROW_PRIORITY] = (menu_entry) { .name = "What matters most", .id = ROW_PRIORITY, .adjustable = true };
   menu[ROW_AUTO] = (menu_entry) { .name = "Auto-detect: test where you'll play", .id = ROW_AUTO };
   menu[ROW_GOOD] = (menu_entry) { .name = "Good connection: near the router, or wired", .id = ROW_GOOD };
   menu[ROW_WEAK] = (menu_entry) { .name = "Weak connection: further away or through walls", .id = ROW_WEAK };

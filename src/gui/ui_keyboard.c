@@ -12,7 +12,7 @@ static const char* keyboard_layout_names[] = {
 };
 
 static int keyboard_layout_loop(int id, void *context, const input_data *input) {
-    if ((input->buttons & config.btn_confirm) && !(input->buttons & SCE_CTRL_HOLD)) {
+    if (ui_pressed(input, UI_INTENT_CONFIRM)) {
         // Selecciona el layout
         keyboardsystem_set_layout((KeyboardLayout)id);
         config.keyboard_layout = id;
@@ -31,7 +31,7 @@ int keyboard_layout_menu(void) {
         menu[i].name = (char*)keyboard_layout_names[i];
         menu[i].id = i;
         menu[i].disabled = false;
-        menu[i].suffix = (i == config.keyboard_layout) ? "*" : "";
+        menu[i].checked = i == config.keyboard_layout;
     }
     menu_geom geom = make_geom_centered(320, 120);
     int sel = display_menu(menu, KB_LAYOUT_COUNT, &geom, &keyboard_layout_loop, NULL, NULL, menu);

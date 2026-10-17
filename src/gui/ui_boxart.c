@@ -167,7 +167,11 @@ static int download_cover(int app_id, const char *path) {
     written = fclose(file) == 0 && written;
   }
   free(image);
-  sceIoRemove(path);
+  // Replace the old cover only once the new one is safely written, so a full
+  // memory card never costs the cover already cached
+  if (written) {
+    sceIoRemove(path);
+  }
   if (!written || sceIoRename(temp_path, path) < 0) {
     vita_debug_log("[BOXART] app %d: couldn't save %s", app_id, path);
     sceIoRemove(temp_path);
@@ -357,7 +361,7 @@ static int loader_main(SceSize args, void *argp) {
 }
 
 static void update_counter(void) {
-  snprintf(counter_text, sizeof(counter_text), "%d of %d " ICON_LEFT_RIGHT_ARROWS, selected + 1, slot_count);
+  snprintf(counter_text, sizeof(counter_text), "%d of %d", selected + 1, slot_count);
 }
 
 void ui_boxart_stop_loading(void) {
@@ -456,19 +460,19 @@ void ui_boxart_set_focus(bool is_focused) {
   focused = is_focused;
 }
 
-void ui_boxart_input(int buttons) {
+void ui_boxart_input(const input_data *input) {
   if (slot_count == 0 || locked) {
     return;
   }
   int next = selected;
   // Held directions repeat, so the whole row can be scrolled quickly
-  if (buttons & SCE_CTRL_LEFT) {
+  if (ui_held(input, UI_INTENT_LEFT)) {
     next--;
-  } else if (buttons & SCE_CTRL_RIGHT) {
+  } else if (ui_held(input, UI_INTENT_RIGHT)) {
     next++;
-  } else if (buttons & SCE_CTRL_LTRIGGER) {
+  } else if (ui_held(input, UI_INTENT_TAB_PREV)) {
     next -= 5;
-  } else if (buttons & SCE_CTRL_RTRIGGER) {
+  } else if (ui_held(input, UI_INTENT_TAB_NEXT)) {
     next += 5;
   }
   next = next < 0 ? 0 : next;
@@ -480,7 +484,7 @@ void ui_boxart_input(int buttons) {
     remembered_app = slots[selected].id;
     update_counter();
   }
-  if ((buttons & SCE_CTRL_TRIANGLE) && (buttons & SCE_CTRL_HOLD) == 0) {
+  if (ui_pressed(input, UI_INTENT_HELP)) {
     // Handled at the start of the next frame, as this one may have drawn the old cover
     refresh_requested = true;
   }

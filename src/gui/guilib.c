@@ -169,7 +169,7 @@ void draw_menu(menu_entry menu[], int total_elements, menu_geom geom, int cursor
       text_color = 0xff00ff00; // Verde para seleccionado
     }
     if (!menu[i].disabled) {
-      if (menu[i].warning && cursor != cursor_idx) {
+      if (menu[i].status == MENU_STATUS_WARNING && cursor != cursor_idx) {
         text_color = 0xff00d0ff;
       }
       cursor_idx++;
@@ -177,8 +177,13 @@ void draw_menu(menu_entry menu[], int total_elements, menu_geom geom, int cursor
       text_color = 0xffaaaaaa;
     }
 
-    // Color del puntito de estado (solo para hosts, si menu[i].color != 0)
-    unsigned int dot_color = menu[i].color ? menu[i].color : 0xffaaaaaa;
+    // PCs get a dot in their status colour: green online, red offline, yellow
+    // at a new address
+    bool has_dot = menu[i].status == MENU_STATUS_ONLINE || menu[i].status == MENU_STATUS_OFFLINE ||
+                   menu[i].status == MENU_STATUS_CHANGED;
+    unsigned int dot_color = menu[i].status == MENU_STATUS_ONLINE ? 0xFF00FF00
+                             : menu[i].status == MENU_STATUS_OFFLINE ? 0xFF0000FF
+                             : 0xFF00FFFF;
 
     int el_x = geom.x + 10,
         el_y = geom.y + i * geom.el - offset + 10;
@@ -202,7 +207,7 @@ void draw_menu(menu_entry menu[], int total_elements, menu_geom geom, int cursor
     }
 
     // Dibuja el puntito de estado solo para hosts emparejados (solo menú principal)
-    if (menu[i].is_host_entry && menu[i].name && strlen(menu[i].name) > 0) {
+    if (has_dot && menu[i].name && strlen(menu[i].name) > 0) {
       int dot_radius = 8;
       int dot_x = el_x + dot_radius; // Asegura que el puntito no quede pegado al borde
       int dot_y = el_y + text_height / 2 + 2;
@@ -229,7 +234,22 @@ void draw_menu(menu_entry menu[], int total_elements, menu_geom geom, int cursor
     }
 
     int right_x_offset = 20;
-    if (menu[i].suffix) {
+    // Arrows for a value left and right change; a star for the current choice
+    const char *marker = menu[i].adjustable ? ICON_LEFT_RIGHT_ARROWS : menu[i].checked ? "*" : NULL;
+    if (marker) {
+      int text_width = vita2d_font_text_width(font, 18, marker);
+      vita2d_font_draw_text(
+          font,
+          el_x + geom.width - text_width - right_x_offset,
+          el_y + text_height,
+          text_color,
+          18,
+          marker
+          );
+
+      right_x_offset += text_width + 10;
+    }
+    if (menu[i].suffix && *menu[i].suffix) {
       int text_width = vita2d_font_text_width(font, 18, menu[i].suffix);
       vita2d_font_draw_text(
           font,
@@ -615,6 +635,51 @@ int read_buttons() {
     return btn;
 }
 
+static unsigned int intents_from_buttons(int buttons) {
+  static const struct {
+    unsigned int buttons;
+    unsigned int intent;
+  } MAP[] = {
+    {SCE_CTRL_UP, UI_INTENT_UP},
+    {SCE_CTRL_DOWN, UI_INTENT_DOWN},
+    {SCE_CTRL_LEFT, UI_INTENT_LEFT},
+    {SCE_CTRL_RIGHT, UI_INTENT_RIGHT},
+    {SCE_CTRL_TRIANGLE, UI_INTENT_HELP},
+    {SCE_CTRL_SQUARE, UI_INTENT_SECONDARY},
+    // sceCtrlPeekBufferPositive reports the shoulder buttons on the L2/R2 bits
+    // (the old LTRIGGER/RTRIGGER names), so accept either pair
+    {SCE_CTRL_L1 | SCE_CTRL_L2, UI_INTENT_TAB_PREV},
+    {SCE_CTRL_R1 | SCE_CTRL_R2, UI_INTENT_TAB_NEXT},
+    {SCE_CTRL_START, UI_INTENT_START},
+    {SCE_CTRL_SELECT, UI_INTENT_SELECT},
+  };
+  unsigned int intents = 0;
+  for (size_t i = 0; i < sizeof(MAP) / sizeof(MAP[0]); i++) {
+    if (buttons & MAP[i].buttons) {
+      intents |= MAP[i].intent;
+    }
+  }
+  // Confirm and cancel follow Swap X & O
+  if (buttons & config.btn_confirm) {
+    intents |= UI_INTENT_CONFIRM;
+  }
+  if (buttons & config.btn_cancel) {
+    intents |= UI_INTENT_CANCEL;
+  }
+  if (buttons & SCE_CTRL_HOLD) {
+    intents |= UI_INTENT_REPEAT;
+  }
+  return intents;
+}
+
+input_data read_input(void) {
+  input_data input = {0};
+  input.buttons = read_buttons();
+  input.intents = intents_from_buttons(input.buttons);
+  sceTouchPeek(SCE_TOUCH_PORT_FRONT, &input.touch, 1);
+  return input;
+}
+
 int display_menu(menu_entry menu[], int total_elements, menu_geom *geom_ptr,
                  gui_loop_callback cb, gui_back_callback back_cb,
                  gui_draw_callback draw_callback,
@@ -668,13 +733,11 @@ int display_menu(menu_entry menu[], int total_elements, menu_geom *geom_ptr,
     }
 
     // select item
-    input_data input = {0};
-    input.buttons = read_buttons();
-    sceTouchPeek(SCE_TOUCH_PORT_FRONT, &input.touch, 1);
-    if (input.buttons & SCE_CTRL_DOWN) {
+    input_data input = read_input();
+    if (ui_held(&input, UI_INTENT_DOWN)) {
       cursor += 1;
     }
-    if (input.buttons & SCE_CTRL_UP) {
+    if (ui_held(&input, UI_INTENT_UP)) {
       cursor -= 1;
     }
     cursor = cursor < 0 ? 0 : cursor;
@@ -683,11 +746,6 @@ int display_menu(menu_entry menu[], int total_elements, menu_geom *geom_ptr,
     int cursor_y = geom.y + ((cursor == 0 ? 0 : real_cursor) * geom.el) - offset;
     offset -= cursor_y < geom.y ? 8 : 0;
     offset -= cursor_y > geom.total_y - geom.el * 2 ? -8 : 0;
-
-    // The callback can swap confirm and cancel (Swap X & O in Settings), so
-    // read this frame's press with the buttons it was made with. Otherwise
-    // the X that opened Settings counts as cancel and closes this menu too.
-    SceCtrlButtons cancel_button = config.btn_cancel;
 
     if (cb) {
       exit_code = cb(menu[real_cursor].id, context, &input);
@@ -700,7 +758,10 @@ int display_menu(menu_entry menu[], int total_elements, menu_geom *geom_ptr,
       gui_global_loop_callback(menu[real_cursor].id, context, &input);
     }
 
-    if (input.buttons & cancel_button && (input.buttons & SCE_CTRL_HOLD) == 0) {
+    // The intents were read before the callback ran, with the buttons the
+    // press was made with: Swap X & O changed in Settings mustn't turn the X
+    // that opened it into a cancel that closes this menu too
+    if (ui_pressed(&input, UI_INTENT_CANCEL)) {
       if (!back_cb || back_cb(context) == 0) {
         exit_code = 1;
         goto error;
@@ -728,24 +789,22 @@ void display_alert(char *message, char *button_captions[], int buttons_count,
 
     draw_alert(message, alert_geom, button_captions, buttons_count);
 
-    input_data input = {0};
-    input.buttons = read_buttons();
-    sceTouchPeek(SCE_TOUCH_PORT_FRONT, &input.touch, 1);
+    input_data input = read_input();
 
     int result = -1;
 
-    if (input.buttons & SCE_CTRL_HOLD) {
+    if (input.intents & UI_INTENT_REPEAT) {
       ui_end();
       continue;
     }
 
-    if (input.buttons & config.btn_confirm) {
+    if (ui_pressed(&input, UI_INTENT_CONFIRM)) {
       result = 0;
-    } else if (input.buttons & config.btn_cancel) {
+    } else if (ui_pressed(&input, UI_INTENT_CANCEL)) {
       result = 1;
-    } else if (input.buttons & SCE_CTRL_TRIANGLE) {
+    } else if (ui_pressed(&input, UI_INTENT_HELP)) {
       result = 2;
-    } else if (input.buttons & SCE_CTRL_SQUARE) {
+    } else if (ui_pressed(&input, UI_INTENT_SECONDARY)) {
       result = 3;
     }
 
@@ -807,16 +866,15 @@ void display_help(const char *title, const char *message) {
     draw_button_captions(geom, captions, 1);
 
     // Up and down (or the left stick) scroll, repeating while held
-    int buttons = read_buttons();
-    if (buttons & SCE_CTRL_UP && offset > 0) {
+    input_data input = read_input();
+    if (ui_held(&input, UI_INTENT_UP) && offset > 0) {
       offset--;
-    } else if (buttons & SCE_CTRL_DOWN && offset < max_offset) {
+    } else if (ui_held(&input, UI_INTENT_DOWN) && offset < max_offset) {
       offset++;
     }
 
     // Ignore the triangle press that opened this until it is released
-    if ((buttons & SCE_CTRL_HOLD) == 0 &&
-        (buttons & (config.btn_confirm | config.btn_cancel | SCE_CTRL_TRIANGLE))) {
+    if (ui_pressed(&input, UI_INTENT_CONFIRM | UI_INTENT_CANCEL | UI_INTENT_HELP)) {
       return;
     }
 
@@ -873,13 +931,11 @@ int display_confirm(const char* message) {
     while (1) {
         ui_start();
         draw_alert((char*)message, geom, buttons, 2);
-        input_data input = {0};
-        input.buttons = read_buttons();
-        sceTouchPeek(SCE_TOUCH_PORT_FRONT, &input.touch, 1);
-        if (input.buttons & config.btn_confirm) {
+        input_data input = read_input();
+        if (ui_pressed(&input, UI_INTENT_CONFIRM)) {
             ui_end();
             return 1; // X
-        } else if (input.buttons & config.btn_cancel) {
+        } else if (ui_pressed(&input, UI_INTENT_CANCEL)) {
             ui_end();
             return 0; // O
         }
