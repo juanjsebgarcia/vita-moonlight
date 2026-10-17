@@ -118,6 +118,8 @@ static bool active_video_thread = true;
 static bool active_pacer_thread = false;
 static indicator_status poor_net_indicator = {0};
 static bool decode_thread_logged = false;
+// Fixed for a stream at setup, since the textures are created for one format
+static bool decode_yuv = false;
 
 // A reminder of how to reach the menu, shown at the start of each stream
 #define STREAM_HINT_DURATION_US 5000000
@@ -326,6 +328,8 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
   decode_thread_logged = false;
   stream_hint_start_us = 0;
   vitastats_reset();
+  decode_yuv = config.decode_yuv;
+  printf("video output: %s\n", decode_yuv ? "YUV420 (NV21), converted by the GPU" : "RGBA8888 from the decoder");
 
   if (video_status == NOT_INIT) {
     // INIT_GS
@@ -348,7 +352,15 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
     }
 
     for (int i = 0; i < FRAME_TEXTURE_COUNT; i++) {
-      frame_textures[i] = vita2d_create_empty_texture_format(image_scaling.texture_width, image_scaling.texture_height, SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR);
+      // In YUV mode the decoder writes NV21 (a Y plane, then interleaved V/U,
+      // so the YVU format: YUV swaps red and blue) and the GPU's texture unit
+      // converts it while sampling. CSC0 is BT.601, which is what we ask the
+      // host to encode; measured against the decoder's own RGBA output.
+      // vita2d sizes unknown formats at 4 bytes per pixel, which is more than
+      // the 1.5 that NV21 needs.
+      frame_textures[i] = vita2d_create_empty_texture_format(image_scaling.texture_width, image_scaling.texture_height,
+                                                             decode_yuv ? SCE_GXM_TEXTURE_FORMAT_YVU420P2_CSC0
+                                                                        : SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR);
       if (frame_textures[i] == NULL) {
         printf("frame_textures[%d]: not enough memory\n", i);
         ret = VITA_VIDEO_ERROR_NO_MEM;
@@ -494,11 +506,16 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   //frame->time = decodeUnit->receiveTimeMs;
 
   picture.size = sizeof(picture);
-  picture.frame.pixelType = 0;
+  picture.frame.pixelType = decode_yuv ? SCE_AVCDEC_PIXELFORMAT_YUV420_PACKED_RASTER : SCE_AVCDEC_PIXELFORMAT_RGBA8888;
   picture.frame.framePitch = image_scaling.texture_width;
   picture.frame.frameWidth = image_scaling.texture_width;
   picture.frame.frameHeight = image_scaling.texture_height;
   picture.frame.pPicture[0] = vita2d_texture_get_datap(frame_textures[back_texture_idx]);
+  if (decode_yuv) {
+    // GXM's two-plane YUV420 texture expects the V/U plane straight after Y
+    picture.frame.pPicture[1] = (uint8_t *)picture.frame.pPicture[0]
+                                + image_scaling.texture_width * image_scaling.texture_height;
+  }
 
   //ensure_buf_size((void *)&decoder_buffer, &decoder_buffer_size, decodeUnit->fullLength + 64);
 
@@ -560,7 +577,10 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
     // Read the benchmark page's strip from the texture this frame was decoded into
     vita2d_texture *decoded = frame_textures[back_texture_idx];
     vitabench_frame_decoded(decodeUnit, submit_us, hw_start_us, decoded_us,
-                            vita2d_texture_get_datap(decoded), vita2d_texture_get_stride(decoded),
+                            vita2d_texture_get_datap(decoded),
+                            // In YUV mode the probes read the Y (luma) plane, one byte per pixel
+                            decode_yuv ? (int)image_scaling.texture_width : vita2d_texture_get_stride(decoded),
+                            decode_yuv ? 1 : 4,
                             image_scaling.texture_height,
                             image_scaling.region_x1, image_scaling.region_y1,
                             image_scaling.region_x2, image_scaling.region_y2);
