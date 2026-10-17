@@ -278,8 +278,10 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->enable_frame_pacer = true;
   // On the Vita's Wi-Fi ~10% of video packets can arrive out of order at a
   // weaker signal; waiting for them saves frames that would otherwise freeze
-  // the picture until a keyframe
-  config->video_reorder_wait_ms = 10;
+  // the picture until a keyframe. At ~60% signal, 720p 20 Mbps: 23-37
+  // freezes a minute with no wait, 2-8 at 10 ms, 1-3 at 20 ms, with the
+  // same latency.
+  config->video_reorder_wait_ms = 20;
   config->center_region_only = false;
 
   config->enable_front_touchzones = false;
