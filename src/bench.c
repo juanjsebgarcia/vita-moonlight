@@ -701,7 +701,7 @@ typedef struct {
   // (common-c's counters), and those it sent and that arrived, from the RTP
   // sequence numbers (src/netcount.c)
   RTP_VIDEO_STATS rtp_start, rtp_end;
-  uint32_t received_start, received_end, lost_start, lost_end;
+  netcount net_start, net_end;
   int rssi_sum;
   int rssi_min;
   int rssi_samples;
@@ -838,11 +838,14 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   // from gaps in the RTP sequence numbers (src/netcount.c)
   uint32_t video_packets = link->rtp_end.packetCountVideo - link->rtp_start.packetCountVideo;
   uint32_t fec_packets = link->rtp_end.packetCountFec - link->rtp_start.packetCountFec;
-  uint32_t received = link->received_end - link->received_start;
-  uint32_t lost = link->lost_end - link->lost_start;
-  fprintf(f, "  \"packets\": {\"video\": %u, \"fec\": %u, \"received\": %u, \"lost\": %u, "
-             "\"loss_percent\": %.3f, \"payload_mbps\": %.2f, \"idr_requests_per_s\": %d},\n",
-          video_packets, fec_packets, received, lost, received + lost ? 100.0f * lost / (received + lost) : 0.0f,
+  uint32_t received = link->net_end.received - link->net_start.received;
+  uint32_t lost = link->net_end.lost - link->net_start.lost;
+  uint32_t late = link->net_end.late - link->net_start.late;
+  uint32_t repeats = link->net_end.repeats - link->net_start.repeats;
+  fprintf(f, "  \"packets\": {\"video\": %u, \"fec\": %u, \"received\": %u, \"lost\": %u, \"late\": %u, "
+             "\"repeats\": %u, \"loss_percent\": %.3f, \"payload_mbps\": %.2f, \"idr_requests_per_s\": %d},\n",
+          video_packets, fec_packets, received, lost, late, repeats,
+          received + lost ? 100.0f * lost / (received + lost) : 0.0f,
           seconds > 0 ? received * (double)config.stream.packetSize * 8 / seconds / 1000000 : 0.0,
           config.bench_idr_hz);
   // Each press, so a strange result can be traced frame by frame
@@ -1047,7 +1050,7 @@ int vitabench_run(bool automated) {
   if (rtp != NULL) {
     link.rtp_start = *rtp;
   }
-  netcount_read(&link.received_start, &link.lost_start);
+  netcount_read(&link.net_start);
   phase = PHASE_MEASURING;
   vblank_started = pthread_create(&vblank_tid, NULL, vblank_thread, NULL) == 0;
   uint64_t start = LiGetMicroseconds();
@@ -1108,7 +1111,7 @@ int vitabench_run(bool automated) {
   if (rtp != NULL) {
     link.rtp_end = *rtp;
   }
-  netcount_read(&link.received_end, &link.lost_end);
+  netcount_read(&link.net_end);
 
 done:
   phase = PHASE_IDLE;

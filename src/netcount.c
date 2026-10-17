@@ -14,6 +14,7 @@
 static volatile uint32_t received = 0;
 static volatile uint32_t gaps = 0;
 static volatile uint32_t late = 0;
+static volatile uint32_t repeats = 0;
 static bool have_sequence = false;
 static uint16_t last_sequence = 0;
 static int video_socket = -1;
@@ -49,6 +50,7 @@ int __wrap_recvUdpSocket(int s, char *buffer, int size, bool useSelect) {
   // unless it turns up late.
   uint16_t sequence = (uint16_t)(((uint8_t)buffer[2] << 8) | (uint8_t)buffer[3]);
   if (already_seen(sequence)) {
+    repeats++;
     return ret;
   }
   mark_seen(sequence);
@@ -69,7 +71,9 @@ int __wrap_recvUdpSocket(int s, char *buffer, int size, bool useSelect) {
   return ret;
 }
 
-void netcount_read(uint32_t *received_out, uint32_t *lost_out) {
-  *received_out = received;
-  *lost_out = gaps > late ? gaps - late : 0;
+void netcount_read(netcount *out) {
+  out->received = received;
+  out->lost = gaps > late ? gaps - late : 0;
+  out->late = late;
+  out->repeats = repeats;
 }
