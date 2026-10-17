@@ -581,6 +581,7 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
                             // In YUV mode the probes read the Y (luma) plane, one byte per pixel
                             decode_yuv ? (int)image_scaling.texture_width : vita2d_texture_get_stride(decoded),
                             decode_yuv ? 1 : 4,
+                            image_scaling.texture_height,
                             image_scaling.region_x1, image_scaling.region_y1,
                             image_scaling.region_x2, image_scaling.region_y2);
   }
