@@ -462,7 +462,8 @@ enum {
   SETTINGS_BENCH_SECONDS,
   SETTINGS_HIDE_DEVELOPER,
   SETTINGS_BLUETOOTH_WARNING,
-  SETTINGS_RECOMMENDED
+  SETTINGS_RECOMMENDED,
+  SETTINGS_BITRATE_CUSTOM
 };
 
 enum {
@@ -505,6 +506,7 @@ enum {
   SETTINGS_VIEW_HIDE_DEVELOPER,
   SETTINGS_VIEW_BLUETOOTH_WARNING,
   SETTINGS_VIEW_RECOMMENDED,
+  SETTINGS_VIEW_BITRATE_CUSTOM,
 
   SETTINGS_VIEW_MAX_COUNT,
 };
@@ -556,6 +558,42 @@ static int settings_menu_count = 0;
 
 // Plain-language help for each setting, shown with triangle. Written for the
 // player, not the developer: what it does, and when to change it.
+// Bitrate steps on the Bitrate row, in kbps, then Custom, which enables the
+// Custom bitrate row below it for any value
+static const int BITRATE_STEPS_KBPS[] = {5000, 10000, 15000, 20000, 25000, 30000};
+#define BITRATE_STEP_COUNT ((int)(sizeof(BITRATE_STEPS_KBPS) / sizeof(BITRATE_STEPS_KBPS[0])))
+#define BITRATE_CUSTOM_MAX_MBPS 100
+static bool bitrate_custom = false;
+
+static int bitrate_step_index(int kbps) {
+  for (int i = 0; i < BITRATE_STEP_COUNT; i++) {
+    if (BITRATE_STEPS_KBPS[i] == kbps) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+static void format_mbps(char *out, size_t size, int kbps) {
+  if (kbps % 1000 == 0) {
+    snprintf(out, size, "%d Mbps", kbps / 1000);
+  } else {
+    snprintf(out, size, "%.1f Mbps", kbps / 1000.0f);
+  }
+}
+
+// Shows the bitrate on both rows, and greys out Custom bitrate unless the
+// Bitrate row is on Custom
+static void sync_bitrate_rows(menu_entry *menu) {
+  char value[32];
+  format_mbps(value, sizeof(value), config.stream.bitrate);
+  SET_ROW_VALUE(SETTINGS_VIEW_BITRATE, bitrate_custom ? "Custom" : value);
+  SET_ROW_VALUE(SETTINGS_VIEW_BITRATE_CUSTOM, value);
+  if (SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM] > 0) {
+    menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM]].disabled = !bitrate_custom;
+  }
+}
+
 static const char *settings_help_text(int id) {
   switch (id) {
     case SETTINGS_RESOLUTION:
@@ -566,9 +604,12 @@ static const char *settings_help_text(int id) {
       return "Frames per second your PC sends. 60 is the smoothest. Try 30 if the stream stutters "
              "or your Wi-Fi is weak: it needs about half the data. 24 suits films.";
     case SETTINGS_BITRATE:
-      return "How much video is sent each second, in kilobits (10000 = 10 Mbps). Higher looks "
-             "sharper but needs a stronger Wi-Fi signal. The Vita's Wi-Fi is happiest at around "
-             "5000 to 10000. Lower it if the picture goes blocky or the stream stutters.";
+      return "How much video is sent each second. Higher looks sharper but needs a stronger "
+             "signal and adds a little delay; on the Vita's screen the picture stops improving at "
+             "about 15 to 20 Mbps. 10 suits weaker Wi-Fi, 20 a strong signal. Lower it if the "
+             "picture goes blocky or stutters. Custom lets you type any value below.";
+    case SETTINGS_BITRATE_CUSTOM:
+      return "Any bitrate, in Mbps (1 to 100). Choose Custom on the Bitrate row above to use it.";
     case SETTINGS_SOPS:
       return "Lets GeForce Experience change your game's own graphics settings to suit the stream. "
              "Only does anything with NVIDIA GeForce Experience; Sunshine ignores it. Turn it off "
@@ -935,20 +976,39 @@ static int settings_loop(int id, void *context, const input_data *input) {
 
       did_change = 1;
       break;
-    case SETTINGS_BITRATE:
+    case SETTINGS_BITRATE: {
+      bool forward = right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0);
+      if (!left && !forward) {
+        break;
+      }
+      // The steps, then Custom as the last position
+      int position = bitrate_custom ? BITRATE_STEP_COUNT : bitrate_step_index(config.stream.bitrate);
+      if (position < 0) {
+        position = BITRATE_STEP_COUNT;
+      }
+      position = (position + (left ? BITRATE_STEP_COUNT : 1)) % (BITRATE_STEP_COUNT + 1);
+      bitrate_custom = position == BITRATE_STEP_COUNT;
+      if (!bitrate_custom) {
+        config.stream.bitrate = BITRATE_STEPS_KBPS[position];
+      }
+      did_change = 1;
+      break;
+    }
+    case SETTINGS_BITRATE_CUSTOM:
       if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
         break;
       }
       {
         char value[512];
-        int ret;
-        if ((ret = ime_dialog_number(value, "Enter bitrate: ", "")) == 0) {
-          int bitrate = atoi(value);
-          if (bitrate) {
-            config.stream.bitrate = bitrate;
+        char current_mbps[16];
+        snprintf(current_mbps, sizeof(current_mbps), "%d", config.stream.bitrate / 1000);
+        if (ime_dialog_number(value, "Bitrate in Mbps (1 to 100)", current_mbps) == 0) {
+          int mbps = atoi(value);
+          if (mbps >= 1 && mbps <= BITRATE_CUSTOM_MAX_MBPS) {
+            config.stream.bitrate = mbps * 1000;
             did_change = 1;
           } else {
-            display_error("Incorrect bitrate entered: %s", value);
+            display_error("Enter a bitrate from 1 to %d Mbps.", BITRATE_CUSTOM_MAX_MBPS);
           }
         }
       }
@@ -1223,8 +1283,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
   sprintf(current, "%d", config.stream.fps);
   MENU_REPLACE(SETTINGS_VIEW_FPS, current);
 
-  sprintf(current, "%d", config.stream.bitrate);
-  MENU_REPLACE(SETTINGS_VIEW_BITRATE, current);
+  sync_bitrate_rows(menu);
 
   sprintf(current, "%s", config.sops ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_SOPS, current);
@@ -1330,7 +1389,7 @@ static int settings_back(void *context) {
 // Eliminado: hotkeys_menu y referencias, ya que los atajos ahora son fijos
 
 int ui_settings_menu() {
-  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (41 at most today). Each
+  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (42 at most today). Each
   // entry is about 1 KB of the main thread stack, so do not oversize it
   menu_entry menu[44];
   int idx;
@@ -1378,7 +1437,8 @@ rebuild:
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_RECOMMENDED, SETTINGS_VIEW_RECOMMENDED, "Apply recommended settings", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_RESOLUTION, SETTINGS_VIEW_RESOLUTION, "Resolution", ICON_LEFT_RIGHT_ARROWS);
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_FPS, SETTINGS_VIEW_FPS, "FPS", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE, SETTINGS_VIEW_BITRATE, "Bitrate", "");
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE, SETTINGS_VIEW_BITRATE, "Bitrate", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE_CUSTOM, SETTINGS_VIEW_BITRATE_CUSTOM, "Custom bitrate", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_SOPS, SETTINGS_VIEW_SOPS, "Change graphical game settings for performance", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_FRAME_INVAL, SETTINGS_VIEW_ENABLE_FRAME_INVAL, "Enable reference frame invalidation", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_STREAM_OPTIMIZE, SETTINGS_VIEW_ENABLE_STREAM_OPTIMIZE, "Enable stream optimization", "");
@@ -1447,9 +1507,9 @@ rebuild:
   // FPS
   sprintf(current, "%d", config.stream.fps);
   SET_ROW_VALUE(SETTINGS_VIEW_FPS, current);
-  // Bitrate
-  sprintf(current, "%d", config.stream.bitrate);
-  SET_ROW_VALUE(SETTINGS_VIEW_BITRATE, current);
+  // Bitrate: on Custom whenever the value isn't one of the steps
+  bitrate_custom = bitrate_step_index(config.stream.bitrate) < 0;
+  sync_bitrate_rows(menu);
   // Controller type
   int current_idx = get_controller_type_index(config.controller_type);
   snprintf(current, sizeof(current), "%s", controller_type_names[current_idx]);
