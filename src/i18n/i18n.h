@@ -43,6 +43,11 @@ void i18n_init(const char *setting);
 // Switches to the language a setting asks for, as i18n_init does
 void i18n_use(const char *setting);
 
+// Under Automatic, switches to the system language if it changed since the
+// app started (the Vita can change it while the app waits in the
+// background). Returns true if it switched: rebuild what shows text.
+bool i18n_follow_system(void);
+
 // Switches language. Returns false, staying as it was, if there's no such
 // language. Whoever shows text must rebuild it afterwards.
 bool i18n_set(const char *tag);

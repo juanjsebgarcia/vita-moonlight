@@ -475,6 +475,10 @@ int ui_main_menu_back(void *context) {
   return 1;
 }
 int ui_main_menu() {
+  // Between frames, so the fonts can change with it
+  if (i18n_follow_system()) {
+    guilib_language_changed();
+  }
   // Siempre reiniciar escaneo de hosts al entrar al menú principal
   vita_debug_log("[UI] Entrando al menú principal");
   // Solo iniciar escaneo si NO hay conexión activa

@@ -641,6 +641,9 @@ int ui_settings_menu() {
   settings_sync_bitrate();
 
   int ret;
+  if (i18n_follow_system()) {
+    guilib_language_changed();
+  }
   const i18n_language *language = i18n_current();
   do {
     if (i18n_current() != language) {

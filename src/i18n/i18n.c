@@ -269,6 +269,18 @@ void i18n_use(const char *setting) {
   i18n_set(tag);
 }
 
+bool i18n_follow_system(void) {
+  if (config.language != NULL && config.language[0] != '\0' && strcmp(config.language, "auto") != 0) {
+    return false;
+  }
+  const char *tag = best_match(i18n_system_tag());
+  if (strcasecmp(tag, i18n_current()->tag) == 0) {
+    return false;
+  }
+  vita_debug_log("[I18N] the system language changed: using %s", tag);
+  return i18n_set(tag);
+}
+
 int i18n_language_count(void) {
   return language_count;
 }
