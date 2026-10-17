@@ -50,9 +50,15 @@ void utf16_to_utf8(uint16_t *src, uint8_t *dst) {
   *dst = '\0';
 }
 
-void utf8_to_utf16(const uint8_t *src, uint16_t *dst) {
+// Converts src into dst, which holds size units: stops when only the
+// terminator still fits
+void utf8_to_utf16(const uint8_t *src, uint16_t *dst, size_t size) {
+  if (size == 0) {
+    return;
+  }
+  uint16_t *end = dst + size - 1;
   int i;
-  for (i = 0; src[i];) {
+  for (i = 0; src[i] && dst < end;) {
     if ((src[i] & 0xE0) == 0xE0) {
       *(dst++) = ((src[i] & 0x0F) << 12) | ((src[i + 1] & 0x3F) << 6) | (src[i + 2] & 0x3F);
       i += 3;
@@ -70,8 +76,8 @@ void utf8_to_utf16(const uint8_t *src, uint16_t *dst) {
 
 void initImeDialog(SceImeType type, const char *title, char *initial_text, int max_text_length) {
   // Convert UTF8 to UTF16
-  utf8_to_utf16((const uint8_t *)title, ime_title_utf16);
-  utf8_to_utf16((const uint8_t *)initial_text, ime_initial_text_utf16);
+  utf8_to_utf16((const uint8_t *)title, ime_title_utf16, SCE_IME_DIALOG_MAX_TITLE_LENGTH);
+  utf8_to_utf16((const uint8_t *)initial_text, ime_initial_text_utf16, SCE_IME_DIALOG_MAX_TEXT_LENGTH);
 
   SceImeDialogParam param;
   sceImeDialogParamInit(&param);
