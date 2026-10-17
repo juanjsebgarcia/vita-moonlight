@@ -93,8 +93,8 @@ static void refresh(menu_entry *menu) {
     snprintf(menu[ROW_NOW].subname, sizeof(menu[ROW_NOW].subname), "Your Wi-Fi now: %d%%", percent);
   }
   bool good = percent >= GOOD_WIFI_PERCENT;
-  strcpy(menu[ROW_GOOD].subname, percent >= 0 && good ? "fits now" : "");
-  strcpy(menu[ROW_WEAK].subname, percent >= 0 && !good ? "fits now" : "");
+  strcpy(menu[ROW_GOOD].subname, percent >= 0 && good ? "(fits now)" : "");
+  strcpy(menu[ROW_WEAK].subname, percent >= 0 && !good ? "(fits now)" : "");
 }
 
 static int start_choice;
