@@ -464,6 +464,7 @@ enum {
   SETTINGS_BLUETOOTH_WARNING,
   SETTINGS_RECOMMENDED,
   SETTINGS_BITRATE_CUSTOM,
+  SETTINGS_ABOUT,
   SETTINGS_APP_LIST_STYLE
 };
 
@@ -515,12 +516,13 @@ enum {
 
 static int SETTINGS_VIEW_IDX[SETTINGS_VIEW_MAX_COUNT];
 
-// Writes a setting's value into its row. Row 0 is never a setting, so 0 means
-// the setting has no row in this menu (hidden mid-stream, or not listed) and
-// the value is skipped rather than written over the first row.
+// Writes a setting's value into its row. -1 means the setting has no row in
+// this menu (another tab, hidden mid-stream, or not listed) and the value is
+// skipped. Any row can be a setting, the first included, now tabs have no
+// category row at the top.
 #define SET_ROW_VALUE(VIEW, VALUE) \
   do { \
-    if (SETTINGS_VIEW_IDX[(VIEW)] > 0) { \
+    if (SETTINGS_VIEW_IDX[(VIEW)] >= 0) { \
       strcpy(menu[SETTINGS_VIEW_IDX[(VIEW)]].subname, (VALUE)); \
     } \
   } while (0)
@@ -554,6 +556,30 @@ static int move_idx_in_array(char *array[], int count, char *find, int index_dis
 // Returned by settings_loop to rebuild the menu, for example after developer
 // options are shown or hidden
 #define SETTINGS_REBUILD 0x42
+
+// Settings is split into tabs, switched with L and R, instead of one long list
+enum {
+  TAB_STREAM,
+  TAB_SYSTEM,
+  TAB_CONTROLS,
+  TAB_DEVELOPER,
+  TAB_ABOUT,
+  TAB_COUNT,
+};
+
+static const char *TAB_NAMES[TAB_COUNT] = {"Stream", "System", "Controls", "Developer", "About"};
+static int settings_tab = TAB_STREAM;
+
+// The Developer tab only exists in developer mode
+static bool tab_shown(int tab) {
+  return tab != TAB_DEVELOPER || config.developer_mode;
+}
+
+static void move_tab(int step) {
+  do {
+    settings_tab = (settings_tab + step + TAB_COUNT) % TAB_COUNT;
+  } while (!tab_shown(settings_tab));
+}
 
 // Number of rows in the settings menu, so the help can look up a row's title
 static int settings_menu_count = 0;
@@ -596,7 +622,7 @@ static void sync_bitrate_rows(menu_entry *menu) {
   snprintf(kbps, sizeof(kbps), "%d kbps", config.stream.bitrate);
   SET_ROW_VALUE(SETTINGS_VIEW_BITRATE, bitrate_custom ? "Custom" : value);
   SET_ROW_VALUE(SETTINGS_VIEW_BITRATE_CUSTOM, kbps);
-  if (SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM] > 0) {
+  if (SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM] >= 0) {
     menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM]].disabled = !bitrate_custom;
   }
 }
@@ -615,6 +641,10 @@ static const char *settings_help_text(int id) {
              "signal and adds a little delay; on the Vita's screen the picture stops improving at "
              "about 15 to 20 Mbps. 10 suits weaker Wi-Fi, 20 a strong signal. Lower it if the "
              "picture goes blocky or stutters. Custom lets you type any value below.";
+    case SETTINGS_ABOUT:
+      return "About this app: its version, where the project lives and who looks after it, and "
+             "the two projects it works with: Moonlight, the streaming client it's built on, and "
+             "Sunshine, the host you run on your PC.";
     case SETTINGS_BITRATE_CUSTOM:
       return "Any bitrate, in kilobits per second (10000 = 10 Mbps), from 500 to 100000. Choose "
              "Custom on the Bitrate row above to use it.";
@@ -681,8 +711,9 @@ static const char *settings_help_text(int id) {
       return "Swaps X and O in Moonlight's own menus, so O confirms and X goes back, like on "
              "Japanese consoles. Doesn't change any buttons in your games.";
     case SETTINGS_SHOW_FPS:
-      return "Shows stream information on screen. fps: just the frame rate. full: frame rate, "
-             "bitrate, lost frames, delays and Wi-Fi signal, to help track down stutter or lag. "
+      return "Shows stream information on screen. fps: the frame rate and Wi-Fi signal. full: "
+             "frame rate, bitrate, lost frames, delays and Wi-Fi signal, to help track down stutter "
+             "or lag. The Wi-Fi signal turns yellow below 60%, a sign to move closer to your router. "
              "Use left and right to change.";
     case SETTINGS_APP_LIST_STYLE:
       return "How a PC's games and apps are listed when you connect to it. Box art: a row of "
@@ -767,6 +798,22 @@ static void settings_draw(void) {
   const char *hint = "Help";
   const int glyph_size = 14;
   const int gap = 6;
+
+  // The tab bar, above the box on the left, level with the clock on the right
+  const int tab_spacing = 16;
+  int tab_x = 480 - 300;
+  int tab_y = 272 - 200 - 10;
+  tab_x += draw_button_glyph(BUTTON_GLYPH_L, tab_x, tab_y, glyph_size) + gap * 2;
+  for (int tab = 0; tab < TAB_COUNT; tab++) {
+    if (!tab_shown(tab)) {
+      continue;
+    }
+    unsigned int colour = tab == settings_tab ? 0xff00ff00 : 0xffaaaaaa;
+    vita2d_font_draw_text(font, tab_x, tab_y, colour, 18, TAB_NAMES[tab]);
+    tab_x += vita2d_font_text_width(font, 18, TAB_NAMES[tab]) + tab_spacing;
+  }
+  draw_button_glyph(BUTTON_GLYPH_R, tab_x - tab_spacing + gap * 2, tab_y, glyph_size);
+
   int width = glyph_size + gap + vita2d_font_text_width(font, 18, hint);
   // The settings menu uses the default 600x400 box, centred on the 960x544 screen
   int x = 480 + 300 - width;
@@ -780,16 +827,30 @@ static int settings_back(void *context);
 static int settings_loop(int id, void *context, const input_data *input) {
   menu_entry *menu = context;
 
+  // L and R switch tabs. Pressing both together, as for developer mode, moves
+  // back and forth and lands on the same tab.
+  bool pressed_once = (input->buttons & SCE_CTRL_HOLD) == 0;
+  // sceCtrlPeekBufferPositive reports the shoulder buttons on the L2/R2 bits
+  bool left_tab = (input->buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) != 0;
+  bool right_tab = (input->buttons & (SCE_CTRL_R1 | SCE_CTRL_R2)) != 0;
+  if (pressed_once && left_tab != right_tab) {
+    move_tab(left_tab ? -1 : 1);
+    return SETTINGS_REBUILD;
+  }
+
   if ((input->buttons & SCE_CTRL_TRIANGLE) && (input->buttons & SCE_CTRL_HOLD) == 0) {
     // read_buttons() only reports newly pressed buttons, so check L and R are held directly
     SceCtrlData pad = {0};
     sceCtrlPeekBufferPositive(0, &pad, 1);
-    if ((pad.buttons & SCE_CTRL_L1) && (pad.buttons & SCE_CTRL_R1)) {
+    // The menus' sceCtrlPeekBufferPositive reports the shoulder buttons on the
+    // L2/R2 bits (the old LTRIGGER/RTRIGGER names), so accept either pair
+    if ((pad.buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) && (pad.buttons & (SCE_CTRL_R1 | SCE_CTRL_R2))) {
       config.developer_mode = !config.developer_mode;
       ui_settings_save_config();
       display_error(config.developer_mode
-                    ? "Developer options are now shown at the end of Settings."
+                    ? "Developer options are now shown, in the Developer tab."
                     : "Developer options are hidden.");
+      settings_tab = config.developer_mode ? TAB_DEVELOPER : TAB_STREAM;
       return SETTINGS_REBUILD;
     }
     show_settings_help(menu, id);
@@ -827,10 +888,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
     }
     return 0;
   }
-  if (id == SETTINGS_RECOMMENDED) {
-    if ((input->buttons & config.btn_confirm) == 0 || (input->buttons & SCE_CTRL_HOLD)) {
-      return 0;
-    }
+  // Only on confirm: returning early otherwise would skip the row values
+  // being filled in below while the cursor rests here, which it does at first
+  if (id == SETTINGS_RECOMMENDED && (input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0) {
     // Rebuilt whatever happened: the values may have changed, and auto-detect
     // may have streamed, as a benchmark run does
     ui_recommended_settings_menu();
@@ -842,10 +902,8 @@ static int settings_loop(int id, void *context, const input_data *input) {
     return SETTINGS_REBUILD;
   }
   // The Bluetooth warning has nothing to change, so confirm explains it too
-  if (id == SETTINGS_BLUETOOTH_WARNING) {
-    if ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0) {
-      show_settings_help(menu, id);
-    }
+  if (id == SETTINGS_BLUETOOTH_WARNING && (input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+    show_settings_help(menu, id);
     return 0;
   }
   bool did_change = 0;
@@ -1425,25 +1483,52 @@ int ui_settings_menu() {
   // entry is about 1 KB of the main thread stack, so do not oversize it
   menu_entry menu[44];
   int idx;
+  // A fresh visit opens on the first tab; rebuilds stay on the current one
+  settings_tab = TAB_STREAM;
 rebuild:
   idx = 0;
-  // Rows are re-numbered on every build; 0 means the setting has no row
-  memset(SETTINGS_VIEW_IDX, 0, sizeof(SETTINGS_VIEW_IDX));
+  if (!tab_shown(settings_tab)) {
+    settings_tab = TAB_STREAM;
+  }
+  // Rows belong to the tab set by MENU_TAB; only the current tab's are added.
+  // Before the first MENU_TAB, rows show on every tab.
+  int building_tab = -1;
+  // Rows are re-numbered on every build; -1 (all bits set) means no row
+  memset(SETTINGS_VIEW_IDX, 0xff, sizeof(SETTINGS_VIEW_IDX));
   // Mid-stream, only list settings that take effect on resume. The rest (such as
   // resolution, bitrate or controller type) are agreed with the PC when a stream
   // starts, so they come back once it ends.
   int stream_status = connection_get_status();
   bool streaming = stream_status == LI_CONNECTED || stream_status == LI_MINIMIZED;
+#define TAB_ACTIVE (building_tab < 0 || building_tab == settings_tab)
+#define MENU_TAB(TAB) \
+  do { \
+    building_tab = (TAB); \
+  } while (0)
 #define MENU_CATEGORY(NAME) \
   do { \
-    menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true }; \
-    idx++; \
+    if (TAB_ACTIVE) { \
+      menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true }; \
+      idx++; \
+    } \
   } while (0)
 #define MENU_ENTRY(ID, TAG, NAME, SUFFIX) \
   do { \
-    menu[idx] = (menu_entry) { .name = (NAME), .id = (ID), .suffix = (SUFFIX) }; \
-    SETTINGS_VIEW_IDX[(TAG)] = idx; \
-    idx++; \
+    if (TAB_ACTIVE) { \
+      menu[idx] = (menu_entry) { .name = (NAME), .id = (ID), .suffix = (SUFFIX) }; \
+      SETTINGS_VIEW_IDX[(TAG)] = idx; \
+      idx++; \
+    } \
+  } while(0)
+// A line of information on the About tab: selectable, so the tab can scroll
+// and show help, but there's nothing to change
+#define MENU_INFO(NAME, VALUE) \
+  do { \
+    if (TAB_ACTIVE) { \
+      menu[idx] = (menu_entry) { .name = (NAME), .id = SETTINGS_ABOUT }; \
+      snprintf(menu[idx].subname, sizeof(menu[idx].subname), "%s", (VALUE)); \
+      idx++; \
+    } \
   } while(0)
 #define MENU_ENTRY_BETWEEN_STREAMS(ID, TAG, NAME, SUFFIX) \
   do { \
@@ -1453,8 +1538,10 @@ rebuild:
   } while (0)
 #define MENU_MESSAGE(MESSAGE) \
   do { \
-    menu[idx] = (menu_entry) { .name = "", .disabled = true, .subname = (MESSAGE) }; \
-    idx++; \
+    if (TAB_ACTIVE) { \
+      menu[idx] = (menu_entry) { .name = "", .disabled = true, .subname = (MESSAGE) }; \
+      idx++; \
+    } \
   } while(0)
 
   if (vita_bluetooth_enabled()) {
@@ -1465,7 +1552,7 @@ rebuild:
   if (streaming) {
     MENU_MESSAGE("Settings that need a new stream return once this one ends.");
   }
-  MENU_CATEGORY("Stream");
+  MENU_TAB(TAB_STREAM);
   // Listed mid-stream too: it can restart the stream to apply its settings
   MENU_ENTRY(SETTINGS_RECOMMENDED, SETTINGS_VIEW_RECOMMENDED, "Apply recommended settings", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_RESOLUTION, SETTINGS_VIEW_RESOLUTION, "Resolution", ICON_LEFT_RIGHT_ARROWS);
@@ -1483,7 +1570,7 @@ rebuild:
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_PACKET_SIZE, SETTINGS_VIEW_PACKET_SIZE, "Video packet size", ICON_LEFT_RIGHT_ARROWS);
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_LOCAL_AUDIO, SETTINGS_VIEW_LOCAL_AUDIO, "Enable local audio", "");
 
-  MENU_CATEGORY("System");
+  MENU_TAB(TAB_SYSTEM);
   MENU_ENTRY(SETTINGS_SAVE_DEBUG_LOG, SETTINGS_VIEW_SAVE_DEBUG_LOG, "Enable debug log", "");
   MENU_ENTRY(SETTINGS_DISABLE_POWERSAVE, SETTINGS_VIEW_DISABLE_POWERSAVE, "Disable power save", "");
   MENU_ENTRY(SETTINGS_BOOST_CLOCKS, SETTINGS_VIEW_BOOST_CLOCKS, "Boost CPU/GPU clocks while streaming", "");
@@ -1491,7 +1578,7 @@ rebuild:
   MENU_ENTRY(SETTINGS_SHOW_FPS, SETTINGS_VIEW_SHOW_FPS, "Stats overlay", ICON_LEFT_RIGHT_ARROWS);
   MENU_ENTRY(SETTINGS_APP_LIST_STYLE, SETTINGS_VIEW_APP_LIST_STYLE, "App list", ICON_LEFT_RIGHT_ARROWS);
 
-  MENU_CATEGORY("Input");
+  MENU_TAB(TAB_CONTROLS);
 
   MENU_ENTRY(SETTINGS_INPUT_SYNC, SETTINGS_VIEW_INPUT_SYNC, "Sync input to controller sampling", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_MOTION_CONTROLS, SETTINGS_VIEW_ENABLE_MOTION_CONTROLS, "Enable Gyroscope reporting", "");
@@ -1514,7 +1601,7 @@ rebuild:
   // Shown after holding L and R and pressing triangle
   char bench_target[256] = "";
   if (config.developer_mode) {
-    MENU_CATEGORY("Developer");
+    MENU_TAB(TAB_DEVELOPER);
     if (streaming) {
       MENU_MESSAGE("The benchmark can't run during a stream.");
     } else if (!ui_connect_server_ready()) {
@@ -1532,6 +1619,16 @@ rebuild:
     MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_DIRECT_DECODE, SETTINGS_VIEW_DIRECT_DECODE, "Decode on network thread (legacy)", "");
     MENU_ENTRY(SETTINGS_HIDE_DEVELOPER, SETTINGS_VIEW_HIDE_DEVELOPER, "Hide developer options", "");
   }
+
+  MENU_TAB(TAB_ABOUT);
+  char version[32];
+  snprintf(version, sizeof(version), "v%d.%d.%d", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
+  MENU_INFO("Moonlight for PS Vita", version);
+  MENU_INFO("Project", "github.com/xyzz/vita-moonlight");
+  MENU_INFO("Maintained by", "AorsiniYT, d3m3vilurr, xyzz");
+  MENU_INFO("Built on Moonlight", "moonlight-stream.org");
+  MENU_INFO("Host for your PC", "Sunshine: github.com/LizardByte/Sunshine");
+  MENU_INFO("Licence", "GNU GPL version 3");
 
   // Inicializar el subname de todas las opciones antes de mostrar el menú
   char current[256];

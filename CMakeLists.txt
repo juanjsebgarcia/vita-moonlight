@@ -62,6 +62,7 @@ add_executable(${PROJECT_NAME}.elf
 	src/stats.c
 	src/bench.c
 	src/netcount.c
+	src/devshot.c
 	src/util.c
 	src/device.c
 	src/check_dir.c
