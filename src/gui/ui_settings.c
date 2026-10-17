@@ -602,8 +602,9 @@ static const char *settings_help_text(int id) {
       return "Swaps X and O in Moonlight's own menus, so O confirms and X goes back, like on "
              "Japanese consoles. Doesn't change any buttons in your games.";
     case SETTINGS_SHOW_FPS:
-      return "Shows stream information on screen. fps: just the frame rate. full: frame rate, "
-             "bitrate, lost frames, delays and Wi-Fi signal, to help track down stutter or lag. "
+      return "Shows stream information on screen. fps: the frame rate and Wi-Fi signal. full: "
+             "frame rate, bitrate, lost frames, delays and Wi-Fi signal, to help track down stutter "
+             "or lag. The Wi-Fi signal turns yellow below 60%, a sign to move closer to your router. "
              "Use left and right to change.";
     case SETTINGS_INPUT_SYNC:
       return "Reads your buttons in step with the Vita's controls, which saves battery without "
