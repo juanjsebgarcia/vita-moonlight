@@ -34,7 +34,7 @@
 | Box art | jaquettes | |
 | App | appli (in sentences), Applications (headings) | |
 | Benchmark | benchmark | Kept in English. |
-| Developer options / tab | options développeur / « Outils dév » (tab, 10 chars max) | |
+| Developer options / tab | options développeur / « Outils » (tab: the tab bar is full) | |
 | Enter (text entry) | Saisis… | |
 | Wake on LAN / WoL | unchanged | « réveiller » for "wake". |
 | Punctuation | space before « : », « ? », « ! », « % » (plain space; the font may lack narrow NBSP); guillemets « » | |

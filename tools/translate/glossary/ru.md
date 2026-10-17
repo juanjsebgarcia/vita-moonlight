@@ -34,7 +34,7 @@
 | Connection kinds | Хорошее / Слабое (соединение) | |
 | Custom (bitrate) | Свой | |
 | Benchmark | тест (производительности) | |
-| Developer options | параметры разработчика; tab «Разработка» | |
+| Developer options | параметры разработчика; tab «Отладка» (the tab bar is full) | |
 | Wake on LAN | kept in English; «включить по сети» in plain prose | |
 | On/off values | вкл. / выкл., да / нет | |
 | Toggle rows | named as a noun without «Включить», except SET_ENABLE_SPECIAL_KEYS (to differ from SET_SPECIAL_KEYS) | |

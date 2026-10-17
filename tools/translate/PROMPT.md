@@ -26,9 +26,10 @@ The screen is 960x544, the menus use a monospaced font at 18 px, and rows are ab
 4. **Never translate**: Moonlight, Sunshine, PlayStation, PS Vita, Vita, PS TV, GameStream, GeForce Experience, GFE, Xbox, DS4, Wi-Fi, Bluetooth, GPU, IP, MAC, PIN, H.264, URLs, file paths, numbers, resolutions (960x544), and the key names LB, RB, LS, RS, LT, RT, Esc, Tab, F1 to F12, L1, R1, L2, R2. "Desktop" in `REC_NO_DESKTOP_APP` is filled in by the app; leave the placeholder as it is.
 5. **Units** after a number (`{0} Mbps`, `{0} kbps`, `{0} s`, `{0} bytes`, `{0}px`) may be localised if your language normally writes them differently (Russian "Мбит/с", French puts a space before %, and so on). Keep the placeholder.
 6. **Length**:
-   - `TAB_*` (Settings tabs): at most 10 characters each; five share one line.
+   - `TAB_*` (Settings tabs): at most 10 characters each, and about 41 for all five together, as they share one line with the clock.
    - Keys whose note says "keep short" (hints beside buttons, values like "(fits now)"): no longer than the English, give or take a few characters.
    - Settings rows (`SET_*` without `_HELP`): aim for no more than 45 characters, since the value sits on the same line.
+   - Settings messages (`SET_NOTE_*`) and other lines whose note gives a limit: keep within it. They're a single line that doesn't wrap.
    - Everything else wraps, so length matters less, but don't pad.
 7. **No printf codes** (`%s`, `%d`). If you see one in the English, report it; don't copy it.
 8. **Keep the same set of keys.** Don't add keys that aren't in the template. Leaving a key out makes it show in English: only do that if you truly can't translate it, and say so in your report.
@@ -62,7 +63,7 @@ The app's font covers Latin (including all Western and Central European accents)
 2. Skim the whole English text before writing, so you know the app's vocabulary and how strings relate (row label, then its help; a message and its button).
 3. Translate. Where a note explains a placeholder, make sure the sentence works for every value it can take.
 4. **Self-review**, as a native-speaking gamer would: read every string again. Is it natural? Does it match Sony's terms and your glossary? Are the placeholders and markers all there? Are tabs and hints short enough? Would a player understand each help text without the English?
-5. Run `python3 -I tools/i18n_check.py` and fix every error it reports for your file.
+5. Run `python3 -I tools/i18n_check.py` and fix every error it reports for your file. Then run `python3 -I tools/i18n_widths.py`, which estimates the width of each line that doesn't wrap (menu rows with their values, the tab bar), and shorten any of yours it reports.
 6. Write or update your glossary.
 7. Report: the language, how many strings you translated, any you left in English and why, any English that looked wrong or ambiguous, and any choices a reviewer should check.
 
