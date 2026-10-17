@@ -23,6 +23,7 @@
 #include "device.h"
 #include "gui/guilib.h"
 #include "gui/ui_connect.h"
+#include "session.h"
 
 #include <enet/enet.h>
 #include <pthread.h>
@@ -1010,31 +1011,31 @@ int vitabench_run(bool automated) {
       goto done;
     }
     flash_message("Benchmark: connecting to %s...", host->name);
-    if (ui_connect_open_headless(host, error, sizeof(error)) != 0) {
+    if (session_open_headless(host, error, sizeof(error)) != 0) {
       goto done;
     }
-  } else if (!ui_connect_server_ready()) {
+  } else if (!session_server_ready()) {
     snprintf(error, sizeof(error), "Connect to a computer first, then open Settings from its menu.");
     goto done;
   }
 
   // The benchmark only makes sense against the benchmark page, so make sure
   // the host has an app for it before streaming anything
-  int app_id = ui_connect_find_bench_app(config.bench_app, app_name, sizeof(app_name));
+  int app_id = session_find_bench_app(config.bench_app, app_name, sizeof(app_name));
   if (app_id < 0) {
     snprintf(error, sizeof(error),
              "%s has no benchmark app. Add one called \"%s\" in Sunshine that opens "
              "tools/bench/bench.html (see tools/bench/README.md).",
-             ui_connect_server_name(), config.bench_app);
+             session_server_name(), config.bench_app);
     goto done;
   }
 
-  vita_debug_log("[BENCH] starting %s on %s for %d s", app_name, ui_connect_server_name(), config.bench_seconds);
-  flash_message("Benchmark: starting %s on %s...", app_name, ui_connect_server_name());
+  vita_debug_log("[BENCH] starting %s on %s for %d s", app_name, session_server_name(), config.bench_seconds);
+  flash_message("Benchmark: starting %s on %s...", app_name, session_server_name());
 
   // Probe from the first frame, so the page can be detected
   phase = PHASE_WARMUP;
-  if (ui_connect_start_app_by_id(app_id, error, sizeof(error)) != 0) {
+  if (session_start_app_by_id(app_id, error, sizeof(error)) != 0) {
     goto done;
   }
   streamed = true;
@@ -1166,13 +1167,13 @@ done:
   if (streamed) {
     connection_terminate();
     if (config.bench_quit_app) {
-      ui_connect_quit_app();
+      session_quit_app();
     }
-    ui_connect_return_to_server();
+    session_return_to_server();
   }
 
   report_summary summary = {0};
-  save_report(started_compact, started, ui_connect_server_name(), app_name, error, measured_seconds, &link, &summary);
+  save_report(started_compact, started, session_server_name(), app_name, error, measured_seconds, &link, &summary);
   if (error[0]) {
     vita_debug_log("[BENCH] failed: %s", error);
   } else {

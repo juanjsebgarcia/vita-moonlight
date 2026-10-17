@@ -18,6 +18,8 @@
 #include "../check_host.h"
 #include "../debug.h"
 #include "../bench.h"
+#include "../hosts.h"
+#include "../ui_ops.h"
 
 #include <stdarg.h>
 #include <psp2/kernel/processmgr.h>
@@ -66,13 +68,6 @@ enum {
   HOST_MANAGE_BACK
 };
 
-// Wake on LAN and connect: how long to wait for the PC, how often to check
-// and to resend the packet (a PC can miss the first while its network card
-// powers up)
-#define WAKE_TIMEOUT_SECONDS 120
-#define WAKE_CHECK_INTERVAL_US (2 * 1000 * 1000)
-#define WAKE_RESEND_SECONDS 10
-
 // The row the cursor is on, so the draw callback knows when to show the
 // square-button hint
 static int host_manage_cursor;
@@ -80,96 +75,43 @@ static int host_manage_cursor;
 // Sends the magic packet to the host's subnet. Returns false, after saying
 // why, when it can't.
 static bool send_wake_packet(const device_info_t *info) {
-  if (!info->mac[0]) {
-    display_error("No MAC address is saved for %s, so it can't be woken. Connect to it once while "
-                  "it's on, and Moonlight will remember it.", info->name);
+  char err[256];
+  if (host_send_wake(info, err, sizeof(err)) != HOST_WAKE_SENT) {
+    display_error("%s", err);
     return false;
   }
-  if (!info->internal[0]) {
-    display_error("No IP address is saved for %s.", info->name);
-    return false;
-  }
-  // The broadcast address of its /24: the IP with the last part replaced by 255
-  char broadcast[32] = {0};
-  strncpy(broadcast, info->internal, sizeof(broadcast) - 1);
-  char *last_dot = strrchr(broadcast, '.');
-  if (last_dot == NULL) {
-    display_error("%s's IP address (%s) isn't one Wake on LAN can use.", info->name, info->internal);
-    return false;
-  }
-  strcpy(last_dot + 1, "255");
-  extern bool send_wol_packet(const char *mac, const char *ip_broadcast, int port);
-  if (!send_wol_packet(info->mac, broadcast, 9)) {
-    vita_debug_log("[UI] Wake-on-LAN failed for %s (%s)", info->name, info->mac);
-    display_error("Couldn't send the Wake on LAN packet to %s.", info->name);
-    return false;
-  }
-  vita_debug_log("[UI] Wake-on-LAN sent to %s (%s)", info->name, info->mac);
   return true;
-}
-
-static bool cancel_pressed(void) {
-  SceCtrlData pad = {0};
-  sceCtrlPeekBufferPositive(0, &pad, 1);
-  return (pad.buttons & config.btn_cancel) != 0;
 }
 
 // Wakes the host and waits until it answers. Returns true once it's online,
 // false if the player cancelled or it didn't wake in time (after saying so).
 static bool wake_and_wait(device_info_t *info) {
-  if (!send_wake_packet(info)) {
-    return false;
-  }
   stop_host_scan();
-  uint64_t start = sceKernelGetSystemTimeWide();
-  uint64_t last_send = start;
-  while (true) {
-    int elapsed = (int)((sceKernelGetSystemTimeWide() - start) / 1000000);
-    if (elapsed >= WAKE_TIMEOUT_SECONDS) {
-      display_error("%s didn't wake up within %d minutes. Check it's plugged in, connected by "
-                    "cable, and set up for Wake on LAN.", info->name, WAKE_TIMEOUT_SECONDS / 60);
-      return false;
-    }
-    flash_message("Waking %s...\n\nWaiting for it to start: %d s.\nPress %s to stop.", info->name, elapsed,
-                  config.jp_layout ? "X" : "O");
-    // Nobody touches the Vita while waiting, so keep the screen on, as input would
-    sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DEFAULT);
-    struct host_status st = check_host_status(info);
-    if (st.status != HOST_OFFLINE) {
-      vita_debug_log("[UI] %s answered after %d s", info->name, elapsed);
-      if (st.status == HOST_IP_CHANGED && st.current_ip[0] && strcmp(st.current_ip, info->internal) != 0) {
+  char new_address[64];
+  char message[320];
+  switch (host_wake_and_wait(info, new_address, sizeof(new_address), message, sizeof(message))) {
+    case HOST_WAIT_ONLINE:
+      if (new_address[0]) {
         // It woke up on a new address: record it as the host scan would, so
         // connecting asks whether to use it instead of trying the old one
         for (int i = 0; i < known_devices.count; i++) {
           if (&known_devices.devices[i] == info) {
             pending_ip_update_idx = i;
-            snprintf(pending_ip_update, sizeof(pending_ip_update), "%s", st.current_ip);
+            snprintf(pending_ip_update, sizeof(pending_ip_update), "%s", new_address);
           }
         }
       }
       return true;
-    }
-    if (sceKernelGetSystemTimeWide() - last_send >= WAKE_RESEND_SECONDS * 1000000ULL) {
-      extern bool send_wol_packet(const char *mac, const char *ip_broadcast, int port);
-      char broadcast[32] = {0};
-      strncpy(broadcast, info->internal, sizeof(broadcast) - 1);
-      char *last_dot = strrchr(broadcast, '.');
-      if (last_dot != NULL) {
-        strcpy(last_dot + 1, "255");
-        send_wol_packet(info->mac, broadcast, 9);
-      }
-      last_send = sceKernelGetSystemTimeWide();
-    }
-    // Wait between checks, watching for cancel
-    for (int i = 0; i < 20; i++) {
-      if (cancel_pressed()) {
-        flash_message("Stopped waiting for %s.", info->name);
-        sceKernelDelayThread(800 * 1000);
-        return false;
-      }
-      sceKernelDelayThread(WAKE_CHECK_INTERVAL_US / 20);
-    }
+    case HOST_WAIT_CANCELLED:
+      flash_message("%s", message);
+      sceKernelDelayThread(800 * 1000);
+      return false;
+    case HOST_WAIT_TIMED_OUT:
+    case HOST_WAIT_FAILED:
+      display_error("%s", message);
+      return false;
   }
+  return false;
 }
 
 static void connect_host(device_info_t *info);
@@ -274,8 +216,7 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
       snprintf(msg, sizeof(msg), "Delete host?\nAre you sure you want to delete %s?", device_label(info));
       int res = display_confirm(msg);
       if (res) {
-        vita_debug_log("[UI] Host management: delete %s", info->name);
-        if (remove_device(info->name)) {
+        if (host_forget(info)) {
           flash_message("Host deleted");
         } else {
           flash_message("Error deleting host");
@@ -290,12 +231,7 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
       vita_debug_log("[UI] Menú gestión: cambiar IP %s", info->name);
       char new_ip[256] = "";
       if (ime_dialog_string(new_ip, "Enter new IP:", info->internal) == 0 && strlen(new_ip) > 0) {
-        strncpy(info->internal, new_ip, sizeof(info->internal)-1);
-        info->internal[sizeof(info->internal)-1] = '\0';
-        strncpy(info->external, new_ip, sizeof(info->external)-1);
-        info->external[sizeof(info->external)-1] = '\0';
-        info->prefer_external = false;
-        save_device_info(info);
+        host_set_address(info, new_ip);
         flash_message("IP updated for %s: %s", device_label(info), new_ip);
       } else {
         flash_message("IP change cancelled");
@@ -306,16 +242,8 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
       vita_debug_log("[UI] Menú gestión: cambiar nombre %s", info->name);
       char new_name[256] = "";
       if (ime_dialog_string(new_name, "Enter new name:", device_label(info)) == 0 && strlen(new_name) > 0) {
-        // Only the label changes. The host's name stays as its identity: the
-        // folder holding its pairing keys, and how mDNS and DNS find it.
-        // Entering the original name clears the label.
-        if (strcmp(new_name, info->name) == 0) {
-          info->display_name[0] = '\0';
-        } else {
-          strncpy(info->display_name, new_name, sizeof(info->display_name) - 1);
-          info->display_name[sizeof(info->display_name) - 1] = '\0';
-        }
-        save_device_info(info);
+        // Only the label changes; entering the original name clears it
+        host_set_label(info, new_name);
         flash_message("Name updated: %s", device_label(info));
       } else {
         flash_message("Name change cancelled");
@@ -662,8 +590,25 @@ int global_loop(int cursor, void *ctx, const input_data *input) {
   return 0;
 }
 
+static void gui_progress(const char *message) {
+  flash_message("%s", message);
+}
+
+static bool gui_cancel_requested(void) {
+  SceCtrlData pad = {0};
+  sceCtrlPeekBufferPositive(0, &pad, 1);
+  return (pad.buttons & config.btn_cancel) != 0;
+}
+
+// How the services show progress and hear cancel, in this UI
+static const ui_ops GUI_OPS = {
+  .progress = gui_progress,
+  .cancel_requested = gui_cancel_requested,
+};
+
 void gui_init() {
   guilib_init(&global_loop, NULL);
+  ui_ops_set(&GUI_OPS);
 }
 
 void gui_loop() {

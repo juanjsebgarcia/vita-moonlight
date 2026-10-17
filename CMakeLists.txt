@@ -71,6 +71,9 @@ add_executable(${PROJECT_NAME}.elf
 	src/bench.c
 	src/netcount.c
 	src/settings.c
+	src/session.c
+	src/hosts.c
+	src/ui_ops.c
 	src/devshot.c
 	src/util.c
 	src/device.c
