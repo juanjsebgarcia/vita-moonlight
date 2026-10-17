@@ -21,8 +21,14 @@
 
 #include "ui_recommended.h"
 #include "guilib.h"
+#include "ui_connect.h"
+#include "../check_host.h"
 #include "../config.h"
+#include "../connection.h"
+#include "../device.h"
 #include "../util.h"
+
+#include <Limelight.h>
 
 #include <stdbool.h>
 #include <psp2/ctrl.h>
@@ -37,6 +43,17 @@
 #define GOOD_WIFI_MIN_PERCENT 50
 #define MEASURE_SECONDS 5
 #define MEASURE_INTERVAL_US 250000
+// The test stream: the PC's Desktop, which every Sunshine install has, for
+// this long after it settles. Even a still Desktop sends ~100 packets a second
+// once error correction is counted, enough to see about 1% loss.
+#define TEST_APP "Desktop"
+#define TEST_SETTLE_US 2000000
+#define TEST_SECONDS 10
+#define TEST_CONNECT_TIMEOUT_US 20000000
+// Good also needs the test stream to lose under this share of packets, with
+// the round trip varying by less than this. Provisional, like Weak's values.
+#define GOOD_MAX_LOSS_PERCENT 1.0f
+#define GOOD_MAX_JITTER_MS 10
 
 typedef struct {
   const char *name;
@@ -104,17 +121,34 @@ static int start_loop(int result, void *context, const input_data *input) {
   return 1;
 }
 
-// Returns RECOMMENDED_NONE if the player cancels
-static int auto_detect(void) {
-  char *captions[] = {"Start", "Cancel"};
-  start_choice = 1;
-  display_alert("Take the Vita to where you'll play, and hold it as you normally would. "
-                "Then press Start to measure the Wi-Fi signal for 5 seconds.",
-                captions, 2, start_loop, NULL);
-  if (start_choice != 0) {
-    return RECOMMENDED_NONE;
-  }
+typedef struct {
+  int signal_avg, signal_min;
+  float loss_percent;
+  float jitter_ms;
+  bool streamed;
+} link_test;
 
+// Auto-detect needs a PC to test against: the one Settings was opened from.
+// Returns false, after telling the player what to do, when there isn't one.
+static bool have_test_pc(void) {
+  if (ui_connect_server_ready()) {
+    return true;
+  }
+  bool paired_online = false;
+  for (int i = 0; i < known_devices.count && i < MAX_HOSTS; i++) {
+    paired_online |= known_devices.devices[i].paired && g_host_status[i].status == HOST_ONLINE;
+  }
+  if (paired_online) {
+    display_error("Auto-detect tests the connection to your PC. Select your PC in the main menu, "
+                  "open Settings from its menu, and run Auto-detect again.");
+  } else {
+    display_error("Auto-detect needs a paired PC that's switched on, to test the connection to "
+                  "it. Turn your PC on, or choose Good or Weak Wi-Fi yourself.");
+  }
+  return false;
+}
+
+static bool measure_signal(link_test *result) {
   int samples = 0, total = 0, lowest = 100;
   int count = MEASURE_SECONDS * 1000000 / MEASURE_INTERVAL_US;
   for (int i = 0; i < count; i++) {
@@ -126,25 +160,152 @@ static int auto_detect(void) {
     }
     int left = (count - i) * MEASURE_INTERVAL_US / 1000000 + 1;
     if (percent >= 0) {
-      flash_message("Measuring Wi-Fi, hold still...\n\nNow %d%%, %d s left", percent, left);
+      flash_message("Measuring the Wi-Fi signal, hold still...\n\nNow %d%%, %d s left", percent, left);
     } else {
-      flash_message("Measuring Wi-Fi, hold still...\n\nNo signal, %d s left", left);
+      flash_message("Measuring the Wi-Fi signal, hold still...\n\nNo signal, %d s left", left);
     }
     sceKernelDelayThread(MEASURE_INTERVAL_US);
   }
   if (samples == 0) {
-    display_error("Couldn't read the Wi-Fi signal. Check the Vita is connected to Wi-Fi.");
+    return false;
+  }
+  result->signal_avg = total / samples;
+  result->signal_min = lowest;
+  return true;
+}
+
+static bool wait_connected(uint64_t timeout_us) {
+  uint64_t start = LiGetMicroseconds();
+  while (connection_get_status() != LI_CONNECTED) {
+    if (LiGetMicroseconds() - start > timeout_us) {
+      return false;
+    }
+    sceKernelDelayThread(50000);
+  }
+  return true;
+}
+
+// Streams the PC's Desktop at the Good settings and measures packet loss
+// (from common-c's error-correction counters) and jitter (the round trip's
+// variation). Returns false with a message in err if it couldn't.
+static bool test_stream(link_test *result, char *err, size_t err_len) {
+  int app_id = ui_connect_find_app(TEST_APP);
+  if (app_id < 0) {
+    snprintf(err, err_len, "Your PC has no \"%s\" app in Sunshine, which Auto-detect streams "
+             "to test the connection.", TEST_APP);
+    return false;
+  }
+  // Test at the Good settings, then put the player's own back
+  STREAM_CONFIGURATION saved = config.stream;
+  const preset *good = &PRESETS[RECOMMENDED_GOOD];
+  config.stream.width = good->width;
+  config.stream.height = good->height;
+  config.stream.fps = good->fps;
+  config.stream.bitrate = good->bitrate_kbps;
+
+  bool ok = false;
+  if (ui_connect_start_app_by_id(app_id, err, err_len) != 0) {
+    goto done;
+  }
+  result->streamed = true;
+  if (!wait_connected(TEST_CONNECT_TIMEOUT_US)) {
+    snprintf(err, err_len, "The test stream didn't start.");
+    goto done;
+  }
+  sceKernelDelayThread(TEST_SETTLE_US);
+
+  RTP_VIDEO_STATS before = {0}, after = {0};
+  const RTP_VIDEO_STATS *rtp = LiGetRTPVideoStats();
+  if (rtp != NULL) {
+    before = *rtp;
+  }
+  double variance_sum = 0;
+  int variance_samples = 0;
+  for (int i = 0; i < TEST_SECONDS * 2; i++) {
+    sceKernelDelayThread(500000);
+    if (connection_get_status() != LI_CONNECTED) {
+      snprintf(err, err_len, "The test stream ended early.");
+      goto done;
+    }
+    uint32_t rtt = 0, variance = 0;
+    if (LiGetEstimatedRttInfo(&rtt, &variance)) {
+      variance_sum += variance;
+      variance_samples++;
+    }
+  }
+  rtp = LiGetRTPVideoStats();
+  if (rtp != NULL) {
+    after = *rtp;
+  }
+  uint32_t packets = (after.packetCountVideo - before.packetCountVideo) + (after.packetCountFec - before.packetCountFec);
+  uint32_t lost = (after.packetCountFecRecovered - before.packetCountFecRecovered) +
+                  (after.packetCountFecFailed - before.packetCountFecFailed);
+  if (packets == 0) {
+    snprintf(err, err_len, "No video arrived during the test stream.");
+    goto done;
+  }
+  result->loss_percent = 100.0f * lost / packets;
+  result->jitter_ms = variance_samples ? variance_sum / variance_samples : 0;
+  ok = true;
+
+done:
+  if (result->streamed) {
+    connection_terminate();
+    ui_connect_quit_app();
+    ui_connect_return_to_server();
+  }
+  config.stream = saved;
+  return ok;
+}
+
+// Returns RECOMMENDED_NONE if the player cancels or the test can't run
+static int auto_detect(void) {
+  if (!have_test_pc()) {
+    return RECOMMENDED_NONE;
+  }
+  char *captions[] = {"Start", "Cancel"};
+  start_choice = 1;
+  char intro[512];
+  snprintf(intro, sizeof(intro),
+           "Take the Vita to where you'll play, and hold it as you normally would. Then press "
+           "Start. Auto-detect measures the Wi-Fi signal for %d seconds, then streams %s's "
+           "desktop for about %d seconds to test the connection.",
+           MEASURE_SECONDS, ui_connect_server_name(), TEST_SECONDS);
+  display_alert(intro, captions, 2, start_loop, NULL);
+  if (start_choice != 0) {
     return RECOMMENDED_NONE;
   }
 
-  int average = total / samples;
-  int which = average >= GOOD_WIFI_PERCENT && lowest >= GOOD_WIFI_MIN_PERCENT ? RECOMMENDED_GOOD : RECOMMENDED_WEAK;
+  link_test result = {0};
+  if (!measure_signal(&result)) {
+    display_error("Couldn't read the Wi-Fi signal. Check the Vita is connected to Wi-Fi.");
+    return RECOMMENDED_NONE;
+  }
+  flash_message("Testing the connection to %s...", ui_connect_server_name());
+  char err[256] = "";
+  if (!test_stream(&result, err, sizeof(err))) {
+    display_error("Auto-detect couldn't finish the connection test: %s", err);
+    return RECOMMENDED_NONE;
+  }
+
+  bool signal_ok = result.signal_avg >= GOOD_WIFI_PERCENT && result.signal_min >= GOOD_WIFI_MIN_PERCENT;
+  bool loss_ok = result.loss_percent < GOOD_MAX_LOSS_PERCENT;
+  bool jitter_ok = result.jitter_ms < GOOD_MAX_JITTER_MS;
+  int which = signal_ok && loss_ok && jitter_ok ? RECOMMENDED_GOOD : RECOMMENDED_WEAK;
+  const char *reason = which == RECOMMENDED_GOOD ? ""
+                     : !signal_ok ? " The signal is on the weak side."
+                     : !loss_ok ? " Packets went missing during the test."
+                                : " The connection's timing was uneven.";
+
   char what[96];
   describe(which, what, sizeof(what));
-  char message[512];
-  snprintf(message, sizeof(message), "Here the signal averaged %d%% (lowest %d%%). Recommended: %s (%s).%s\n\nApply it?",
-           average, lowest, PRESETS[which].name, what,
-           vita_bluetooth_enabled() ? " Bluetooth is on, which can make it worse." : "");
+  char message[768];
+  snprintf(message, sizeof(message),
+           "Signal %d%% (lowest %d%%), %.1f%% of packets lost, jitter %.0f ms.%s%s\n\n"
+           "Recommended: %s (%s). Apply it?",
+           result.signal_avg, result.signal_min, result.loss_percent, result.jitter_ms, reason,
+           vita_bluetooth_enabled() ? " Bluetooth is on, which can make it worse." : "",
+           PRESETS[which].name, what);
   if (!display_confirm(message)) {
     return RECOMMENDED_NONE;
   }
@@ -156,8 +317,10 @@ static int auto_detect(void) {
 static const char *help_text(int row) {
   switch (row) {
     case ROW_AUTO:
-      return "Measures the Wi-Fi signal where you'll play, then recommends Good or Weak Wi-Fi "
-             "settings. Do it from your usual spot, holding the Vita as you normally would.";
+      return "Measures the Wi-Fi signal where you'll play, then briefly streams your PC's desktop "
+             "to check for lost packets and uneven timing, and recommends Good or Weak Wi-Fi "
+             "settings. Do it from your usual spot, holding the Vita as you normally would. Open "
+             "Settings from your PC's menu first, so it knows which PC to test.";
     case ROW_GOOD:
       return "For a strong signal, such as in the same room as your router: 1280x720 at 60 fps "
              "and 20 Mbps. A sharp picture with almost no lost frames. Higher bitrates only add "

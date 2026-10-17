@@ -205,6 +205,15 @@ int ui_connect_find_bench_app(const char *preferred, char *found, size_t found_l
   return match->id;
 }
 
+int ui_connect_find_app(const char *name) {
+  for (PAPP_LIST app = server_applist; app != NULL; app = app->next) {
+    if (strcasecmp(app->name, name) == 0) {
+      return app->id;
+    }
+  }
+  return -1;
+}
+
 int ui_connect_start_app_by_id(int app_id, char *err, size_t err_len) {
   vitapower_config(config);
   vitainput_config(config);

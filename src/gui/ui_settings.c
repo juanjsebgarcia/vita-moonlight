@@ -787,11 +787,10 @@ static int settings_loop(int id, void *context, const input_data *input) {
     if ((input->buttons & config.btn_confirm) == 0 || (input->buttons & SCE_CTRL_HOLD)) {
       return 0;
     }
-    if (ui_recommended_settings_menu() == RECOMMENDED_NONE) {
-      return 0;
-    }
-    // Carry on to the refresh at the end, which redraws every row's value
-    settings_loop_setup = 1;
+    // Rebuilt whatever happened: the values may have changed, and auto-detect
+    // may have streamed, as a benchmark run does
+    ui_recommended_settings_menu();
+    return SETTINGS_REBUILD;
   }
   // The Bluetooth warning has nothing to change, so confirm explains it too
   if (id == SETTINGS_BLUETOOTH_WARNING) {
