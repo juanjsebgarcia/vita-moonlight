@@ -1,3 +1,4 @@
+#include "../i18n/i18n.h"
 #include "ui_boxart.h"
 
 #include "guilib.h"
@@ -361,7 +362,10 @@ static int loader_main(SceSize args, void *argp) {
 }
 
 static void update_counter(void) {
-  snprintf(counter_text, sizeof(counter_text), "%d of %d", selected + 1, slot_count);
+  char position[16], total[16];
+  snprintf(position, sizeof(position), "%d", selected + 1);
+  snprintf(total, sizeof(total), "%d", slot_count);
+  TR_FMT(counter_text, sizeof(counter_text), STR_BOXART_COUNTER, position, total);
 }
 
 void ui_boxart_stop_loading(void) {
@@ -648,7 +652,7 @@ void ui_boxart_draw(void) {
   vita2d_font_draw_text(font, WIDTH / 2 - name_width / 2, NAME_BASELINE_Y, 0xffffffff, 18, name);
 
   if (focused && !locked) {
-    const char *hint = "Refresh cover";
+    const char *hint = tr(STR_BOXART_REFRESH);
     int hint_width = vita2d_font_text_width(font, 18, hint);
     int x = WIDTH - 20 - hint_width - 14 - 6;
     x += draw_button_glyph(BUTTON_GLYPH_TRIANGLE, x, NAME_BASELINE_Y, 14) + 6;

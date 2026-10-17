@@ -1,3 +1,4 @@
+#include "../i18n/i18n.h"
 #include "guilib.h"
 #include "../devshot.h"
 
@@ -59,8 +60,8 @@ void draw_border(menu_geom geom, unsigned int border_color) {
 }
 
 void draw_text_hcentered(int x, int y, unsigned int color, char *text) {
-  int width = vita2d_font_text_width(font, 18, text);
-  vita2d_font_draw_text(font, x - width / 2, y, color, 18, text);
+  int width = rich_text_width(18, text);
+  draw_rich_text(x - width / 2, y, color, 18, text);
 }
 
 static int battery_percent;
@@ -214,64 +215,30 @@ void draw_menu(menu_entry menu[], int total_elements, menu_geom geom, int cursor
       unsigned int visible_dot_color = (dot_color & 0x00FFFFFF) | 0xFF000000;
       vita2d_draw_fill_circle(dot_x, dot_y, dot_radius + 2, 0xFF000000);
       vita2d_draw_fill_circle(dot_x, dot_y, dot_radius, visible_dot_color);
-      vita2d_font_draw_text(
-          font,
-          dot_x + dot_radius + 6, // Más espacio a la derecha del puntito
-          el_y + text_height,
-          text_color,
-          18,
-          menu[i].name
-          );
+      draw_rich_text(dot_x + dot_radius + 6, // Más espacio a la derecha del puntito
+          el_y + text_height, text_color, 18, menu[i].name);
     } else if (menu[i].name && strlen(menu[i].name) > 0) {
-      vita2d_font_draw_text(
-          font,
-          el_x + 2,
-          el_y + text_height,
-          text_color,
-          18,
-          menu[i].name
-          );
+      draw_rich_text(el_x + 2, el_y + text_height, text_color, 18, menu[i].name);
     }
 
     int right_x_offset = 20;
     // Arrows for a value left and right change; a star for the current choice
     const char *marker = menu[i].adjustable ? ICON_LEFT_RIGHT_ARROWS : menu[i].checked ? "*" : NULL;
     if (marker) {
-      int text_width = vita2d_font_text_width(font, 18, marker);
-      vita2d_font_draw_text(
-          font,
-          el_x + geom.width - text_width - right_x_offset,
-          el_y + text_height,
-          text_color,
-          18,
-          marker
-          );
+      int text_width = rich_text_width(18, marker);
+      draw_rich_text(el_x + geom.width - text_width - right_x_offset, el_y + text_height, text_color, 18, marker);
 
       right_x_offset += text_width + 10;
     }
     if (menu[i].suffix && *menu[i].suffix) {
-      int text_width = vita2d_font_text_width(font, 18, menu[i].suffix);
-      vita2d_font_draw_text(
-          font,
-          el_x + geom.width - text_width - right_x_offset,
-          el_y + text_height,
-          text_color,
-          18,
-          menu[i].suffix
-          );
+      int text_width = rich_text_width(18, menu[i].suffix);
+      draw_rich_text(el_x + geom.width - text_width - right_x_offset, el_y + text_height, text_color, 18, menu[i].suffix);
 
       right_x_offset += text_width + 10;
     }
     if (*menu[i].subname) {
-      int text_width = vita2d_font_text_width(font, 18, menu[i].subname);
-      vita2d_font_draw_text(
-          font,
-          el_x + geom.width - text_width - right_x_offset,
-          el_y + text_height,
-          text_color,
-          18,
-          menu[i].subname
-          );
+      int text_width = rich_text_width(18, menu[i].subname);
+      draw_rich_text(el_x + geom.width - text_width - right_x_offset, el_y + text_height, text_color, 18, menu[i].subname);
     }
   }
 }
@@ -470,6 +437,107 @@ int draw_button_glyph(int glyph, int x, int y, int size) {
   return size;
 }
 
+/*
+ * Text with button symbols: {confirm}, {triangle}, {start} and so on in a
+ * string are drawn as the button, so translations can name buttons without
+ * spelling them out. Anything else in braces is drawn as written.
+ */
+
+static const struct {
+  const char *name;
+  int glyph;
+} TEXT_GLYPHS[] = {
+  {"cross", BUTTON_GLYPH_CROSS},
+  {"circle", BUTTON_GLYPH_CIRCLE},
+  {"triangle", BUTTON_GLYPH_TRIANGLE},
+  {"square", BUTTON_GLYPH_SQUARE},
+  {"dpad", BUTTON_GLYPH_DPAD},
+  {"up", BUTTON_GLYPH_DPAD_UP},
+  {"down", BUTTON_GLYPH_DPAD_DOWN},
+  {"left", BUTTON_GLYPH_DPAD_LEFT},
+  {"right", BUTTON_GLYPH_DPAD_RIGHT},
+  {"l", BUTTON_GLYPH_L},
+  {"r", BUTTON_GLYPH_R},
+  {"l2", BUTTON_GLYPH_L2},
+  {"r2", BUTTON_GLYPH_R2},
+  {"start", BUTTON_GLYPH_START},
+  {"select", BUTTON_GLYPH_SELECT},
+  {"ps", BUTTON_GLYPH_PS},
+  {"left_stick", BUTTON_GLYPH_LEFT_STICK},
+  {"right_stick", BUTTON_GLYPH_RIGHT_STICK},
+  {"l3", BUTTON_GLYPH_L3},
+  {"r3", BUTTON_GLYPH_R3},
+  {"front_touch", BUTTON_GLYPH_FRONT_TOUCH},
+  {"rear_touch", BUTTON_GLYPH_REAR_TOUCH},
+};
+
+// The symbol for a marker starting at text (at its "{"), with its length in
+// bytes, or -1 if it isn't one. Confirm and cancel follow Swap X & O.
+static int text_marker(const char *text, int *length) {
+  if (text[0] != '{') {
+    return -1;
+  }
+  const char *end = strchr(text, '}');
+  if (end == NULL || end - text > 16) {
+    return -1;
+  }
+  int name_length = (int)(end - text - 1);
+  *length = name_length + 2;
+  if (name_length == 7 && strncmp(text + 1, "confirm", 7) == 0) {
+    return config.jp_layout ? BUTTON_GLYPH_CIRCLE : BUTTON_GLYPH_CROSS;
+  }
+  if (name_length == 6 && strncmp(text + 1, "cancel", 6) == 0) {
+    return config.jp_layout ? BUTTON_GLYPH_CROSS : BUTTON_GLYPH_CIRCLE;
+  }
+  for (size_t i = 0; i < sizeof(TEXT_GLYPHS) / sizeof(TEXT_GLYPHS[0]); i++) {
+    if ((int)strlen(TEXT_GLYPHS[i].name) == name_length && strncmp(text + 1, TEXT_GLYPHS[i].name, name_length) == 0) {
+      return TEXT_GLYPHS[i].glyph;
+    }
+  }
+  return -1;
+}
+
+// Draws (or, with draw false, only measures) text with its button symbols
+static int rich_text(bool draw, int x, int y, unsigned int color, int size, const char *text) {
+  int glyph_size = size * BUTTON_GLYPH_SIZE / UI_FONT_SIZE;
+  int start_x = x;
+  char run[WRAP_LINE_MAX * 4];
+  size_t run_length = 0;
+  for (const char *p = text;; p++) {
+    int length = 0;
+    int glyph = *p ? text_marker(p, &length) : -1;
+    if (*p == '\0' || glyph >= 0 || run_length + 1 >= sizeof(run)) {
+      run[run_length] = '\0';
+      if (run_length > 0) {
+        if (draw) {
+          vita2d_font_draw_text(font, x, y, color, size, run);
+        }
+        x += vita2d_font_text_width(font, size, run);
+        run_length = 0;
+      }
+      if (*p == '\0') {
+        break;
+      }
+      if (glyph >= 0) {
+        // Measured by drawing off screen when only measuring
+        x += draw_button_glyph(glyph, draw ? x : -1000, y, glyph_size);
+        p += length - 1;
+        continue;
+      }
+    }
+    run[run_length++] = *p;
+  }
+  return x - start_x;
+}
+
+int draw_rich_text(int x, int y, unsigned int color, int size, const char *text) {
+  return rich_text(true, x, y, color, size, text);
+}
+
+int rich_text_width(int size, const char *text) {
+  return rich_text(false, 0, 0, 0, size, text);
+}
+
 int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int max_lines) {
   int count = 0;
   char line[WRAP_LINE_MAX] = "";
@@ -499,7 +567,7 @@ int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int 
 
     char candidate[WRAP_LINE_MAX];
     snprintf(candidate, sizeof(candidate), "%s%s%.*s", line, line[0] ? " " : "", word_len, p);
-    if (vita2d_font_text_width(font, UI_FONT_SIZE, candidate) <= max_width) {
+    if (rich_text_width(UI_FONT_SIZE, candidate) <= max_width) {
       snprintf(line, sizeof(line), "%s", candidate);
       p = end;
       continue;
@@ -516,7 +584,7 @@ int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int 
     int fit = 1;
     while (fit < word_len) {
       snprintf(candidate, sizeof(candidate), "%.*s", fit + 1, p);
-      if (vita2d_font_text_width(font, UI_FONT_SIZE, candidate) > max_width) {
+      if (rich_text_width(UI_FONT_SIZE, candidate) > max_width) {
         break;
       }
       fit++;
@@ -537,7 +605,8 @@ static void draw_button_captions(menu_geom geom, char *buttons_captions[], int b
   int confirm = config.jp_layout ? BUTTON_GLYPH_CIRCLE : BUTTON_GLYPH_CROSS;
   int cancel = config.jp_layout ? BUTTON_GLYPH_CROSS : BUTTON_GLYPH_CIRCLE;
   int glyphs[4] = {confirm, cancel, BUTTON_GLYPH_TRIANGLE, BUTTON_GLYPH_SQUARE};
-  char *default_captions[4] = {"Ok", "Cancel", "Options", "Delete"};
+  const char *default_captions[4] = {tr(STR_BUTTON_OK), tr(STR_BUTTON_CANCEL), tr(STR_BUTTON_OPTIONS),
+                                     tr(STR_BUTTON_DELETE)};
   const int gap = 6;
   const int spacing = 16;
 
@@ -848,7 +917,7 @@ void display_alert(char *message, char *button_captions[], int buttons_count,
 void display_help(const char *title, const char *message) {
   // Larger than the standard alert, so a few sentences fit without crowding
   menu_geom geom = make_geom_centered(600, 320);
-  char *captions[1] = {"Close"};
+  char *captions[1] = {(char *)tr(STR_BUTTON_CLOSE)};
 
   // Wrap once up front; the text doesn't change while the dialog is open
   static char lines[HELP_MAX_LINES][WRAP_LINE_MAX];
@@ -870,7 +939,7 @@ void display_help(const char *title, const char *message) {
     draw_text_hcentered(geom.x + geom.width / 2, title_y, 0xffffffff, (char *)title);
 
     for (int i = 0; i < visible && offset + i < line_count; i++) {
-      vita2d_font_draw_text(font, geom.x + ALERT_SIDE_PADDING, body_top + i * UI_LINE_HEIGHT,
+      draw_rich_text(geom.x + ALERT_SIDE_PADDING, body_top + i * UI_LINE_HEIGHT,
                             0xffffffff, UI_FONT_SIZE, lines[offset + i]);
     }
 
@@ -948,7 +1017,8 @@ void guilib_init(gui_loop_callback global_loop_cb, gui_draw_callback global_draw
 }
 
 int display_confirm(const char* message) {
-    char* buttons[] = {"X: Yes", "O: No"};
+    // The buttons' symbols are drawn beside them, following Swap X & O
+    char* buttons[] = {(char *)tr(STR_BUTTON_YES), (char *)tr(STR_BUTTON_NO)};
     menu_geom geom = alert_geom_for(message);
     while (1) {
         ui_start();

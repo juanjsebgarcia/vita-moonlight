@@ -20,6 +20,7 @@
 // or battery life), picked by hand or by testing the connection where the
 // player sits. The values come from benchmarks in docs/DECODE.md.
 
+#include "../i18n/i18n.h"
 #include "ui_recommended.h"
 #include "guilib.h"
 #include "ui_connect.h"
@@ -69,7 +70,7 @@ enum {
   PRIORITY_COUNT,
 };
 
-static const char *PRIORITY_NAMES[PRIORITY_COUNT] = {"Balanced", "Lowest delay", "Battery life"};
+static const str_id PRIORITY_NAMES[PRIORITY_COUNT] = {STR_REC_BALANCED, STR_REC_LOWEST_DELAY, STR_REC_BATTERY};
 
 typedef struct {
   int width, height, fps, bitrate_kbps;
@@ -99,8 +100,7 @@ static void offer_restart(void) {
   if (!stream_paused()) {
     return;
   }
-  restart_requested = display_confirm("These take effect on a new stream. Restart the stream now "
-                                      "with the new settings? The game keeps running on your PC.");
+  restart_requested = display_confirm(tr(STR_REC_RESTART_ASK));
 }
 
 bool ui_recommended_take_restart(void) {
@@ -144,13 +144,12 @@ static preset choose(int connection) {
   return p;
 }
 
-static const char *connection_name(int connection) {
-  return connection == RECOMMENDED_GOOD ? "a good connection" : "a weak connection";
-}
-
 static void describe(const preset *p, char *out, size_t size) {
-  snprintf(out, size, "%dx%d, %d fps, %d Mbps, clock boost %s", p->width, p->height, p->fps,
-           p->bitrate_kbps / 1000, p->boost_clocks ? "on" : "off");
+  char resolution[32], fps[8], mbps[8];
+  snprintf(resolution, sizeof(resolution), "%dx%d", p->width, p->height);
+  snprintf(fps, sizeof(fps), "%d", p->fps);
+  snprintf(mbps, sizeof(mbps), "%d", p->bitrate_kbps / 1000);
+  TR_FMT(out, size, p->boost_clocks ? STR_REC_PRESET_BOOST_ON : STR_REC_PRESET_BOOST_OFF, resolution, fps, mbps);
 }
 
 static void apply(int connection) {
@@ -167,10 +166,13 @@ static void apply(int connection) {
 
 static void show_applied(int connection) {
   preset p = choose(connection);
-  char what[128];
+  char what[256];
   describe(&p, what, sizeof(what));
-  display_error("Applied %s for %s: %s, frame pacer and V-Sync off.", PRIORITY_NAMES[priority],
-                connection_name(connection), what);
+  char message[768];
+  TR_FMT(message, sizeof(message), STR_REC_APPLIED,
+         tr(connection == RECOMMENDED_GOOD ? STR_REC_CONNECTION_GOOD : STR_REC_CONNECTION_WEAK),
+         tr(PRIORITY_NAMES[priority]), what);
+  display_error("%s", message);
 }
 
 // Shows the live reading and the priority, and marks the choice that fits
@@ -180,22 +182,24 @@ static void refresh(menu_entry *menu) {
   bool mobile = network == VITA_NETWORK_MOBILE;
   int percent = vita_wifi_percent();
   if (wired) {
-    snprintf(menu[ROW_NOW].subname, sizeof(menu[ROW_NOW].subname), "Wired network");
+    snprintf(menu[ROW_NOW].subname, sizeof(menu[ROW_NOW].subname), "%s", tr(STR_REC_WIRED));
   } else if (mobile) {
-    snprintf(menu[ROW_NOW].subname, sizeof(menu[ROW_NOW].subname), "Mobile network (3G): expect stutter");
+    snprintf(menu[ROW_NOW].subname, sizeof(menu[ROW_NOW].subname), "%s", tr(STR_REC_MOBILE));
   } else if (percent < 0) {
-    snprintf(menu[ROW_NOW].subname, sizeof(menu[ROW_NOW].subname), "Not connected to Wi-Fi");
+    snprintf(menu[ROW_NOW].subname, sizeof(menu[ROW_NOW].subname), "%s", tr(STR_REC_NO_WIFI));
   } else {
-    snprintf(menu[ROW_NOW].subname, sizeof(menu[ROW_NOW].subname), "Your Wi-Fi now: %d%%", percent);
+    char number[8];
+    snprintf(number, sizeof(number), "%d", percent);
+    TR_FMT(menu[ROW_NOW].subname, sizeof(menu[ROW_NOW].subname), STR_REC_WIFI_NOW, number);
   }
-  snprintf(menu[ROW_PRIORITY].subname, sizeof(menu[ROW_PRIORITY].subname), "%s", PRIORITY_NAMES[priority]);
+  snprintf(menu[ROW_PRIORITY].subname, sizeof(menu[ROW_PRIORITY].subname), "%s", tr(PRIORITY_NAMES[priority]));
   bool known = wired || mobile || percent >= 0;
   bool good = wired || (!mobile && percent >= GOOD_WIFI_PERCENT);
-  strcpy(menu[ROW_GOOD].subname, known && good ? "(fits now)" : "");
-  strcpy(menu[ROW_WEAK].subname, known && !good ? "(fits now)" : "");
+  snprintf(menu[ROW_GOOD].subname, sizeof(menu[ROW_GOOD].subname), "%s", known && good ? tr(STR_REC_FITS_NOW) : "");
+  snprintf(menu[ROW_WEAK].subname, sizeof(menu[ROW_WEAK].subname), "%s", known && !good ? tr(STR_REC_FITS_NOW) : "");
   // Auto-detect streams the PC's desktop, which can't happen while a game is
   menu[ROW_AUTO].disabled = stream_paused();
-  strcpy(menu[ROW_AUTO].subname, stream_paused() ? "(quit the game first)" : "");
+  snprintf(menu[ROW_AUTO].subname, sizeof(menu[ROW_AUTO].subname), "%s", stream_paused() ? tr(STR_REC_QUIT_GAME_FIRST) : "");
 }
 
 static int start_choice;
@@ -228,21 +232,26 @@ static bool have_test_pc(void) {
     // The host scan stops while Settings is open, so check again in case the
     // PC was switched on since
     if (g_host_status[i].status != HOST_ONLINE) {
-      flash_message("Looking for %s...", host->name);
+      char looking[256];
+      TR_FMT(looking, sizeof(looking), STR_REC_LOOKING_FOR, host->name);
+      flash_message("%s", looking);
       if (check_host_status(host).status != HOST_ONLINE) {
         continue;
       }
     }
-    flash_message("Connecting to %s...", host->name);
+    char connecting[256];
+    TR_FMT(connecting, sizeof(connecting), STR_REC_CONNECTING, host->name);
+    flash_message("%s", connecting);
     char err[256] = "";
     if (session_open_headless(host, err, sizeof(err)) == 0) {
       return true;
     }
-    display_error("Auto-detect couldn't connect to %s: %s", host->name, err);
+    char message[512];
+    TR_FMT(message, sizeof(message), STR_REC_CANT_CONNECT, host->name, err);
+    display_error("%s", message);
     return false;
   }
-  display_error("Auto-detect needs a paired PC that's switched on, to test the connection to it. "
-                "Turn your PC on, or choose Good or Weak connection yourself.");
+  display_error("%s", tr(STR_REC_NEEDS_PC));
   return false;
 }
 
@@ -257,11 +266,15 @@ static bool measure_signal(link_test *result) {
       lowest = percent < lowest ? percent : lowest;
     }
     int left = (count - i) * MEASURE_INTERVAL_US / 1000000 + 1;
+    char measuring[256], now[8], seconds[8];
+    snprintf(now, sizeof(now), "%d", percent);
+    snprintf(seconds, sizeof(seconds), "%d", left);
     if (percent >= 0) {
-      flash_message("Measuring the Wi-Fi signal, hold still...\n\nNow %d%%, %d s left", percent, left);
+      TR_FMT(measuring, sizeof(measuring), STR_REC_MEASURING, now, seconds);
     } else {
-      flash_message("Measuring the Wi-Fi signal, hold still...\n\nNo signal, %d s left", left);
+      TR_FMT(measuring, sizeof(measuring), STR_REC_MEASURING_NO_SIGNAL, seconds);
     }
+    flash_message("%s", measuring);
     sceKernelDelayThread(MEASURE_INTERVAL_US);
   }
   if (samples == 0) {
@@ -290,8 +303,7 @@ static bool wait_connected(uint64_t timeout_us) {
 static bool test_stream(link_test *result, char *err, size_t err_len) {
   int app_id = session_find_app(TEST_APP);
   if (app_id < 0) {
-    snprintf(err, err_len, "Your PC has no \"%s\" app in Sunshine, which Auto-detect streams "
-             "to test the connection.", TEST_APP);
+    TR_FMT(err, err_len, STR_REC_NO_DESKTOP_APP, TEST_APP);
     return false;
   }
   // Test at 720p and 20 Mbps, the most a good connection gets, then put the
@@ -310,7 +322,7 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
   }
   result->streamed = true;
   if (!wait_connected(TEST_CONNECT_TIMEOUT_US)) {
-    snprintf(err, err_len, "The test stream didn't start.");
+    snprintf(err, err_len, "%s", tr(STR_REC_TEST_DIDNT_START));
     goto done;
   }
   sceKernelDelayThread(TEST_SETTLE_US);
@@ -322,7 +334,7 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
   for (int i = 0; i < TEST_SECONDS * 2; i++) {
     sceKernelDelayThread(500000);
     if (connection_get_status() != LI_CONNECTED) {
-      snprintf(err, err_len, "The test stream ended early.");
+      snprintf(err, err_len, "%s", tr(STR_REC_TEST_ENDED));
       goto done;
     }
     uint32_t rtt = 0, variance = 0;
@@ -335,12 +347,12 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
   uint32_t lost = netcount_lost(&before, &after);
   uint32_t packets = (after.received - before.received) + lost;
   if (packets == 0) {
-    snprintf(err, err_len, "No video arrived during the test stream.");
+    snprintf(err, err_len, "%s", tr(STR_REC_TEST_NO_VIDEO));
     goto done;
   }
   if (variance_samples == 0) {
     // No round-trip readings: don't pass the jitter check unmeasured
-    snprintf(err, err_len, "The connection's delay couldn't be measured.");
+    snprintf(err, err_len, "%s", tr(STR_REC_TEST_NO_DELAY));
     goto done;
   }
   result->loss_percent = 100.0f * lost / packets;
@@ -362,27 +374,22 @@ static int auto_detect(void) {
   if (!have_test_pc()) {
     return RECOMMENDED_NONE;
   }
-  char *captions[] = {"Start", "Cancel"};
+  char *captions[] = {(char *)tr(STR_REC_BUTTON_START), (char *)tr(STR_BUTTON_CANCEL)};
   start_choice = 1;
   int network = vita_network_type();
   bool wired = network == VITA_NETWORK_WIRED;
   if (network == VITA_NETWORK_MOBILE) {
     // 3G can't carry a smooth stream, so there's nothing to measure
-    display_error("The Vita is on a mobile (3G) network, which can't carry a smooth stream. Use "
-                  "Wi-Fi if you can. Otherwise choose Weak connection, which needs the least.");
+    display_error("%s", tr(STR_REC_MOBILE_WARNING));
     return RECOMMENDED_NONE;
   }
-  char intro[512];
+  char intro[1024], measure[8], test[8];
+  snprintf(measure, sizeof(measure), "%d", MEASURE_SECONDS);
+  snprintf(test, sizeof(test), "%d", TEST_SECONDS);
   if (wired) {
-    snprintf(intro, sizeof(intro),
-             "Auto-detect streams %s's desktop for about %d seconds to test the connection. "
-             "Press Start when you're ready.", session_server_name(), TEST_SECONDS);
+    TR_FMT(intro, sizeof(intro), STR_REC_INTRO_WIRED, session_server_name(), test);
   } else {
-    snprintf(intro, sizeof(intro),
-             "Take the Vita to where you'll play, and hold it as you normally would. Then press "
-             "Start. Auto-detect measures the Wi-Fi signal for %d seconds, then streams %s's "
-             "desktop for about %d seconds to test the connection.",
-             MEASURE_SECONDS, session_server_name(), TEST_SECONDS);
+    TR_FMT(intro, sizeof(intro), STR_REC_INTRO_WIFI, measure, session_server_name(), test);
   }
   display_alert(intro, captions, 2, start_loop, NULL);
   if (start_choice != 0) {
@@ -391,15 +398,17 @@ static int auto_detect(void) {
 
   link_test result = {0};
   if (!wired && !measure_signal(&result)) {
-    display_error("Couldn't read the Wi-Fi signal. Check the Vita is connected to Wi-Fi.");
+    display_error("%s", tr(STR_REC_NO_SIGNAL_READING));
     return RECOMMENDED_NONE;
   }
-  flash_message("Testing the connection to %s.\n\nPlease wait while the connection is "
-                "benchmarked. The PC's desktop shows for about %d seconds.",
-                session_server_name(), TEST_SECONDS);
+  char testing[512];
+  TR_FMT(testing, sizeof(testing), STR_REC_TESTING, session_server_name(), test);
+  flash_message("%s", testing);
   char err[256] = "";
   if (!test_stream(&result, err, sizeof(err))) {
-    display_error("Auto-detect couldn't finish the connection test: %s", err);
+    char message[512];
+    TR_FMT(message, sizeof(message), STR_REC_TEST_FAILED, err);
+    display_error("%s", message);
     return RECOMMENDED_NONE;
   }
 
@@ -407,27 +416,35 @@ static int auto_detect(void) {
   bool loss_ok = result.loss_percent < GOOD_MAX_LOSS_PERCENT;
   bool jitter_ok = result.jitter_ms < GOOD_MAX_JITTER_MS;
   int which = signal_ok && loss_ok && jitter_ok ? RECOMMENDED_GOOD : RECOMMENDED_WEAK;
-  const char *reason = which == RECOMMENDED_GOOD ? ""
-                     : !signal_ok ? " The signal is on the weak side."
-                     : !loss_ok ? " Packets went missing during the test."
-                                : " The connection's timing was uneven.";
+  // Whole sentences, joined with spaces, so each translates on its own
+  str_id reason = which == RECOMMENDED_GOOD ? STR_NONE
+                : !signal_ok ? STR_REC_REASON_SIGNAL
+                : !loss_ok ? STR_REC_REASON_LOSS
+                           : STR_REC_REASON_TIMING;
 
   preset p = choose(which);
-  char what[128];
+  char what[256];
   describe(&p, what, sizeof(what));
-  char signal[64];
+  char signal[128], loss[16], jitter[16];
   if (wired) {
-    snprintf(signal, sizeof(signal), "Wired network");
+    snprintf(signal, sizeof(signal), "%s", tr(STR_REC_WIRED));
   } else {
-    snprintf(signal, sizeof(signal), "Signal %d%% (lowest %d%%)", result.signal_avg, result.signal_min);
+    char average[8], lowest[8];
+    snprintf(average, sizeof(average), "%d", result.signal_avg);
+    snprintf(lowest, sizeof(lowest), "%d", result.signal_min);
+    TR_FMT(signal, sizeof(signal), STR_REC_SIGNAL, average, lowest);
   }
-  char message[768];
-  snprintf(message, sizeof(message),
-           "%s, %.1f%% of packets lost, jitter %.0f ms: %s.%s%s\n\n"
-           "Recommended for %s: %s. Apply it?",
-           signal, result.loss_percent, result.jitter_ms, connection_name(which), reason,
-           !wired && vita_bluetooth_enabled() ? " Bluetooth is on, which can make it worse." : "",
-           PRIORITY_NAMES[priority], what);
+  snprintf(loss, sizeof(loss), "%.1f", result.loss_percent);
+  snprintf(jitter, sizeof(jitter), "%.0f", result.jitter_ms);
+  char measured[256], ask[512];
+  TR_FMT(measured, sizeof(measured), STR_REC_MEASURED, signal, loss, jitter);
+  TR_FMT(ask, sizeof(ask), STR_REC_RECOMMEND_ASK, tr(PRIORITY_NAMES[priority]), what);
+  char message[1536];
+  snprintf(message, sizeof(message), "%s %s%s%s%s%s\n\n%s", measured,
+           tr(which == RECOMMENDED_GOOD ? STR_REC_VERDICT_GOOD : STR_REC_VERDICT_WEAK),
+           reason != STR_NONE ? " " : "", reason != STR_NONE ? tr(reason) : "",
+           !wired && vita_bluetooth_enabled() ? " " : "",
+           !wired && vita_bluetooth_enabled() ? tr(STR_REC_BLUETOOTH) : "", ask);
   if (!display_confirm(message)) {
     return RECOMMENDED_NONE;
   }
@@ -441,30 +458,15 @@ static const char *help_text(int row) {
   switch (row) {
     case ROW_PRIORITY:
       if (is_pstv()) {
-        return "Balanced gives the sharpest picture a connection can carry smoothly: 1280x720 at "
-               "20 Mbps on a good one. Lowest delay uses 960x540 at 10 Mbps, which cuts the delay by "
-               "a few milliseconds, more on a weaker connection. Use left and right to change.";
+        return tr(STR_REC_HELP_PRIORITY_PSTV);
       }
-      return "Balanced gives the sharpest picture a connection can carry smoothly: 1280x720 at 20 "
-             "Mbps on a good one. Lowest delay uses 960x540 at 10 Mbps, which looks the same on the "
-             "Vita's screen and cuts the delay by a few milliseconds, more on weaker Wi-Fi. Battery "
-             "life streams 30 frames a second at 5 Mbps with clock boost off. Use left and right to "
-             "change.";
+      return tr(STR_REC_HELP_PRIORITY);
     case ROW_AUTO:
-      return "Tests the connection where you'll play, then recommends settings for it and for "
-             "what matters most to you. It measures the Wi-Fi signal (unless you're wired), then "
-             "briefly streams your PC's desktop to check for lost packets and uneven timing. It "
-             "uses your paired PC if it's on; with several, open Settings from the menu of the "
-             "one you want. Quit any game on the PC first.";
+      return tr(STR_REC_HELP_AUTO);
     case ROW_GOOD:
-      return "For a strong signal, such as in the same room as your router, or a wired PS TV. "
-             "Applies the settings for what matters most to you; with Balanced that's 1280x720 at "
-             "20 Mbps. Also turns the frame pacer and V-Sync off.";
+      return tr(STR_REC_HELP_GOOD);
     case ROW_WEAK:
-      return "For a weaker signal, such as further from your router or through walls. Applies "
-             "the settings for what matters most to you; with Balanced that's 960x540 at 10 Mbps, "
-             "which looks the same on the Vita's screen and needs half the bandwidth. Also turns "
-             "the frame pacer and V-Sync off.";
+      return tr(STR_REC_HELP_WEAK);
     default:
       return NULL;
   }
@@ -522,10 +524,10 @@ int ui_recommended_settings_menu(void) {
     priority = PRIORITY_BALANCED;
   }
   menu[ROW_NOW] = (menu_entry) { .name = "", .disabled = true };
-  menu[ROW_PRIORITY] = (menu_entry) { .name = "What matters most", .id = ROW_PRIORITY, .adjustable = true };
-  menu[ROW_AUTO] = (menu_entry) { .name = "Auto-detect: test where you'll play", .id = ROW_AUTO };
-  menu[ROW_GOOD] = (menu_entry) { .name = "Good connection: near the router, or wired", .id = ROW_GOOD };
-  menu[ROW_WEAK] = (menu_entry) { .name = "Weak connection: further away or through walls", .id = ROW_WEAK };
+  menu[ROW_PRIORITY] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_PRIORITY), .id = ROW_PRIORITY, .adjustable = true };
+  menu[ROW_AUTO] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_AUTO), .id = ROW_AUTO };
+  menu[ROW_GOOD] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_GOOD), .id = ROW_GOOD };
+  menu[ROW_WEAK] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_WEAK), .id = ROW_WEAK };
   refresh(menu);
 
   chosen = RECOMMENDED_NONE;

@@ -1,3 +1,4 @@
+#include "i18n/i18n.h"
 #include "hosts.h"
 
 #include "check_host.h"
@@ -33,22 +34,21 @@ static bool broadcast_address(const device_info_t *info, char *out, size_t size)
 
 host_wake_result host_send_wake(const device_info_t *info, char *err, size_t err_len) {
   if (!info->mac[0]) {
-    snprintf(err, err_len, "No MAC address is saved for %s, so it can't be woken. Connect to it once while "
-             "it's on, and Moonlight will remember it.", info->name);
+    TR_FMT(err, err_len, STR_WAKE_NO_MAC, info->name);
     return HOST_WAKE_NO_MAC;
   }
   if (!info->internal[0]) {
-    snprintf(err, err_len, "No IP address is saved for %s.", info->name);
+    TR_FMT(err, err_len, STR_WAKE_NO_ADDRESS, info->name);
     return HOST_WAKE_NO_ADDRESS;
   }
   char broadcast[32];
   if (!broadcast_address(info, broadcast, sizeof(broadcast))) {
-    snprintf(err, err_len, "%s's IP address (%s) isn't one Wake on LAN can use.", info->name, info->internal);
+    TR_FMT(err, err_len, STR_WAKE_BAD_ADDRESS, info->name, info->internal);
     return HOST_WAKE_BAD_ADDRESS;
   }
   if (!send_wol_packet(info->mac, broadcast, 9)) {
     vita_debug_log("[HOSTS] Wake-on-LAN failed for %s (%s)", info->name, info->mac);
-    snprintf(err, err_len, "Couldn't send the Wake on LAN packet to %s.", info->name);
+    TR_FMT(err, err_len, STR_WAKE_SEND_FAILED, info->name);
     return HOST_WAKE_SEND_FAILED;
   }
   vita_debug_log("[HOSTS] Wake-on-LAN sent to %s (%s)", info->name, info->mac);
@@ -67,13 +67,15 @@ host_wait_result host_wake_and_wait(device_info_t *info, char *new_address, size
   while (true) {
     int elapsed = (int)((sceKernelGetSystemTimeWide() - start) / 1000000);
     if (elapsed >= WAKE_TIMEOUT_SECONDS) {
-      snprintf(message, message_size, "%s didn't wake up within %d minutes. Check it's plugged in, connected by "
-               "cable, and set up for Wake on LAN.", info->name, WAKE_TIMEOUT_SECONDS / 60);
+      char minutes[8];
+      snprintf(minutes, sizeof(minutes), "%d", WAKE_TIMEOUT_SECONDS / 60);
+      TR_FMT(message, message_size, STR_WAKE_TIMED_OUT, info->name, minutes);
       return HOST_WAIT_TIMED_OUT;
     }
     char progress[256];
-    snprintf(progress, sizeof(progress), "Waking %s...\n\nWaiting for it to start: %d s.\nPress %s to stop.",
-             info->name, elapsed, config.jp_layout ? "X" : "O");
+    char seconds[8];
+    snprintf(seconds, sizeof(seconds), "%d", elapsed);
+    TR_FMT(progress, sizeof(progress), STR_WAKE_WAITING, info->name, seconds);
     ui_progress(progress);
     // Nobody touches the Vita while waiting, so keep the screen on, as input would
     sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DEFAULT);
@@ -96,7 +98,7 @@ host_wait_result host_wake_and_wait(device_info_t *info, char *new_address, size
     // Wait between checks, watching for cancel
     for (int i = 0; i < 20; i++) {
       if (ui_cancel_requested()) {
-        snprintf(message, message_size, "Stopped waiting for %s.", info->name);
+        TR_FMT(message, message_size, STR_WAKE_STOPPED, info->name);
         return HOST_WAIT_CANCELLED;
       }
       sceKernelDelayThread(WAKE_CHECK_INTERVAL_US / 20);

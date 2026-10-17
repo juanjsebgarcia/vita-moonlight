@@ -17,6 +17,7 @@
  * along with Moonlight; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "../i18n/i18n.h"
 #include "../video.h"
 #include "../config.h"
 #include "../debug.h"
@@ -124,7 +125,6 @@ static bool decode_yuv = false;
 // A reminder of how to reach the menu, shown at the start of each stream
 #define STREAM_HINT_DURATION_US 5000000
 #define STREAM_HINT_FADE_US 1000000
-static const char *STREAM_HINT_TEXT = "Press START + L + R for the menu and to quit";
 // When the first frame of this stream was drawn, or 0 before that
 static uint64_t stream_hint_start_us = 0;
 
@@ -657,14 +657,14 @@ static void draw_stream_hint(void) {
   float opacity = remaining < STREAM_HINT_FADE_US ? (float)remaining / STREAM_HINT_FADE_US : 1.0f;
 
   const int font_size = 20;
-  int text_width = vita2d_font_text_width(font, font_size, STREAM_HINT_TEXT);
+  const char *hint = tr(STR_STREAM_HINT);
+  int text_width = rich_text_width(font_size, hint);
   int box_width = text_width + 32;
   int box_height = 36;
   int box_x = (SCREEN_WIDTH - box_width) / 2;
   int box_y = SCREEN_HEIGHT - box_height - 24;
   vita2d_draw_rectangle(box_x, box_y, box_width, box_height, RGBA8(0, 0, 0, (uint8_t)(0xB0 * opacity)));
-  vita2d_font_draw_text(font, box_x + 16, box_y + 25, RGBA8(0xFF, 0xFF, 0xFF, (uint8_t)(0xFF * opacity)),
-                        font_size, STREAM_HINT_TEXT);
+  draw_rich_text(box_x + 16, box_y + 25, RGBA8(0xFF, 0xFF, 0xFF, (uint8_t)(0xFF * opacity)), font_size, hint);
 }
 
 void draw_indicators() {
