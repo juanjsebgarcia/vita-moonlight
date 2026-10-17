@@ -28,8 +28,12 @@ PLACEHOLDER = re.compile(r"\{(\d|[a-z][a-z0-9_]*)\}")
 PRINTF = re.compile(r"%[-+ #0-9.]*[sdifuxXcp%]")
 
 
+C_ESCAPES = {"n": "\n", "t": "\t"}
+
+
 def unescape_c(text):
-    return text.replace('\\"', '"').replace("\\\\", "\\")
+    # One pass, so an escaped backslash before an n stays a backslash
+    return re.sub(r"\\(.)", lambda m: C_ESCAPES.get(m.group(1), m.group(1)), text)
 
 
 def read_english():
