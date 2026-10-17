@@ -695,8 +695,10 @@ int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int 
       end = after_first;
     } else {
       while (*end && *end != ' ' && *end != '\n') {
+        // Always step over the character, even the first, or this never ends
         const char *next = end;
-        if (end != p && breaks_anywhere(utf8_next(&next))) {
+        unsigned int c = utf8_next(&next);
+        if (end != p && breaks_anywhere(c)) {
           break;
         }
         end = next;
