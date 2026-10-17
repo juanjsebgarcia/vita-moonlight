@@ -182,6 +182,8 @@ add_custom_target(update_template_version ALL
 
 # Every translation in lang/, packed as app0:lang/<file>
 file(GLOB LANG_FILES CONFIGURE_DEPENDS RELATIVE ${CMAKE_SOURCE_DIR}/lang ${CMAKE_SOURCE_DIR}/lang/*.ini)
+# The translators' template and the English snapshot aren't languages
+list(REMOVE_ITEM LANG_FILES template.ini source.ini)
 set(LANG_VPK_ARGS "")
 foreach(LANG_FILE ${LANG_FILES})
 	list(APPEND LANG_VPK_ARGS --add ../lang/${LANG_FILE}=lang/${LANG_FILE})

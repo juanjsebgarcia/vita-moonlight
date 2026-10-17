@@ -107,6 +107,8 @@ push_languages() {
   local file
   for file in "$REPO_ROOT"/lang/*.ini; do
     [ -f "$file" ] || continue
+    # The translators' template and the English snapshot aren't languages
+    case "$(basename "$file")" in template.ini|source.ini) continue ;; esac
     curl -sSf --max-time 30 --ftp-create-dirs -T "$file" "$(ftp_url "ux0:/app/$TITLE_ID/lang/$(basename "$file")")" \
       || die "couldn't upload $(basename "$file")"
   done
