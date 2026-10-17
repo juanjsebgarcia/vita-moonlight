@@ -29,6 +29,10 @@ int tr_fmt(char *out, size_t size, str_id id, int argc, const char *const argv[]
          (int)(sizeof((const char *[]){__VA_ARGS__}) / sizeof(const char *)), \
          (const char *[]){__VA_ARGS__})
 
+// Copies text to out, which holds size bytes, truncating on a character
+// boundary. Returns the length written.
+int tr_copy(char *out, size_t size, const char *text);
+
 typedef struct {
   char tag[16];          // such as "pt-BR"
   char name[64];         // in the language itself, such as "Português (Brasil)"

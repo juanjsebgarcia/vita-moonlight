@@ -61,6 +61,15 @@ static size_t copy_whole_characters(char *out, const char *text, size_t n) {
   return n;
 }
 
+int tr_copy(char *out, size_t size, const char *text) {
+  if (size == 0) {
+    return 0;
+  }
+  size_t used = copy_whole_characters(out, text, size - 1);
+  out[used] = '\0';
+  return (int)used;
+}
+
 int tr_fmt(char *out, size_t size, str_id id, int argc, const char *const argv[]) {
   if (size == 0) {
     return 0;

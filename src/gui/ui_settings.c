@@ -188,9 +188,9 @@ static int deadzone_settings_menu() {
  * Special keys
  */
 
-static void special_keys_name(int ord, char *text) {
+static void special_keys_name(int ord, char *text, size_t size) {
   if (ord == 0) {
-    strcpy(text, tr(STR_SPECIAL_NONE));
+    tr_copy(text, size, tr(STR_SPECIAL_NONE));
     return;
   }
 
@@ -205,9 +205,9 @@ static void special_keys_name(int ord, char *text) {
 
   if (did_find) {
     const special_name *name = &settings_special_names[i];
-    strcpy(text, name->literal ? name->literal : tr(name->id));
+    tr_copy(text, size, name->literal ? name->literal : tr(name->id));
   } else {
-    sprintf(text, "%d", ord);
+    snprintf(text, size, "%d", ord);
   }
 }
 
@@ -253,15 +253,16 @@ static int select_special_key_loop(int id, void *context, const input_data *inpu
 static int select_special_key_menu(int *code) {
   // TODO: sizeof(codes) / sizeof(int) ?
   menu_entry menu[64];
+  const size_t name_size = 256;
   int idx = 0;
   for (int i = 0; i < (int)(sizeof(settings_special_codes) / sizeof(int)); i++) {
     unsigned int id = settings_special_codes[i];
     menu[idx++] = (menu_entry) {
       .id = id,
-      .name = malloc(sizeof(char) * 256),
+      .name = malloc(name_size),
       .disabled = (id >= INPUT_TYPE_DEF_NAME)
     };
-    special_keys_name(id, menu[idx-1].name);
+    special_keys_name(id, menu[idx-1].name, name_size);
   }
 
   menu[idx++] = (menu_entry) { .name = "", .disabled = true, .separator = true };
@@ -319,10 +320,10 @@ static int special_keys_loop(int id, void *context, const input_data *input) {
   sprintf(menu[idx++].subname, "%d", config.special_keys.size);
 
   idx++;
-  special_keys_name(config.special_keys.nw, menu[idx++].subname);
-  special_keys_name(config.special_keys.ne, menu[idx++].subname);
-  special_keys_name(config.special_keys.sw, menu[idx++].subname);
-  special_keys_name(config.special_keys.se, menu[idx++].subname);
+  special_keys_name(config.special_keys.nw, menu[idx++].subname, sizeof(menu->subname));
+  special_keys_name(config.special_keys.ne, menu[idx++].subname, sizeof(menu->subname));
+  special_keys_name(config.special_keys.sw, menu[idx++].subname, sizeof(menu->subname));
+  special_keys_name(config.special_keys.se, menu[idx++].subname, sizeof(menu->subname));
 
   return 0;
 }
