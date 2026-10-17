@@ -35,10 +35,11 @@ bool vitabench_active(void);
 
 // Called from the video decode thread with a just-decoded frame. hw_start_us
 // is when sceAvcdecDecode was called, after the frame was assembled. pixels
-// is the texture the frame was decoded into, and region is the part of it
-// that is shown on screen, in texture pixels.
+// is the texture the frame was decoded into (RGBA at 4 bytes per pixel, or
+// the Y plane at 1 when decoding to YUV), and region is the part of it that
+// is shown on screen, in texture pixels.
 void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t hw_start_us, uint64_t decoded_us,
-                             const uint8_t *pixels, int stride_bytes,
+                             const uint8_t *pixels, int stride_bytes, int bytes_per_pixel,
                              float region_x1, float region_y1, float region_x2, float region_y2);
 // Called when a decoded frame has been drawn and swapped onto the screen
 void vitabench_frame_rendered(uint64_t rendered_us);
