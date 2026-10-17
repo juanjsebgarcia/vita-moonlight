@@ -536,9 +536,9 @@ int ui_main_menu() {
   MENU_ENTRY(MAIN_MENU_QUIT, "Quit", false);
 
   // Solo iniciar escaneo si NO hay cambio de IP pendiente y no se ha hecho ya
-  // As tall as the settings menu, so Settings and Quit are visible without
-  // scrolling once a few hosts are listed. Each row is 24 px.
-  menu_geom geom = make_geom_centered(500, 400);
+  // Shrinks to its rows, and grows up to the settings menu's height so
+  // Settings and Quit stay visible once a few hosts are listed
+  menu_geom geom = make_geom_fitted(500, idx);
   return display_menu(menu, idx, &geom, &ui_main_menu_loop, &ui_main_menu_back, NULL, NULL);
 }
 
