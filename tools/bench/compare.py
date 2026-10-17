@@ -33,6 +33,8 @@ METRICS = [
     ("packet loss %", ("packets", "loss_percent")),
     ("RTT ms", ("rtt_ms", "avg")),
     ("RTT var ms", ("rtt_ms", "variance_avg")),
+    ("battery mA", ("battery", "drain_ma")),
+    ("battery mW", ("battery", "drain_mw")),
     ("rssi %", ("wifi", "rssi_avg_percent")),
 ]
 
