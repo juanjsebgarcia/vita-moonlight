@@ -28,6 +28,8 @@
 #include <psp2/touch.h>
 #include <psp2/io/stat.h>
 #include <psp2/kernel/processmgr.h>
+
+int end_search_thread(SceUID thid);
 #include <vita2d.h>
 #include <Limelight.h>
 #include <client.h>

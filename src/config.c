@@ -118,6 +118,8 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->localaudio = BOOL(value);
     } else if (strcmp(name, "enable_frame_pacer") == 0) {
       config->enable_frame_pacer = BOOL(value);
+    } else if (strcmp(name, "video_reorder_wait_ms") == 0) {
+      config->video_reorder_wait_ms = INT(value);
     } else if (strcmp(name, "center_region_only") == 0) {
       config->center_region_only = BOOL(value);
     } else if (strcmp(name, "disable_powersave") == 0) {
@@ -238,6 +240,7 @@ void config_save(const char* filename, PCONFIGURATION config) {
 
   write_config_string(fd, "key_dir", config->key_dir); // Guardar key_dir en la raíz
   write_config_bool(fd, "enable_frame_pacer", config->enable_frame_pacer);
+  write_config_int(fd, "video_reorder_wait_ms", config->video_reorder_wait_ms);
   write_config_bool(fd, "center_region_only", config->center_region_only);
   write_config_bool(fd, "disable_powersave", config->disable_powersave);
   write_config_bool(fd, "boost_clocks", config->boost_clocks);
@@ -348,6 +351,12 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   // Off by default: it counts frames in ~1 s windows and drops any excess, so jitter
   // around 60 fps periodically discards a decoded frame and causes a visible hitch
   config->enable_frame_pacer = false;
+  // On the Vita's Wi-Fi ~10% of video packets can arrive out of order at a
+  // weaker signal; waiting for them saves frames that would otherwise freeze
+  // the picture until a keyframe. At ~60% signal, 720p 20 Mbps: 23-37
+  // freezes a minute with no wait, 2-8 at 10 ms, 1-3 at 20 ms, with the
+  // same latency.
+  config->video_reorder_wait_ms = 20;
   config->center_region_only = false;
 
   config->enable_front_touchzones = false;
