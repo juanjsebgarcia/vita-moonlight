@@ -23,6 +23,7 @@
 #include "ui_recommended.h"
 #include "guilib.h"
 #include "ui_connect.h"
+#include "../session.h"
 #include "../check_host.h"
 #include "../config.h"
 #include "../connection.h"
@@ -216,7 +217,7 @@ typedef struct {
 // the benchmark does), so the player doesn't have to open the PC's menu first.
 // Returns false, after telling the player what to do, when there isn't one.
 static bool have_test_pc(void) {
-  if (ui_connect_server_ready()) {
+  if (session_server_ready()) {
     return true;
   }
   for (int i = 0; i < known_devices.count && i < MAX_HOSTS; i++) {
@@ -234,7 +235,7 @@ static bool have_test_pc(void) {
     }
     flash_message("Connecting to %s...", host->name);
     char err[256] = "";
-    if (ui_connect_open_headless(host, err, sizeof(err)) == 0) {
+    if (session_open_headless(host, err, sizeof(err)) == 0) {
       return true;
     }
     display_error("Auto-detect couldn't connect to %s: %s", host->name, err);
@@ -287,7 +288,7 @@ static bool wait_connected(uint64_t timeout_us) {
 // recovered and failed counters are only kept for audio) and jitter (the
 // round trip's variation). Returns false with a message in err if it couldn't.
 static bool test_stream(link_test *result, char *err, size_t err_len) {
-  int app_id = ui_connect_find_app(TEST_APP);
+  int app_id = session_find_app(TEST_APP);
   if (app_id < 0) {
     snprintf(err, err_len, "Your PC has no \"%s\" app in Sunshine, which Auto-detect streams "
              "to test the connection.", TEST_APP);
@@ -304,7 +305,7 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
   config.stream.packetSize = 1024;
 
   bool ok = false;
-  if (ui_connect_start_app_by_id(app_id, err, err_len) != 0) {
+  if (session_start_app_by_id(app_id, err, err_len) != 0) {
     goto done;
   }
   result->streamed = true;
@@ -349,8 +350,8 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
 done:
   if (result->streamed) {
     connection_terminate();
-    ui_connect_quit_app();
-    ui_connect_return_to_server();
+    session_quit_app();
+    session_return_to_server();
   }
   config.stream = saved;
   return ok;
@@ -375,13 +376,13 @@ static int auto_detect(void) {
   if (wired) {
     snprintf(intro, sizeof(intro),
              "Auto-detect streams %s's desktop for about %d seconds to test the connection. "
-             "Press Start when you're ready.", ui_connect_server_name(), TEST_SECONDS);
+             "Press Start when you're ready.", session_server_name(), TEST_SECONDS);
   } else {
     snprintf(intro, sizeof(intro),
              "Take the Vita to where you'll play, and hold it as you normally would. Then press "
              "Start. Auto-detect measures the Wi-Fi signal for %d seconds, then streams %s's "
              "desktop for about %d seconds to test the connection.",
-             MEASURE_SECONDS, ui_connect_server_name(), TEST_SECONDS);
+             MEASURE_SECONDS, session_server_name(), TEST_SECONDS);
   }
   display_alert(intro, captions, 2, start_loop, NULL);
   if (start_choice != 0) {
@@ -395,7 +396,7 @@ static int auto_detect(void) {
   }
   flash_message("Testing the connection to %s.\n\nPlease wait while the connection is "
                 "benchmarked. The PC's desktop shows for about %d seconds.",
-                ui_connect_server_name(), TEST_SECONDS);
+                session_server_name(), TEST_SECONDS);
   char err[256] = "";
   if (!test_stream(&result, err, sizeof(err))) {
     display_error("Auto-detect couldn't finish the connection test: %s", err);
