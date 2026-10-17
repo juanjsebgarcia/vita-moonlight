@@ -132,8 +132,19 @@ static bool wake_and_wait(device_info_t *info) {
                   config.jp_layout ? "X" : "O");
     // Nobody touches the Vita while waiting, so keep the screen on, as input would
     sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DEFAULT);
-    if (check_host_status(info).status != HOST_OFFLINE) {
+    struct host_status st = check_host_status(info);
+    if (st.status != HOST_OFFLINE) {
       vita_debug_log("[UI] %s answered after %d s", info->name, elapsed);
+      if (st.status == HOST_IP_CHANGED && st.current_ip[0] && strcmp(st.current_ip, info->internal) != 0) {
+        // It woke up on a new address: record it as the host scan would, so
+        // connecting asks whether to use it instead of trying the old one
+        for (int i = 0; i < known_devices.count; i++) {
+          if (&known_devices.devices[i] == info) {
+            pending_ip_update_idx = i;
+            snprintf(pending_ip_update, sizeof(pending_ip_update), "%s", st.current_ip);
+          }
+        }
+      }
       return true;
     }
     if (sceKernelGetSystemTimeWide() - last_send >= WAKE_RESEND_SECONDS * 1000000ULL) {
