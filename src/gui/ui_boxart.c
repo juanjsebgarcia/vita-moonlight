@@ -127,6 +127,11 @@ static bool file_exists(const char *path) {
   return sceIoGetstat(path, &stat) >= 0 && stat.st_size > 0;
 }
 
+// Sunshine sends its own small grey cover (about 680 bytes) for apps that
+// have no artwork set. Every such app would look the same, so anything this
+// small counts as no artwork, and the app gets a card with its name instead.
+#define NO_ARTWORK_MAX_BYTES 1024
+
 // Downloads a cover to the memory card. Returns FETCH_CACHED or FETCH_NONE.
 static int download_cover(int app_id, const char *path) {
   static const unsigned char png_signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
@@ -141,6 +146,11 @@ static int download_cover(int app_id, const char *path) {
   if (size < sizeof(png_signature) || size > MAX_DOWNLOAD_BYTES ||
       memcmp(image, png_signature, sizeof(png_signature)) != 0) {
     vita_debug_log("[BOXART] app %d: not a usable PNG (%u bytes)", app_id, (unsigned)size);
+    free(image);
+    return FETCH_NONE;
+  }
+  if (size <= NO_ARTWORK_MAX_BYTES) {
+    vita_debug_log("[BOXART] app %d: no artwork on the host (%u bytes), showing its name", app_id, (unsigned)size);
     free(image);
     return FETCH_NONE;
   }
@@ -204,6 +214,11 @@ static uint32_t *shrink(const uint8_t *src, int src_w, int src_h, int dst_w, int
 
 // Decodes a saved cover and shrinks it to fit TEX_W x TEX_H, keeping its shape
 static bool decode_cover(const char *path, uint32_t **pixels, int *width, int *height) {
+  // A cover cached before small ones counted as no artwork: drop it like a bad one
+  SceIoStat stat;
+  if (sceIoGetstat(path, &stat) >= 0 && stat.st_size <= NO_ARTWORK_MAX_BYTES) {
+    return false;
+  }
   png_image image;
   memset(&image, 0, sizeof(image));
   image.version = PNG_IMAGE_VERSION;
