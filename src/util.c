@@ -75,7 +75,8 @@ int vita_wifi_percent(void) {
 }
 
 // SceNetCtlInfo.device has no named values in VitaSDK. 0 is Wi-Fi
-// (SCE_NET_CTL_DEVICE_WIRELESS, as Vita3K returns it). The other values aren't
+// (SCE_NET_CTL_DEVICE_WIRELESS, as Vita3K returns it, and as a handheld on
+// Wi-Fi reports). The other values aren't
 // public, but the hardware settles it: a PS TV has Ethernet and no modem, and
 // a 3G Vita has a modem and no Ethernet.
 #define NETCTL_DEVICE_WIFI 0
