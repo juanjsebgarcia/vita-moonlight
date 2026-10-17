@@ -822,8 +822,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
   // L and R switch tabs. Pressing both together, as for developer mode, moves
   // back and forth and lands on the same tab.
   bool pressed_once = (input->buttons & SCE_CTRL_HOLD) == 0;
-  bool left_tab = (input->buttons & SCE_CTRL_L1) != 0;
-  bool right_tab = (input->buttons & SCE_CTRL_R1) != 0;
+  // sceCtrlPeekBufferPositive reports the shoulder buttons on the L2/R2 bits
+  bool left_tab = (input->buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) != 0;
+  bool right_tab = (input->buttons & (SCE_CTRL_R1 | SCE_CTRL_R2)) != 0;
   if (pressed_once && left_tab != right_tab) {
     move_tab(left_tab ? -1 : 1);
     return SETTINGS_REBUILD;
