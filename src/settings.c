@@ -523,6 +523,11 @@ const setting_def SETTINGS[] = {
    .help = STR_SET_LOCAL_AUDIO_HELP},
 
   // System
+  // First on its tab: changing it rebuilds the rows, which puts the cursor on
+  // the first one, so it stays on this row
+  {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_CHOICE, .flags = SETTING_REBUILDS,
+   .label = STR_SET_LANGUAGE, .value = language_value, .change = language_change,
+   .help = STR_SET_LANGUAGE_HELP},
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_TOGGLE,
    .label = STR_SET_SAVE_DEBUG_LOG, .is_on = debug_log_on, .change = debug_log_flip, .help_with = debug_log_help},
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_TOGGLE,
@@ -540,10 +545,6 @@ const setting_def SETTINGS[] = {
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_CHOICE, .flags = SETTING_CONFIRM_STEPS,
    .label = STR_SET_APP_LIST_STYLE, .value = app_list_value, .change = app_list_change,
    .help = STR_SET_APP_LIST_STYLE_HELP},
-
-  {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_CHOICE, .flags = SETTING_REBUILDS,
-   .label = STR_SET_LANGUAGE, .value = language_value, .change = language_change,
-   .help = STR_SET_LANGUAGE_HELP},
 
   // Controls
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,

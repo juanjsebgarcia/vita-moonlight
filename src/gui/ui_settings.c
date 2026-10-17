@@ -617,6 +617,8 @@ static int settings_loop(int id, void *context, const input_data *input) {
       ui_settings_save_config();
     }
     if (setting->flags & SETTING_REBUILDS) {
+      // Every row changes, but the cursor stays on this one
+      display_menu_select(id);
       return SETTINGS_REBUILD;
     }
     refresh_rows();

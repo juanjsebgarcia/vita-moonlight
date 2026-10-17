@@ -680,6 +680,14 @@ input_data read_input(void) {
   return input;
 }
 
+static bool select_pending = false;
+static int select_id = 0;
+
+void display_menu_select(int id) {
+  select_pending = true;
+  select_id = id;
+}
+
 int display_menu(menu_entry menu[], int total_elements, menu_geom *geom_ptr,
                  gui_loop_callback cb, gui_back_callback back_cb,
                  gui_draw_callback draw_callback,
@@ -688,6 +696,20 @@ int display_menu(menu_entry menu[], int total_elements, menu_geom *geom_ptr,
 
   int offset = 0;
   int cursor = 0;
+  // The cursor counts selectable rows only
+  if (select_pending) {
+    select_pending = false;
+    for (int i = 0, selectable = 0; i < total_elements; i++) {
+      if (menu[i].disabled) {
+        continue;
+      }
+      if (menu[i].id == select_id) {
+        cursor = selectable;
+        break;
+      }
+      selectable++;
+    }
+  }
 
   menu_geom geom;
 
