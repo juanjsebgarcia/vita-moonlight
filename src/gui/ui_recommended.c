@@ -187,23 +187,29 @@ typedef struct {
   bool streamed;
 } link_test;
 
-// Auto-detect needs a PC to test against: the one Settings was opened from.
+// Auto-detect needs a PC to test against: the one Settings was opened from,
+// or else the first paired PC that's online, which it connects to itself (as
+// the benchmark does), so the player doesn't have to open the PC's menu first.
 // Returns false, after telling the player what to do, when there isn't one.
 static bool have_test_pc(void) {
   if (ui_connect_server_ready()) {
     return true;
   }
-  bool paired_online = false;
   for (int i = 0; i < known_devices.count && i < MAX_HOSTS; i++) {
-    paired_online |= known_devices.devices[i].paired && g_host_status[i].status == HOST_ONLINE;
+    device_info_t *host = &known_devices.devices[i];
+    if (!host->paired || g_host_status[i].status != HOST_ONLINE) {
+      continue;
+    }
+    flash_message("Connecting to %s...", host->name);
+    char err[256] = "";
+    if (ui_connect_open_headless(host, err, sizeof(err)) == 0) {
+      return true;
+    }
+    display_error("Auto-detect couldn't connect to %s: %s", host->name, err);
+    return false;
   }
-  if (paired_online) {
-    display_error("Auto-detect tests the connection to your PC. Select your PC in the main menu, "
-                  "open Settings from its menu, and run Auto-detect again.");
-  } else {
-    display_error("Auto-detect needs a paired PC that's switched on, to test the connection to "
-                  "it. Turn your PC on, or choose Good or Weak Wi-Fi yourself.");
-  }
+  display_error("Auto-detect needs a paired PC that's switched on, to test the connection to it. "
+                "Turn your PC on, or choose Good or Weak connection yourself.");
   return false;
 }
 
@@ -403,8 +409,9 @@ static const char *help_text(int row) {
     case ROW_AUTO:
       return "Tests the connection where you'll play, then recommends settings for it and for "
              "what matters most to you. It measures the Wi-Fi signal (unless you're wired), then "
-             "briefly streams your PC's desktop to check for lost packets and uneven timing. Open "
-             "Settings from your PC's menu first, so it knows which PC to test.";
+             "briefly streams your PC's desktop to check for lost packets and uneven timing. It "
+             "uses your paired PC if it's on; with several, open Settings from the menu of the "
+             "one you want. Quit any game on the PC first.";
     case ROW_GOOD:
       return "For a strong signal, such as in the same room as your router, or a wired PS TV. "
              "Applies the settings for what matters most to you; with Balanced that's 1280x720 at "
