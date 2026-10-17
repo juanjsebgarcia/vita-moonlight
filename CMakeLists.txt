@@ -130,6 +130,7 @@ target_link_libraries(${PROJECT_NAME}.elf
 	-lSceAudio_stub
 	-lSceIme_stub
 	-lSceMotion_stub
+	-lSceAppUtil_stub
 	-lvita2d
 	-lSceGxm_stub
 	-lScePgf_stub
