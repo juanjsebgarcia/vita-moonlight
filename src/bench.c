@@ -101,6 +101,8 @@ enum {
   // Moves the pointer between two targets and watches for it, which times
   // the host's input and capture without the page drawing anything
   INPUT_CURSOR,
+  // No presses at all: just stream and measure, for any app
+  INPUT_NONE,
 };
 
 typedef struct {
@@ -596,12 +598,15 @@ static int bench_input_type(void) {
   if (config.bench_input && strcmp(config.bench_input, "cursor") == 0) {
     return INPUT_CURSOR;
   }
+  if (config.bench_input && strcmp(config.bench_input, "none") == 0) {
+    return INPUT_NONE;
+  }
   return INPUT_KEY;
 }
 
 static const char *bench_input_name(int type) {
   return type == INPUT_MOUSE ? "mouse" : type == INPUT_GAMEPAD ? "gamepad"
-       : type == INPUT_CURSOR ? "cursor" : "key";
+       : type == INPUT_CURSOR ? "cursor" : type == INPUT_NONE ? "none" : "key";
 }
 
 static void move_cursor_to(int target) {
@@ -682,7 +687,12 @@ static bool page_is_visible(void) {
 typedef struct {
   double rtt_sum;
   uint32_t rtt_max;
+  // The round trip's variation, as common-c estimates it: a measure of jitter
+  double rtt_var_sum;
+  uint32_t rtt_var_max;
   int rtt_samples;
+  // Video and error-correction packets while measuring (common-c's counters)
+  RTP_VIDEO_STATS rtp_start, rtp_end;
   int rssi_sum;
   int rssi_min;
   int rssi_samples;
@@ -694,6 +704,8 @@ static void sample_link(link_samples *link) {
   if (LiGetEstimatedRttInfo(&rtt, &variance)) {
     link->rtt_sum += rtt;
     link->rtt_max = rtt > link->rtt_max ? rtt : link->rtt_max;
+    link->rtt_var_sum += variance;
+    link->rtt_var_max = variance > link->rtt_var_max ? variance : link->rtt_var_max;
     link->rtt_samples++;
   }
   SceNetCtlInfo info;
@@ -808,8 +820,21 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   write_timing(f, "hw_decode_ms", &state.hw_decode_ms, false);
   write_timing(f, "render_ms", &state.render_ms, false);
   write_timing(f, "vblank_wait_ms", &state.vblank_wait_ms, false);
-  fprintf(f, "  \"rtt_ms\": {\"avg\": %.2f, \"max\": %u},\n",
-          link->rtt_samples ? link->rtt_sum / link->rtt_samples : 0.0, link->rtt_max);
+  fprintf(f, "  \"rtt_ms\": {\"avg\": %.2f, \"max\": %u, \"variance_avg\": %.2f, \"variance_max\": %u},\n",
+          link->rtt_samples ? link->rtt_sum / link->rtt_samples : 0.0, link->rtt_max,
+          link->rtt_samples ? link->rtt_var_sum / link->rtt_samples : 0.0, link->rtt_var_max);
+  // What actually crossed the Wi-Fi, error correction included (payload only,
+  // without IP, UDP and RTP headers), against bitrate_mbps, the video alone
+  uint32_t video_packets = link->rtp_end.packetCountVideo - link->rtp_start.packetCountVideo;
+  uint32_t fec_packets = link->rtp_end.packetCountFec - link->rtp_start.packetCountFec;
+  fprintf(f, "  \"packets\": {\"video\": %u, \"fec\": %u, \"fec_recovered\": %u, \"fec_failed\": %u, "
+             "\"out_of_sequence\": %u, \"payload_mbps\": %.2f, \"idr_requests_per_s\": %d},\n",
+          video_packets, fec_packets,
+          link->rtp_end.packetCountFecRecovered - link->rtp_start.packetCountFecRecovered,
+          link->rtp_end.packetCountFecFailed - link->rtp_start.packetCountFecFailed,
+          link->rtp_end.packetCountOOS - link->rtp_start.packetCountOOS,
+          seconds > 0 ? (video_packets + fec_packets) * (double)config.stream.packetSize * 8 / seconds / 1000000 : 0.0,
+          config.bench_idr_hz);
   // Each press, so a strange result can be traced frame by frame
   fprintf(f, "  \"presses\": [");
   int recorded = state.presses_sent < (uint32_t)state.press_capacity ? (int)state.presses_sent : state.press_capacity;
@@ -977,9 +1002,9 @@ int vitabench_run(bool automated) {
     goto done;
   }
   int input_type = bench_input_type();
-  if (input_type == INPUT_CURSOR) {
-    // The pointer test needs only a dark screen, not the page, so don't wait
-    // for the page or reset it; just let the stream settle
+  if (input_type == INPUT_CURSOR || input_type == INPUT_NONE) {
+    // The pointer test needs only a dark screen, and none needs nothing, so
+    // don't wait for the page or reset it; just let the stream settle
     sceKernelDelayThread(RESET_SETTLE_US * 2);
   } else {
     if (!wait_for(page_is_visible, PAGE_TIMEOUT_US)) {
@@ -1008,12 +1033,17 @@ int vitabench_run(bool automated) {
     }
     sceKernelDelayThread(RESET_SETTLE_US);
   }
+  const RTP_VIDEO_STATS *rtp = LiGetRTPVideoStats();
+  if (rtp != NULL) {
+    link.rtp_start = *rtp;
+  }
   phase = PHASE_MEASURING;
   vblank_started = pthread_create(&vblank_tid, NULL, vblank_thread, NULL) == 0;
   uint64_t start = LiGetMicroseconds();
   uint64_t end = start + (uint64_t)config.bench_seconds * 1000000;
   uint64_t next_press = start + 500000;
   uint64_t next_sample = start;
+  uint64_t next_idr = start;
   uint64_t t;
   while ((t = LiGetMicroseconds()) < end) {
     if (connection_get_status() != LI_CONNECTED) {
@@ -1024,7 +1054,13 @@ int vitabench_run(bool automated) {
       sample_link(&link);
       next_sample += 1000000;
     }
-    if (t >= next_press) {
+    // Keyframes are whole pictures, so even a still screen sends real-sized
+    // bursts, which loads the Wi-Fi like a game would
+    if (config.bench_idr_hz > 0 && t >= next_idr) {
+      LiRequestIdrFrame();
+      next_idr += 1000000 / config.bench_idr_hz;
+    }
+    if (input_type != INPUT_NONE && t >= next_press) {
       pthread_mutex_lock(&bench_mutex);
       if (state.awaiting_marker && t - state.press_sent_us > PRESS_TIMEOUT_US) {
         state.presses_missed++;
@@ -1057,6 +1093,10 @@ int vitabench_run(bool automated) {
     sceKernelDelayThread(POLL_US);
   }
   measured_seconds = (LiGetMicroseconds() - start) / 1000000.0f;
+  rtp = LiGetRTPVideoStats();
+  if (rtp != NULL) {
+    link.rtp_end = *rtp;
+  }
 
 done:
   phase = PHASE_IDLE;

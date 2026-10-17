@@ -74,6 +74,7 @@ typedef struct _CONFIGURATION {
   bool bench_quit_app; // quit the app on the host when the run ends
   char *bench_input;  // what a timed press sends: key, mouse or gamepad
   bool bench_grab;    // save decoded frames at fixed page ticks, to compare picture quality
+  int bench_idr_hz;   // ask the host for this many keyframes a second while measuring, 0 for none
   bool jp_layout;
   int stats_overlay; // STATS_OVERLAY_* from stats.h
   bool enable_frame_pacer;
