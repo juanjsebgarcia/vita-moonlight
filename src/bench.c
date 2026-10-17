@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <psp2/display.h>
 #include <psp2/io/fcntl.h>
 #include <psp2/io/stat.h>
 #include <psp2/kernel/threadmgr.h>
@@ -143,6 +144,15 @@ static struct {
   series decode_ms, network_ms, queue_ms, render_ms, pipeline_ms, input_lag_ms;
   // decode_ms split into assembling the frame and the hardware decoder itself
   series assemble_ms, hw_decode_ms;
+  // From a frame being handed to the display to the next screen refresh,
+  // when vita2d's NEXTFRAME flip actually puts it up. None of the timings
+  // above include this wait.
+  series vblank_wait_ms;
+  // Frames handed over but replaced by a newer one before the refresh, so
+  // never shown
+  uint32_t frames_replaced;
+  uint64_t present_pending_us;
+  int present_pending_count;
   uint32_t frames_received, frames_rendered, frames_lost, idr_frames;
   uint64_t bytes;
   uint32_t ticks_read, ticks_unreadable, ticks_repeated, ticks_skipped, ticks_backwards;
@@ -501,6 +511,8 @@ void vitabench_frame_rendered(uint64_t rendered_us) {
   }
   pthread_mutex_lock(&bench_mutex);
   state.frames_rendered++;
+  state.present_pending_us = rendered_us;
+  state.present_pending_count++;
   if (state.frame_pending) {
     uint64_t render_us = rendered_us - state.frame_decoded_us;
     series_add(&state.render_ms, render_us / 1000.0f);
@@ -520,11 +532,34 @@ void vitabench_frame_rendered(uint64_t rendered_us) {
   pthread_mutex_unlock(&bench_mutex);
 }
 
+// Wakes at every screen refresh while measuring, and times how long the last
+// frame handed to the display waited for it. It counts from the swap call, so
+// it includes the GPU finishing the frame (~0.3 ms); a frame the GPU finishes
+// after the refresh really waits one more, which this doesn't see.
+static void *vblank_thread(void *arg) {
+  (void)arg;
+  while (phase == PHASE_MEASURING) {
+    sceDisplayWaitVblankStart();
+    uint64_t now_us = LiGetMicroseconds();
+    pthread_mutex_lock(&bench_mutex);
+    if (state.present_pending_count > 0) {
+      series_add(&state.vblank_wait_ms, (now_us - state.present_pending_us) / 1000.0f);
+      state.frames_replaced += state.present_pending_count - 1;
+      state.present_pending_count = 0;
+    }
+    pthread_mutex_unlock(&bench_mutex);
+  }
+  return NULL;
+}
+
 static void reset_measurements(void) {
   pthread_mutex_lock(&bench_mutex);
   state.decode_ms.count = state.network_ms.count = state.queue_ms.count = 0;
   state.assemble_ms.count = state.hw_decode_ms.count = 0;
   state.render_ms.count = state.pipeline_ms.count = state.input_lag_ms.count = 0;
+  state.vblank_wait_ms.count = 0;
+  state.frames_replaced = 0;
+  state.present_pending_count = 0;
   state.frames_received = state.frames_rendered = state.frames_lost = state.idr_frames = 0;
   state.bytes = 0;
   state.ticks_read = state.ticks_unreadable = state.ticks_repeated = 0;
@@ -729,10 +764,10 @@ static void write_report(FILE *f, const char *started, const char *host, const c
           config.enable_frame_pacer ? "true" : "false", config.enable_vita_vblank_wait ? "true" : "false",
           config.stats_overlay, config.save_debug_log ? "true" : "false");
   fprintf(f, "  \"frames\": {\"received\": %u, \"rendered\": %u, \"fps_received\": %.2f, \"fps_rendered\": %.2f, "
-             "\"lost_network\": %u, \"idr\": %u},\n",
+             "\"lost_network\": %u, \"idr\": %u, \"replaced_before_shown\": %u},\n",
           state.frames_received, state.frames_rendered,
           seconds > 0 ? state.frames_received / seconds : 0, summary->fps_rendered,
-          state.frames_lost, state.idr_frames);
+          state.frames_lost, state.idr_frames, state.frames_replaced);
   // The page ticks at its own rate (60 by default), so a slower stream skips
   // ticks even when nothing is lost. Work out how many, and report the rest.
   float tick_rate = seconds > 0 ? state.ticks_advanced / seconds : 0;
@@ -772,6 +807,7 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   write_timing(f, "assemble_ms", &state.assemble_ms, false);
   write_timing(f, "hw_decode_ms", &state.hw_decode_ms, false);
   write_timing(f, "render_ms", &state.render_ms, false);
+  write_timing(f, "vblank_wait_ms", &state.vblank_wait_ms, false);
   fprintf(f, "  \"rtt_ms\": {\"avg\": %.2f, \"max\": %u},\n",
           link->rtt_samples ? link->rtt_sum / link->rtt_samples : 0.0, link->rtt_max);
   // Each press, so a strange result can be traced frame by frame
@@ -862,6 +898,9 @@ static void save_report(const char *started_compact, const char *started, const 
 
 int vitabench_run(bool automated) {
   char error[512] = "";
+  // Declared up here, since the failure paths jump past where it starts
+  pthread_t vblank_tid;
+  bool vblank_started = false;
   // Sized for any year the RTC can report
   char started[48];
   char started_compact[48];
@@ -883,6 +922,7 @@ int vitabench_run(bool automated) {
   series_init(&state.network_ms, capacity);
   series_init(&state.queue_ms, capacity);
   series_init(&state.render_ms, capacity);
+  series_init(&state.vblank_wait_ms, capacity);
   series_init(&state.pipeline_ms, capacity);
   series_init(&state.input_lag_ms, config.bench_seconds + 5);
   series_init(&send_to_enet_ms, config.bench_seconds + 8);
@@ -969,6 +1009,7 @@ int vitabench_run(bool automated) {
     sceKernelDelayThread(RESET_SETTLE_US);
   }
   phase = PHASE_MEASURING;
+  vblank_started = pthread_create(&vblank_tid, NULL, vblank_thread, NULL) == 0;
   uint64_t start = LiGetMicroseconds();
   uint64_t end = start + (uint64_t)config.bench_seconds * 1000000;
   uint64_t next_press = start + 500000;
@@ -1019,6 +1060,10 @@ int vitabench_run(bool automated) {
 
 done:
   phase = PHASE_IDLE;
+  if (vblank_started) {
+    // It notices the phase change at the next refresh, within ~17 ms
+    pthread_join(vblank_tid, NULL);
+  }
   pthread_mutex_lock(&bench_mutex);
   finish_send_probe();
   if (state.awaiting_marker) {
@@ -1050,6 +1095,7 @@ done:
   series_free(&state.network_ms);
   series_free(&state.queue_ms);
   series_free(&state.render_ms);
+  series_free(&state.vblank_wait_ms);
   series_free(&state.pipeline_ms);
   series_free(&state.input_lag_ms);
   series_free(&send_to_enet_ms);
