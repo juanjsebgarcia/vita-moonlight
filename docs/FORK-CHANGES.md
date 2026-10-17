@@ -4,6 +4,8 @@ The history of this fork's work (`juanjsebgarcia/vita-moonlight`) on top of upst
 
 Last updated: 2026-10-17. All 20 PRs are open drafts.
 
+To build, deploy, drive a Vita remotely and get measurements or screenshots back, see [`REMOTE-VITA.md`](REMOTE-VITA.md) (and [`DEVELOPMENT.md`](DEVELOPMENT.md) in #5 for the build and one-time setup).
+
 ## How the PRs stack
 
 Several PRs build on others. Each one's base is the branch it was written on, so its diff shows only its own commits. Merge from the bottom up.
