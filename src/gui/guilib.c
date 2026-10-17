@@ -764,7 +764,7 @@ static void draw_button_captions(menu_geom geom, char *buttons_captions[], int b
   int total_width = 0;
   for (int i = 0; i < buttons_count && i < 4; i++) {
     const char *caption = buttons_captions && buttons_captions[i] ? buttons_captions[i] : default_captions[i];
-    total_width += BUTTON_GLYPH_SIZE + gap + vita2d_font_text_width(font, UI_FONT_SIZE, caption) + spacing;
+    total_width += BUTTON_GLYPH_SIZE + gap + rich_text_width(UI_FONT_SIZE, caption) + spacing;
   }
 
   int x = geom.x + geom.width - total_width;
@@ -772,8 +772,8 @@ static void draw_button_captions(menu_geom geom, char *buttons_captions[], int b
   for (int i = 0; i < buttons_count && i < 4; i++) {
     const char *caption = buttons_captions && buttons_captions[i] ? buttons_captions[i] : default_captions[i];
     x += draw_button_glyph(glyphs[i], x, y, BUTTON_GLYPH_SIZE) + gap;
-    vita2d_font_draw_text(font, x, y, 0xffffffff, UI_FONT_SIZE, caption);
-    x += vita2d_font_text_width(font, UI_FONT_SIZE, caption) + spacing;
+    // Rich text, so captions the app's font lacks fall back to the system font
+    x += draw_rich_text(x, y, 0xffffffff, UI_FONT_SIZE, caption) + spacing;
   }
 }
 

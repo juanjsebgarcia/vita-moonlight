@@ -641,6 +641,17 @@ int ui_settings_menu() {
   settings_sync_bitrate();
 
   int ret;
+  // Settings opens from a menu's callback, before that menu's frame is
+  // finished, and the frame may still use system-font glyphs that changing
+  // the fonts would free. So under Automatic, a new system language waits
+  // for that frame to finish; a fresh one then takes its place, for
+  // display_menu() to finish as it would have
+  if (i18n_system_language_changed()) {
+    ui_end();
+    i18n_follow_system();
+    guilib_language_changed();
+    ui_start();
+  }
   const i18n_language *language = i18n_current();
   do {
     if (i18n_current() != language) {
