@@ -14,7 +14,7 @@ It's one self-contained HTML file with no dependencies, so it works the same on 
   Its layout is described in [Layout contract](#layout-contract).
 - **A small HUD,** bottom left, showing the mode, resolution, time, tick, drawn frames, browser fps and input count. Press H to hide it.
 
-**Reproducibility:** everything is drawn from the time since the last reset and a fixed seed, so input never changes the scene. Only the marker reacts.
+**Reproducibility:** everything is drawn from the tick since the last reset and a fixed seed, so a given tick always shows the same picture, and input never changes the scene. Only the marker reacts. That's what lets frame grabs from different runs be compared picture for picture.
 
 ## Controls
 

@@ -25,8 +25,9 @@
 
 // Moonlight Bench: a fixed, reproducible streaming target.
 //
-// Everything drawn is a pure function of the time since the last reset and a
-// fixed seed, so every run shows the same pictures at the same moments.
+// Everything drawn is a pure function of the tick since the last reset and a
+// fixed seed, so every run shows the same picture at the same tick. That lets
+// frame grabs from different runs be compared picture for picture.
 // Input never changes the scene; it only lights the input marker.
 //
 // The top strip is machine-readable, and its layout is a contract with the
@@ -312,7 +313,8 @@ pollGamepads.pressed = new Set();
 function render(nowMs) {
   pollGamepads();
   tick = Math.floor(((nowMs - startMs) * TICK_RATE) / 1000);
-  const t = ((nowMs - startMs) / 1000) * INTENSITY.speed;
+  // Animation time follows the tick, not the exact moment of drawing
+  const t = (tick / TICK_RATE) * INTENSITY.speed;
   const top = height * LAYOUT.panelHeight;
   const cx = width / 2;
   const cy = top + (height - top) / 2;
