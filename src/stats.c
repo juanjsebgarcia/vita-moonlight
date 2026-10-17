@@ -31,6 +31,8 @@
 #define STATS_LINE_LENGTH 80
 #define STATS_FONT_SIZE 16
 #define STATS_LINE_HEIGHT 18
+// Below this the Wi-Fi reading is drawn in yellow; frame loss starts to climb
+#define STATS_WEAK_WIFI_PERCENT 60
 #define STATS_ORIGIN_X 10
 #define STATS_ORIGIN_Y 20
 
@@ -71,6 +73,10 @@ static RTP_VIDEO_STATS last_rtp_stats = {0};
 static char lines[STATS_LINE_COUNT][STATS_LINE_LENGTH] = {{0}};
 static int line_count = 0;
 static float rendered_fps = 0;
+// The Wi-Fi signal from the last tick, and which line shows it, so a weak
+// signal can be drawn in yellow
+static int wifi_percent = -1;
+static int wifi_line = -1;
 // Bumped whenever lines change, so the draw only re-measures text when needed
 static int lines_version = 0;
 
@@ -263,6 +269,7 @@ void vitastats_tick(void) {
   } else {
     snprintf(new_lines[n++], STATS_LINE_LENGTH, "Host %.1f ms  RTT n/a", timing_avg_ms(&w.host));
   }
+  int new_wifi_line = n;
   snprintf(new_lines[n++], STATS_LINE_LENGTH, "Wi-Fi %d%% (%d dBm) ch %d  packet %d B",
            rssi_percent, rssi_dbm, channel, config.stream.packetSize);
   snprintf(new_lines[n++], STATS_LINE_LENGTH, "Clocks cpu %d bus %d gpu %d MHz",
@@ -276,6 +283,8 @@ void vitastats_tick(void) {
   line_count = n;
   lines_version++;
   rendered_fps = drawn_fps;
+  wifi_percent = rssi_percent;
+  wifi_line = new_wifi_line;
   pthread_mutex_unlock(&stats_mutex);
 
   // One line per second gives comparable numbers between builds or settings
@@ -311,19 +320,29 @@ void vitastats_draw(void) {
   int n;
   int version;
   float fps;
+  int wifi;
+  int wifi_at;
   pthread_mutex_lock(&stats_mutex);
   n = line_count;
   version = lines_version;
   fps = rendered_fps;
+  wifi = wifi_percent;
+  wifi_at = wifi_line;
   memcpy(local_lines, lines, sizeof(local_lines));
   if (last_draw_us > 0) {
     timing_add(&current.overlay, last_draw_us);
   }
   pthread_mutex_unlock(&stats_mutex);
 
+  // Yellow when the signal is weak enough to start costing frames
+  unsigned int wifi_color = wifi >= 0 && wifi < STATS_WEAK_WIFI_PERCENT ? RGBA8(0xFF, 0xD0, 0x00, 0xFF)
+                                                                        : RGBA8(0xFF, 0xFF, 0xFF, 0xFF);
   if (config.stats_overlay == STATS_OVERLAY_FPS) {
     vita2d_font_draw_textf(font, 40, 20, RGBA8(0xFF, 0xFF, 0xFF, 0xFF), STATS_FONT_SIZE,
                            "fps: %.0f / %d", fps, config.stream.fps);
+    if (wifi >= 0) {
+      vita2d_font_draw_textf(font, 40, 20 + STATS_LINE_HEIGHT, wifi_color, STATS_FONT_SIZE, "Wi-Fi %d%%", wifi);
+    }
     last_draw_us = 0;
     return;
   }
@@ -347,7 +366,7 @@ void vitastats_draw(void) {
                         box_width + 12, n * STATS_LINE_HEIGHT + 8, RGBA8(0, 0, 0, 0xA0));
   for (int i = 0; i < n; i++) {
     vita2d_font_draw_text(font, STATS_ORIGIN_X, STATS_ORIGIN_Y + i * STATS_LINE_HEIGHT,
-                          RGBA8(0xFF, 0xFF, 0xFF, 0xFF), STATS_FONT_SIZE, local_lines[i]);
+                          i == wifi_at ? wifi_color : RGBA8(0xFF, 0xFF, 0xFF, 0xFF), STATS_FONT_SIZE, local_lines[i]);
   }
   last_draw_us = LiGetMicroseconds() - start_us;
 }
