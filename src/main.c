@@ -163,7 +163,6 @@ static void set_pairing_device_name(void) {
 int main(int argc, char* argv[]) {
   psvDebugScreenInit();
   vita_init();
-  set_pairing_device_name();
 
   if (!vitapower_init()) {
     printf("Failed to init power!");
@@ -201,6 +200,8 @@ int main(int argc, char* argv[]) {
   char log_path[MOONLIGHT_PATH_MAX] = {0};
   snprintf(log_path, sizeof(log_path), "%s/moonlight.log", config.key_dir);
   config.log_file = fopen(log_path, "w");
+  // After the log opens, so a failure to read the nickname is recorded
+  set_pairing_device_name();
 
   load_all_known_devices();
 
