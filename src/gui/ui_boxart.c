@@ -573,7 +573,7 @@ static void prepare_label(cover_slot *slot) {
   slot->label_count = count;
   for (int i = 0; i < count; i++) {
     snprintf(slot->label[i], LABEL_LINE_MAX, "%s", lines[i]);
-    slot->label_width[i] = vita2d_font_text_width(font, 18, slot->label[i]);
+    slot->label_width[i] = rich_text_width(18, slot->label[i]);
   }
   slot->label_ready = true;
 }
@@ -613,7 +613,7 @@ static void draw_tile(int index) {
     }
     int top = ROW_CENTRE_Y - slot->label_count * LABEL_LINE_HEIGHT / 2 + 16;
     for (int i = 0; i < slot->label_count; i++) {
-      vita2d_font_draw_text(font, (int)(cx - slot->label_width[i] / 2.0f), top + i * LABEL_LINE_HEIGHT,
+      draw_rich_text((int)(cx - slot->label_width[i] / 2.0f), top + i * LABEL_LINE_HEIGHT,
                             COLOUR_LABEL, 18, slot->label[i]);
     }
   }
@@ -648,14 +648,14 @@ void ui_boxart_draw(void) {
   draw_tile(selected);
 
   const char *name = slots[selected].name;
-  int name_width = vita2d_font_text_width(font, 18, name);
-  vita2d_font_draw_text(font, WIDTH / 2 - name_width / 2, NAME_BASELINE_Y, 0xffffffff, 18, name);
+  int name_width = rich_text_width(18, name);
+  draw_rich_text(WIDTH / 2 - name_width / 2, NAME_BASELINE_Y, 0xffffffff, 18, name);
 
   if (focused && !locked) {
     const char *hint = tr(STR_BOXART_REFRESH);
-    int hint_width = vita2d_font_text_width(font, 18, hint);
+    int hint_width = rich_text_width(18, hint);
     int x = WIDTH - 20 - hint_width - 14 - 6;
     x += draw_button_glyph(BUTTON_GLYPH_TRIANGLE, x, NAME_BASELINE_Y, 14) + 6;
-    vita2d_font_draw_text(font, x, NAME_BASELINE_Y, COLOUR_LABEL, 18, hint);
+    draw_rich_text(x, NAME_BASELINE_Y, COLOUR_LABEL, 18, hint);
   }
 }

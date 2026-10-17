@@ -538,17 +538,17 @@ static void settings_draw(void) {
       continue;
     }
     unsigned int colour = tab == settings_tab ? 0xff00ff00 : 0xffaaaaaa;
-    vita2d_font_draw_text(font, tab_x, tab_y, colour, 18, tr(SETTINGS_TAB_NAMES[tab]));
-    tab_x += vita2d_font_text_width(font, 18, tr(SETTINGS_TAB_NAMES[tab])) + tab_spacing;
+    draw_rich_text(tab_x, tab_y, colour, 18, tr(SETTINGS_TAB_NAMES[tab]));
+    tab_x += rich_text_width(18, tr(SETTINGS_TAB_NAMES[tab])) + tab_spacing;
   }
   draw_button_glyph(BUTTON_GLYPH_R, tab_x - tab_spacing + gap * 2, tab_y, glyph_size);
 
-  int width = glyph_size + gap + vita2d_font_text_width(font, 18, hint);
+  int width = glyph_size + gap + rich_text_width(18, hint);
   // The settings menu uses the default 600x400 box, centred on the 960x544 screen
   int x = 480 + 300 - width;
   int y = 272 + 200 + 26;
   x += draw_button_glyph(BUTTON_GLYPH_TRIANGLE, x, y, glyph_size) + gap;
-  vita2d_font_draw_text(font, x, y, 0xffffffff, 18, hint);
+  draw_rich_text(x, y, 0xffffffff, 18, hint);
 }
 
 static int settings_loop(int id, void *context, const input_data *input) {
@@ -641,7 +641,13 @@ int ui_settings_menu() {
   settings_sync_bitrate();
 
   int ret;
+  const i18n_language *language = i18n_current();
   do {
+    if (i18n_current() != language) {
+      // The menu has finished drawing, so the fonts can change now
+      language = i18n_current();
+      guilib_language_changed();
+    }
     if (!settings_tab_shown(settings_tab)) {
       settings_tab = SETTINGS_TAB_STREAM;
     }

@@ -170,6 +170,10 @@ int draw_button_glyph(int glyph, int x, int y, int size);
 int draw_rich_text(int x, int y, unsigned int color, int size, const char *text);
 int rich_text_width(int size, const char *text);
 
+// Call between frames after the language changes, so text uses the right
+// system font for it (Chinese or Japanese forms of Han characters)
+void guilib_language_changed(void);
+
 // Splits text into lines no wider than max_width at the UI font size, breaking
 // at spaces and newlines. Returns the number of lines written to lines.
 int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int max_lines);

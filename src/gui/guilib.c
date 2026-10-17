@@ -1,3 +1,4 @@
+#include "font_coverage.h"
 #include "../i18n/i18n.h"
 #include "guilib.h"
 #include "../devshot.h"
@@ -438,6 +439,100 @@ int draw_button_glyph(int glyph, int x, int y, int size) {
 }
 
 /*
+ * Characters the app's font lacks (Japanese, Korean, Chinese, Turkish ğ and
+ * İ...) are drawn with the Vita's system font, loaded the first time one
+ * is needed, and again after the language changes.
+ */
+
+static vita2d_pgf *system_font = NULL;
+static bool system_font_failed = false;
+// The system font's size at scale 1, and how far its baseline sits from
+// the app font's
+#define SYSTEM_FONT_BASE_SIZE 20.0f
+#define SYSTEM_FONT_Y_OFFSET 0
+
+// Decodes the UTF-8 character at *p and moves past it. Anything malformed
+// reads as U+FFFD, one byte at a time.
+static unsigned int utf8_next(const char **p) {
+  const unsigned char *s = (const unsigned char *)*p;
+  unsigned int c = s[0];
+  int extra = c < 0x80 ? 0 : (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : (c & 0xF8) == 0xF0 ? 3 : -1;
+  if (extra < 0) {
+    (*p)++;
+    return 0xFFFD;
+  }
+  c = extra == 0 ? c : c & (0x3F >> extra);
+  for (int i = 1; i <= extra; i++) {
+    if ((s[i] & 0xC0) != 0x80) {
+      (*p)++;
+      return 0xFFFD;
+    }
+    c = (c << 6) | (s[i] & 0x3F);
+  }
+  *p += extra + 1;
+  return c;
+}
+
+static bool app_font_has(unsigned int c) {
+  if (c >= 0xE000 && c <= 0xF8FF) {
+    return true;  // the Nerd Font icons, which only the app's font has
+  }
+  int low = 0, high = (int)(sizeof(FONT_COVERAGE) / sizeof(FONT_COVERAGE[0])) - 1;
+  while (low <= high) {
+    int mid = (low + high) / 2;
+    if (c < FONT_COVERAGE[mid][0]) {
+      high = mid - 1;
+    } else if (c > FONT_COVERAGE[mid][1]) {
+      low = mid + 1;
+    } else {
+      return true;
+    }
+  }
+  return false;
+}
+
+static int is_hangul(unsigned int c) {
+  return (c >= 0x1100 && c <= 0x11FF) || (c >= 0x3130 && c <= 0x318F) || (c >= 0xAC00 && c <= 0xD7AF);
+}
+
+static int is_han(unsigned int c) {
+  return (c >= 0x3400 && c <= 0x4DBF) || (c >= 0x4E00 && c <= 0x9FFF) || (c >= 0xF900 && c <= 0xFAFF) ||
+         (c >= 0x3000 && c <= 0x303F) || (c >= 0xFF00 && c <= 0xFFEF);
+}
+
+static vita2d_pgf *get_system_font(void) {
+  if (system_font != NULL || system_font_failed) {
+    return system_font;
+  }
+  // Han characters come from the Chinese font for a Chinese UI, else from
+  // the default (Japanese) one, which also has kana and Latin
+  bool chinese = strncmp(i18n_current()->font, "cjk-zh", 6) == 0;
+  vita2d_system_pgf_config configs[3];
+  int count = 0;
+  configs[count++] = (vita2d_system_pgf_config){SCE_FONT_LANGUAGE_KOREAN, is_hangul};
+  if (chinese) {
+    configs[count++] = (vita2d_system_pgf_config){SCE_FONT_LANGUAGE_CHINESE, is_han};
+  }
+  configs[count++] = (vita2d_system_pgf_config){SCE_FONT_LANGUAGE_DEFAULT, NULL};
+  system_font = vita2d_load_system_pgf(count, configs);
+  if (system_font == NULL) {
+    system_font = vita2d_load_default_pgf();
+  }
+  system_font_failed = system_font == NULL;
+  return system_font;
+}
+
+void guilib_language_changed(void) {
+  // Only between frames: the last frame may still use its glyphs
+  if (system_font != NULL) {
+    vita2d_wait_rendering_done();
+    vita2d_free_pgf(system_font);
+    system_font = NULL;
+  }
+  system_font_failed = false;
+}
+
+/*
  * Text with button symbols: {confirm}, {triangle}, {start} and so on in a
  * string are drawn as the button, so translations can name buttons without
  * spelling them out. Anything else in braces is drawn as written.
@@ -497,22 +592,46 @@ static int text_marker(const char *text, int *length) {
   return -1;
 }
 
-// Draws (or, with draw false, only measures) text with its button symbols
+// Draws a run of text in one font (or only measures it, with draw false)
+static int draw_run(bool draw, bool system, int x, int y, unsigned int color, int size, const char *run) {
+  if (!system) {
+    if (draw) {
+      vita2d_font_draw_text(font, x, y, color, size, run);
+    }
+    return vita2d_font_text_width(font, size, run);
+  }
+  vita2d_pgf *pgf = get_system_font();
+  if (pgf == NULL) {
+    return 0;
+  }
+  float scale = size / SYSTEM_FONT_BASE_SIZE;
+  if (draw) {
+    vita2d_pgf_draw_text(pgf, x, y + SYSTEM_FONT_Y_OFFSET, color, scale, run);
+  }
+  return vita2d_pgf_text_width(pgf, scale, run);
+}
+
+// Draws (or, with draw false, only measures) text with its button symbols,
+// in runs of whichever font has each character
 static int rich_text(bool draw, int x, int y, unsigned int color, int size, const char *text) {
   int glyph_size = size * BUTTON_GLYPH_SIZE / UI_FONT_SIZE;
   int start_x = x;
   char run[WRAP_LINE_MAX * 4];
   size_t run_length = 0;
-  for (const char *p = text;; p++) {
+  bool run_system = false;
+  const char *p = text;
+  while (true) {
     int length = 0;
     int glyph = *p ? text_marker(p, &length) : -1;
-    if (*p == '\0' || glyph >= 0 || run_length + 1 >= sizeof(run)) {
+    const char *next = p;
+    unsigned int c = *p && glyph < 0 ? utf8_next(&next) : 0;
+    bool system = c != 0 && !app_font_has(c);
+    size_t bytes = (size_t)(next - p);
+    // Draw what's gathered at the end, at a symbol, on a change of font, or when full
+    if (*p == '\0' || glyph >= 0 || (run_length > 0 && system != run_system) || run_length + bytes >= sizeof(run)) {
       run[run_length] = '\0';
       if (run_length > 0) {
-        if (draw) {
-          vita2d_font_draw_text(font, x, y, color, size, run);
-        }
-        x += vita2d_font_text_width(font, size, run);
+        x += draw_run(draw, run_system, x, y, color, size, run);
         run_length = 0;
       }
       if (*p == '\0') {
@@ -521,11 +640,14 @@ static int rich_text(bool draw, int x, int y, unsigned int color, int size, cons
       if (glyph >= 0) {
         // Measured by drawing off screen when only measuring
         x += draw_button_glyph(glyph, draw ? x : -1000, y, glyph_size);
-        p += length - 1;
+        p += length;
         continue;
       }
     }
-    run[run_length++] = *p;
+    run_system = system;
+    memcpy(run + run_length, p, bytes);
+    run_length += bytes;
+    p = next;
   }
   return x - start_x;
 }
@@ -538,27 +660,49 @@ int rich_text_width(int size, const char *text) {
   return rich_text(false, 0, 0, 0, size, text);
 }
 
+// Japanese and Chinese have no spaces between words, so a line can break
+// between any two of their characters (Korean uses spaces)
+static bool breaks_anywhere(unsigned int c) {
+  return (c >= 0x3040 && c <= 0x30FF) || (c >= 0x3400 && c <= 0x4DBF) || (c >= 0x4E00 && c <= 0x9FFF) ||
+         (c >= 0xF900 && c <= 0xFAFF) || (c >= 0x3000 && c <= 0x303F) || (c >= 0xFF00 && c <= 0xFFEF);
+}
+
 int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int max_lines) {
   int count = 0;
   char line[WRAP_LINE_MAX] = "";
   const char *p = text;
+  bool space_before = false;
 
   while (*p && count < max_lines) {
     if (*p == '\n') {
       snprintf(lines[count++], WRAP_LINE_MAX, "%s", line);
       line[0] = '\0';
+      space_before = false;
       p++;
       continue;
     }
     if (*p == ' ') {
+      space_before = true;
       p++;
       continue;
     }
 
-    // The next word runs to the next space or newline
+    // The next word runs to the next space or newline, or is a single
+    // character of a language written without spaces
     const char *end = p;
-    while (*end && *end != ' ' && *end != '\n') {
-      end++;
+    const char *after_first = p;
+    if (breaks_anywhere(utf8_next(&after_first))) {
+      end = after_first;
+    } else {
+      while (*end && *end != ' ' && *end != '\n') {
+        // Always step over the character, even the first, or this never ends
+        const char *next = end;
+        unsigned int c = utf8_next(&next);
+        if (end != p && breaks_anywhere(c)) {
+          break;
+        }
+        end = next;
+      }
     }
     int word_len = end - p;
     if (word_len >= WRAP_LINE_MAX) {
@@ -566,10 +710,11 @@ int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int 
     }
 
     char candidate[WRAP_LINE_MAX];
-    snprintf(candidate, sizeof(candidate), "%s%s%.*s", line, line[0] ? " " : "", word_len, p);
+    snprintf(candidate, sizeof(candidate), "%s%s%.*s", line, line[0] && space_before ? " " : "", word_len, p);
     if (rich_text_width(UI_FONT_SIZE, candidate) <= max_width) {
       snprintf(line, sizeof(line), "%s", candidate);
       p = end;
+      space_before = false;
       continue;
     }
 
@@ -577,20 +722,26 @@ int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int 
       // The word doesn't fit after what is already on the line, so start a new one
       snprintf(lines[count++], WRAP_LINE_MAX, "%s", line);
       line[0] = '\0';
+      space_before = false;
       continue;
     }
 
-    // A single word wider than the line: split it where it overflows
-    int fit = 1;
-    while (fit < word_len) {
-      snprintf(candidate, sizeof(candidate), "%.*s", fit + 1, p);
+    // A single word wider than the line: split it, on a whole character,
+    // where it overflows
+    const char *fit_end = p;
+    utf8_next(&fit_end);
+    while (fit_end < p + word_len) {
+      const char *next = fit_end;
+      utf8_next(&next);
+      snprintf(candidate, sizeof(candidate), "%.*s", (int)(next - p), p);
       if (rich_text_width(UI_FONT_SIZE, candidate) > max_width) {
         break;
       }
-      fit++;
+      fit_end = next;
     }
-    snprintf(lines[count++], WRAP_LINE_MAX, "%.*s", fit, p);
-    p += fit;
+    snprintf(lines[count++], WRAP_LINE_MAX, "%.*s", (int)(fit_end - p), p);
+    p = fit_end;
+    space_before = false;
   }
 
   if (line[0] && count < max_lines) {
@@ -1008,6 +1159,8 @@ void drw() {
 
 void guilib_init(gui_loop_callback global_loop_cb, gui_draw_callback global_draw_cb) {
   vita2d_init();
+  // For the system font, which draws what the app's font can't
+  sceSysmoduleLoadModule(SCE_SYSMODULE_PGF);
   vita2d_set_clear_color(0xff000000);
   font = vita2d_load_font_file("app0:assets/nerdfont.ttf");
   glyph_font = vita2d_load_font_file("app0:assets/nerdfont.ttf");
