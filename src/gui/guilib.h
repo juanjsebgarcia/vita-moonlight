@@ -15,14 +15,25 @@
 #define ICON_SPRINTING    "\xeF\xa5\xaD"
 
 
+// What a row's state means; the UI decides how to show it
+typedef enum {
+  MENU_STATUS_NONE,
+  MENU_STATUS_WARNING,  // something to look at, such as Bluetooth being on
+  MENU_STATUS_ONLINE,   // a PC that answers
+  MENU_STATUS_OFFLINE,  // a PC that doesn't
+  MENU_STATUS_CHANGED,  // a PC that answers at a new address
+} menu_status;
+
+// One row of a menu: what it says and what state it's in, not how it looks
 typedef struct menu_entry {
   int id;
-  unsigned int color;
-  char *name, *suffix;
-  char subname[1024];
+  char *name;
+  char *suffix;          // extra text on the right, such as an address
+  char subname[1024];    // the current value, on the right
   bool disabled, separator;
-  bool warning; // drawn in yellow when not selected
-  bool is_host_entry; // Nuevo: solo true para hosts emparejados
+  bool adjustable;       // left and right change the value
+  bool checked;          // the current choice among options
+  menu_status status;
 } menu_entry;
 
 typedef struct menu_geom {
