@@ -320,9 +320,14 @@ static int draw_pill(const char *label, int x, float top, int size, unsigned int
   return width;
 }
 
-static void draw_dpad(int x, float top, int size, int highlight) {
-  unsigned int dim = RGBA8(0xDD, 0xDD, 0xDD, 0x60);
-  unsigned int bright = RGBA8(0xFF, 0xFF, 0xFF, 0xFF);
+// color with its alpha scaled by alpha (0 to 0xFF), keeping its RGB
+static unsigned int fade(unsigned int color, unsigned int alpha) {
+  return (color & 0x00FFFFFF) | ((color >> 24) * alpha / 0xFF) << 24;
+}
+
+static void draw_dpad(int x, float top, int size, int highlight, unsigned int alpha) {
+  unsigned int dim = fade(RGBA8(0xDD, 0xDD, 0xDD, 0x60), alpha);
+  unsigned int bright = fade(RGBA8(0xFF, 0xFF, 0xFF, 0xFF), alpha);
   float arm = size / 3.0f;
   float cx = x + size / 2.0f;
   float cy = top + size / 2.0f;
@@ -340,7 +345,39 @@ static void draw_dpad(int x, float top, int size, int highlight) {
   }
 }
 
-int draw_button_glyph(int glyph, int x, int y, int size) {
+// The label drawn in a pill-shaped button, or NULL for other symbols
+static const char *pill_label(int glyph) {
+  switch (glyph) {
+    case BUTTON_GLYPH_L:
+      return "L";
+    case BUTTON_GLYPH_R:
+      return "R";
+    case BUTTON_GLYPH_L2:
+      return "L2";
+    case BUTTON_GLYPH_R2:
+      return "R2";
+    case BUTTON_GLYPH_START:
+      return "START";
+    case BUTTON_GLYPH_SELECT:
+      return "SELECT";
+  }
+  return NULL;
+}
+
+// The width draw_button_glyph() returns, without drawing anything
+static int button_glyph_width(int glyph, int size) {
+  const char *label = pill_label(glyph);
+  if (label != NULL) {
+    return pill_width(label, size);
+  }
+  if (glyph == BUTTON_GLYPH_FRONT_TOUCH || glyph == BUTTON_GLYPH_REAR_TOUCH) {
+    return (int)(size * 1.5f) + 1;
+  }
+  return size;
+}
+
+// draw_button_glyph() with every colour's alpha scaled by alpha (0 to 0xFF)
+static int draw_button_glyph_alpha(int glyph, int x, int y, int size, unsigned int alpha) {
   // y is the text baseline; the symbol sits on it, a little below the cap height
   float top = y - size;
   float bottom = y - 1;
@@ -349,7 +386,11 @@ int draw_button_glyph(int glyph, int x, int y, int size) {
   float middle = x + size / 2.0f;
   float radius = size / 2.0f;
   float cy = top + radius;
-  unsigned int grey = RGBA8(0xE8, 0xE8, 0xE8, 0xFF);
+  unsigned int grey = fade(RGBA8(0xE8, 0xE8, 0xE8, 0xFF), alpha);
+  const char *label = pill_label(glyph);
+  if (label != NULL) {
+    return draw_pill(label, x, top, size, grey);
+  }
 
   switch (glyph) {
     case BUTTON_GLYPH_DPAD:
@@ -357,20 +398,8 @@ int draw_button_glyph(int glyph, int x, int y, int size) {
     case BUTTON_GLYPH_DPAD_DOWN:
     case BUTTON_GLYPH_DPAD_LEFT:
     case BUTTON_GLYPH_DPAD_RIGHT:
-      draw_dpad(x, top, size, glyph);
+      draw_dpad(x, top, size, glyph, alpha);
       return size;
-    case BUTTON_GLYPH_L:
-      return draw_pill("L", x, top, size, grey);
-    case BUTTON_GLYPH_R:
-      return draw_pill("R", x, top, size, grey);
-    case BUTTON_GLYPH_L2:
-      return draw_pill("L2", x, top, size, grey);
-    case BUTTON_GLYPH_R2:
-      return draw_pill("R2", x, top, size, grey);
-    case BUTTON_GLYPH_START:
-      return draw_pill("START", x, top, size, grey);
-    case BUTTON_GLYPH_SELECT:
-      return draw_pill("SELECT", x, top, size, grey);
     case BUTTON_GLYPH_PS:
       draw_outline_circle(middle, cy, radius, grey);
       draw_label("PS", middle, top, size, grey);
@@ -410,14 +439,14 @@ int draw_button_glyph(int glyph, int x, int y, int size) {
 
   switch (glyph) {
     case BUTTON_GLYPH_TRIANGLE: {
-      unsigned int green = RGBA8(0x40, 0xE0, 0xB0, 0xFF);
+      unsigned int green = fade(RGBA8(0x40, 0xE0, 0xB0, 0xFF), alpha);
       draw_thick_line(middle, top, right, bottom, green);
       draw_thick_line(right, bottom, left, bottom, green);
       draw_thick_line(left, bottom, middle, top, green);
       break;
     }
     case BUTTON_GLYPH_SQUARE: {
-      unsigned int pink = RGBA8(0xF0, 0x90, 0xD0, 0xFF);
+      unsigned int pink = fade(RGBA8(0xF0, 0x90, 0xD0, 0xFF), alpha);
       draw_thick_line(left, top, right, top, pink);
       draw_thick_line(right, top, right, bottom, pink);
       draw_thick_line(right, bottom, left, bottom, pink);
@@ -425,16 +454,20 @@ int draw_button_glyph(int glyph, int x, int y, int size) {
       break;
     }
     case BUTTON_GLYPH_CROSS: {
-      unsigned int blue = RGBA8(0x80, 0xB8, 0xF0, 0xFF);
+      unsigned int blue = fade(RGBA8(0x80, 0xB8, 0xF0, 0xFF), alpha);
       draw_thick_line(left, top, right, bottom, blue);
       draw_thick_line(right, top, left, bottom, blue);
       break;
     }
     case BUTTON_GLYPH_CIRCLE:
-      draw_outline_circle(middle, cy, radius, RGBA8(0xFF, 0x70, 0x70, 0xFF));
+      draw_outline_circle(middle, cy, radius, fade(RGBA8(0xFF, 0x70, 0x70, 0xFF), alpha));
       break;
   }
   return size;
+}
+
+int draw_button_glyph(int glyph, int x, int y, int size) {
+  return draw_button_glyph_alpha(glyph, x, y, size, 0xFF);
 }
 
 /*
@@ -519,8 +552,8 @@ static int rich_text(bool draw, int x, int y, unsigned int color, int size, cons
         break;
       }
       if (glyph >= 0) {
-        // Measured by drawing off screen when only measuring
-        x += draw_button_glyph(glyph, draw ? x : -1000, y, glyph_size);
+        // Faded with the text, so symbols fade out along with it
+        x += draw ? draw_button_glyph_alpha(glyph, x, y, glyph_size, color >> 24) : button_glyph_width(glyph, glyph_size);
         p += length - 1;
         continue;
       }
