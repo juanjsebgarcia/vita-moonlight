@@ -12,7 +12,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 #include <psp2/videodec.h>
 #include <Limelight.h>
@@ -429,13 +428,14 @@ static bool bench_seconds_change(int step) {
  * Language: Automatic (the system's), then every language found
  */
 
-// The position of the language setting: 0 for Automatic, then each language
+// The position of the language setting: 0 for Automatic, then each language.
+// A tag can resolve to another language (pt to pt-BR), so find the one in use.
 static int language_position(void) {
-  if (config.language == NULL || strcmp(config.language, "auto") == 0) {
+  if (config.language == NULL || config.language[0] == '\0' || strcmp(config.language, "auto") == 0) {
     return 0;
   }
   for (int i = 0; i < i18n_language_count(); i++) {
-    if (strcasecmp(i18n_language_at(i)->tag, config.language) == 0) {
+    if (i18n_language_at(i) == i18n_current()) {
       return i + 1;
     }
   }
