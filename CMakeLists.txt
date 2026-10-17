@@ -106,6 +106,7 @@ add_executable(${PROJECT_NAME}.elf
 
 	src/keyboardsystem.c
 	src/input/keyboardkeys.c
+	src/input/imetext.c
 	src/input/touchabsolute.c
 	src/check_host.c
 )

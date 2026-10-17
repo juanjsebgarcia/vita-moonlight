@@ -14,12 +14,24 @@
 #include "config.h"
 #include "session.h"
 #include "../src/debug.h"
+#include "input/imetext.h"
 
 #define WORK_BUFFER_SIZE (SCE_IME_WORK_BUFFER_SIZE)
 
 static uint8_t work_buffer[WORK_BUFFER_SIZE];
 // static SceWChar16 input_text_dummy[1];   // Eliminado: no se usa
-static SceWChar16 output_text[4];      // Buffer para recibir el texto (aunque no lo mostraremos)
+// The keyboard's text is kept at three placeholders (U+0001) with the caret
+// after the first, so Backspace and both arrows always have something to act
+// on. Room for those, a full composition (SCE_IME_MAX_PREEDIT_LENGTH units)
+// and a long conversion committed at once, surrogate pairs included.
+#define IME_PLACEHOLDERS 3
+#define IME_TEXT_MAX 64
+static SceWChar16 output_text[IME_TEXT_MAX + 1];      // Buffer para recibir el texto (aunque no lo mostraremos)
+// The text as last acted on: what an update is compared with
+static SceWChar16 committed_text[IME_TEXT_MAX + 1];
+static size_t committed_length = 0;
+// A composition (kana before conversion, and the like) is in the keyboard
+static int composing = 0;
 #include "input/keyboard.h"
 #include <stddef.h>
 
@@ -44,51 +56,9 @@ static int find_vk_for_char(wchar_t ch, int* vk, int* needs_shift) {
     return 0;
 }
 
-// The character just typed: the first in the buffer that isn't a placeholder,
-// joining a UTF-16 surrogate pair (emoji and the like) into one code point
-static uint32_t typed_character(void) {
-    for (int i = 0; i < 4; ++i) {
-        uint32_t c = output_text[i];
-        if (c == 0 || c == 1) {
-            continue;
-        }
-        if (c >= 0xD800 && c <= 0xDBFF && i + 1 < 4 && output_text[i + 1] >= 0xDC00 && output_text[i + 1] <= 0xDFFF) {
-            return 0x10000 + ((c - 0xD800) << 10) + (output_text[i + 1] - 0xDC00);
-        }
-        return c;
-    }
-    return 0;
-}
-
-// Sends a typed character. Sunshine takes it as text, whatever its keyboard
-// layout or language; other hosts get the key presses for it on a US keyboard.
-static void send_character(uint32_t c) {
-    if (c >= 0x20 && session_host_takes_text()) {
-        char utf8[4];
-        unsigned int length;
-        if (c < 0x80) {
-            utf8[0] = (char)c;
-            length = 1;
-        } else if (c < 0x800) {
-            utf8[0] = (char)(0xC0 | (c >> 6));
-            utf8[1] = (char)(0x80 | (c & 0x3F));
-            length = 2;
-        } else if (c < 0x10000) {
-            utf8[0] = (char)(0xE0 | (c >> 12));
-            utf8[1] = (char)(0x80 | ((c >> 6) & 0x3F));
-            utf8[2] = (char)(0x80 | (c & 0x3F));
-            length = 3;
-        } else {
-            utf8[0] = (char)(0xF0 | (c >> 18));
-            utf8[1] = (char)(0x80 | ((c >> 12) & 0x3F));
-            utf8[2] = (char)(0x80 | ((c >> 6) & 0x3F));
-            utf8[3] = (char)(0x80 | (c & 0x3F));
-            length = 4;
-        }
-        vita_debug_log("[IME MOONLIGHT] text U+%04X", c);
-        LiSendUtf8TextEvent(utf8, length);
-        return;
-    }
+// Sends one character as key presses on a US keyboard, for hosts that can't
+// take text and for control characters
+static void send_key_for(uint32_t c) {
     int vk = 0, needs_shift = 0;
     if (c <= 0xFFFF && find_vk_for_char((wchar_t)c, &vk, &needs_shift)) {
         vita_debug_log("[IME MOONLIGHT] key U+%04X -> VK 0x%02X", c, vk);
@@ -97,6 +67,68 @@ static void send_character(uint32_t c) {
         LiSendKeyboardEvent(vk, KEY_ACTION_UP, 0);
         if (needs_shift) LiSendKeyboardEvent(0x10, KEY_ACTION_UP, 0);
     }
+}
+
+// Sends typed UTF-16 text, any number of characters, surrogate pairs joined.
+// Sunshine takes it as text, whatever its keyboard layout or language; other
+// hosts get the key presses for it on a US keyboard. Text goes in pieces of
+// up to 32 bytes (moonlight-common-c's UTF8_TEXT_EVENT_MAX_COUNT), split
+// between characters.
+#define IME_UTF8_CHUNK 32
+static void send_text(const SceWChar16 *text, size_t length) {
+    int as_text = session_host_takes_text();
+    char utf8[IME_UTF8_CHUNK];
+    size_t used = 0;
+    while (length > 0) {
+        uint32_t c;
+        size_t units = ime_text_next(text, length, &c);
+        text += units;
+        length -= units;
+        if (as_text && c >= 0x20) {
+            if (used + 4 > IME_UTF8_CHUNK) {
+                LiSendUtf8TextEvent(utf8, (unsigned int)used);
+                used = 0;
+            }
+            vita_debug_log("[IME MOONLIGHT] text U+%04X", c);
+            used += ime_text_utf8(c, utf8 + used);
+        } else {
+            if (used > 0) {
+                LiSendUtf8TextEvent(utf8, (unsigned int)used);
+                used = 0;
+            }
+            send_key_for(c);
+        }
+    }
+    if (used > 0) {
+        LiSendUtf8TextEvent(utf8, (unsigned int)used);
+    }
+}
+
+static void reset_committed_text(void) {
+    for (int i = 0; i < IME_PLACEHOLDERS; ++i) committed_text[i] = 1;
+    committed_text[IME_PLACEHOLDERS] = 0;
+    committed_length = IME_PLACEHOLDERS;
+}
+
+// Acts on the keyboard's committed text: units removed since the last time
+// become Backspaces, units added are sent as text. Returns whether anything
+// changed, so the placeholders can be put back.
+static int send_text_changes(void) {
+    size_t length = ime_text_length(output_text, IME_TEXT_MAX);
+    ime_text_edit edit = ime_text_diff(committed_text, committed_length, output_text, length);
+    if (edit.deleted == 0 && edit.inserted_length == 0) {
+        return 0;
+    }
+    vita_debug_log("[IME MOONLIGHT] edit at %u: %u removed, %u added", (unsigned)edit.index, (unsigned)edit.deleted, (unsigned)edit.inserted_length);
+    for (size_t i = 0; i < edit.deleted; ++i) {
+        LiSendKeyboardEvent(0x08, KEY_ACTION_DOWN, 0);
+        LiSendKeyboardEvent(0x08, KEY_ACTION_UP, 0);
+    }
+    send_text(output_text + edit.index, edit.inserted_length);
+    memcpy(committed_text, output_text, length * sizeof(SceWChar16));
+    committed_text[length] = 0;
+    committed_length = length;
+    return 1;
 }
 
 static int prev_caret_index = 1;
@@ -109,13 +141,15 @@ static int forzar_centro = 0;
 
 static void keyboardsystem_ime_event_handler(void *arg, const SceImeEventData *e) {
     // Log extendido como ime_test.c
-    vita_debug_log("[IME MOONLIGHT] Evento IME id=%d, caretIndex=%d, buffer=[%04X %04X %04X %04X]", e->id, e->param.caretIndex, output_text[0], output_text[1], output_text[2], output_text[3]);
+    // For a text update, the event carries an SceImeEditText: caretIndex
+    // below is its preeditIndex
+    vita_debug_log("[IME MOONLIGHT] Evento IME id=%d, caretIndex=%d, preedit=%u+%u, buffer=[%04X %04X %04X %04X %04X]", e->id, e->param.caretIndex, e->param.text.preeditIndex, e->param.text.preeditLength, output_text[0], output_text[1], output_text[2], output_text[3], output_text[4]);
     int caret = e->param.caretIndex;
     // --- IGNORAR primer evento de borrado tras abrir el teclado si ch==0 ---
     if (ime_just_opened && e->id == 1 && caret == 0) {
         wchar_t ch = 0;
-        for (int i = 0; i < 4; ++i) {
-            if (output_text[i] != 0 && output_text[i] != 1) {
+        for (int i = 0; i < IME_TEXT_MAX && output_text[i] != 0; ++i) {
+            if (output_text[i] != 1) {
                 ch = output_text[i];
                 break;
             }
@@ -129,45 +163,43 @@ static void keyboardsystem_ime_event_handler(void *arg, const SceImeEventData *e
             caret_rev.index = 1;
             sceImeSetCaret(&caret_rev);
             sceImeSetText(dummy, 4);
-            for (int i = 0; i < 4; ++i) output_text[i] = 1;
+            memcpy(output_text, dummy, sizeof(dummy));
+            reset_committed_text();
             forzar_centro = 1;
             return;
         }
     }
-    // --- BACKSPACE (borrado) y TECLA NORMAL/ESPECIAL ---
-    // A character outside the basic range (an emoji) takes two UTF-16 units,
-    // so the caret ends one further on
-    if (e->id == 1 && (caret == 0 || caret == 1 || (caret == 2 && typed_character() > 0xFFFF))) {
-        wchar_t ch = 0;
-        for (int i = 0; i < 4; ++i) {
-            if (output_text[i] != 0 && output_text[i] != 1) {
-                ch = output_text[i];
-                break;
-            }
+    // --- TEXTO: borrado y caracteres escritos ---
+    // Compared with the text before: removed units are Backspaces, added ones
+    // are sent as text, however many a single update brings (a conversion
+    // such as 日本 is committed at once). A composition stays in the keyboard,
+    // untouched, until it is committed.
+    if (e->id == 1) {
+        if (e->param.text.preeditLength > 0) {
+            composing = 1;
+            return;
         }
-        // BACKSPACE
-        if (caret == 0 && (ch == 0x08 || ch == 0x7F || ch == 0)) {
-            vita_debug_log("[IME MOONLIGHT] VK_BACKSPACE (id=1, caretIndex=0, ch=0x%04X '%lc')", ch, ch);
-            LiSendKeyboardEvent(0x08, KEY_ACTION_DOWN, 0);
-            LiSendKeyboardEvent(0x08, KEY_ACTION_UP, 0);
-            for (int i = 0; i < 4; ++i) output_text[i] = 1;
+        composing = 0;
+        if (ime_text_length(output_text, IME_TEXT_MAX) == 0) {
+            // Not a key press: the keyboard dropped its text. Restore it.
+            reset_committed_text();
             forzar_centro = 1;
             return;
         }
-        // A typed character
-        if (ch && (caret == 1 || !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')))) {
-            send_character(typed_character());
-            for (int i = 0; i < 4; ++i) output_text[i] = 1;
+        if (send_text_changes()) {
             forzar_centro = 1;
-            return;
         }
+        return;
+    }
+    // While composing, the caret and Enter belong to the composition
+    if (composing && e->id == 2) {
+        return;
     }
     // --- FLECHA IZQUIERDA ---
     if (e->id == 2 && caret == 0) {
         vita_debug_log("[IME MOONLIGHT] VK_LEFT (id=2, caretIndex=0)");
         LiSendKeyboardEvent(0x25, KEY_ACTION_DOWN, 0);
         LiSendKeyboardEvent(0x25, KEY_ACTION_UP, 0);
-        for (int i = 0; i < 4; ++i) output_text[i] = 1;
         forzar_centro = 1;
         return;
     }
@@ -176,16 +208,22 @@ static void keyboardsystem_ime_event_handler(void *arg, const SceImeEventData *e
         vita_debug_log("[IME MOONLIGHT] VK_RIGHT (id=2, caretIndex=2)");
         LiSendKeyboardEvent(0x27, KEY_ACTION_DOWN, 0);
         LiSendKeyboardEvent(0x27, KEY_ACTION_UP, 0);
-        for (int i = 0; i < 4; ++i) output_text[i] = 1;
         forzar_centro = 1;
         return;
     }
     // --- ENTER (Aceptar) ---
     if (e->id == 5) {
+        if (composing) {
+            // Enter confirms the composition: send it as typed
+            vita_debug_log("[IME MOONLIGHT] Enter confirms the composition");
+            composing = 0;
+            send_text_changes();
+            forzar_centro = 1;
+            return;
+        }
         vita_debug_log("[IME MOONLIGHT] VK_RETURN (id=5, caretIndex=%d)", caret);
         LiSendKeyboardEvent(0x0D, KEY_ACTION_DOWN, 0);
         LiSendKeyboardEvent(0x0D, KEY_ACTION_UP, 0);
-        for (int i = 0; i < 4; ++i) output_text[i] = 1;
         forzar_centro = 1;
         return;
     }
@@ -194,19 +232,6 @@ static void keyboardsystem_ime_event_handler(void *arg, const SceImeEventData *e
         vita_debug_log("[IME MOONLIGHT] Cerrar IME (id=4, caretIndex=%d)", caret);
         sceImeClose();
         return;
-    }
-    // --- RECUPERACIÓN: Si caretIndex no es 0, 1 o 2 y hay un carácter válido, limpiar buffer/caret ---
-    if (e->id == 1 && (caret != 0 && caret != 1 && caret != 2)) {
-        wchar_t ch = 0;
-        for (int i = 0; i < 4; ++i) {
-            if (output_text[i] != 0 && output_text[i] != 1) {
-                ch = output_text[i];
-                break;
-            }
-        }
-        if (ch) {
-            forzar_centro = 1;
-        }
     }
 }
 
@@ -227,6 +252,8 @@ void keyboardsystem_open_keyboard(void) {
     prev_caret_index = 1;
     ime_just_opened = 1;
     forzar_centro = 0;
+    composing = 0;
+    reset_committed_text();
 
     // 1) Cargar el módulo de IME (si no está cargado)
     sceSysmoduleLoadModule(SCE_SYSMODULE_IME);
@@ -245,7 +272,7 @@ void keyboardsystem_open_keyboard(void) {
     param.work              = work_buffer;
     param.handler           = keyboardsystem_ime_event_handler;
     param.initialText       = ime_working_buffer;
-    param.maxTextLength     = 4;
+    param.maxTextLength     = IME_TEXT_MAX;
     param.inputTextBuffer   = output_text;
     param.enterLabel        = SCE_IME_ENTER_LABEL_DEFAULT;
 
@@ -271,6 +298,9 @@ void keyboardsystem_open_keyboard(void) {
             sceClibMemset(&caret_rev, 0, sizeof(SceImeCaret));
             caret_rev.index = 1;
             sceImeSetCaret(&caret_rev);
+            memcpy(output_text, dummy, sizeof(dummy));
+            reset_committed_text();
+            composing = 0;
             forzar_centro = 0;
         }
         int status = sceImeUpdate();
