@@ -124,7 +124,7 @@ void ui_connect_stream(int appId) {
 }
 
 enum {
-  CONNECT_PAIRUNPAIR = 13,
+  CONNECT_PAIRUNPAIR = -100, // negative: app rows use the host's app IDs as menu IDs
   CONNECT_DISCONNECT,
   CONNECT_QUITAPP,
   CONNECT_SETTINGS
