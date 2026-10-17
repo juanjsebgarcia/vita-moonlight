@@ -87,6 +87,8 @@ The strip is read by the Vita client from decoded video. All values are fraction
 | Strip | `y` 0 to 0.10, full width | Always black apart from the elements below; the visualiser is drawn under it |
 | Input marker | `x` 0.010, `y` 0.015, `w` 0.060, `h` 0.070 | White for 100 ms after any input, otherwise black |
 | Barcode | starts at `x` 0.100, `y` 0.020, `h` 0.060; each block `w` 0.045 | Block 0 is always white, block 1 always black, then 16 data blocks |
+| Cursor lane | `x` 0.915, `y` 0.010, `w` 0.080, `h` 0.080 | Always black, with a faint outline, so the mouse pointer stands out |
+| Cursor targets | hotspots at (0.930, 0.020) and (0.965, 0.020) | Where cursor mode puts the pointer. The pointer's arrow is looked for in a box `w` 0.012, `h` 0.035 below and right of each hotspot. |
 
 The barcode's 16 data blocks hold the tick count modulo 65536, most significant bit first, with white meaning 1. The tick count is `floor(ms since reset × fps / 1000)`.
 
@@ -106,6 +108,8 @@ What to look for in the readings:
   - **a step of 2 or more:** frames lost, on the host or on the network
   - Compare with the network's lost-frame count to tell which.
 - **Input latency** is the time from the client sending a key press to the first decoded frame where the marker is white. Both times are on the client's clock, so no clock sync is needed. It covers the whole loop: client to host, the browser drawing, capture, encode, the network back, and decode. The display's own scan-out is the only part it misses.
+
+In cursor mode, the pointer counts as at a target when the brightest pixel in that target's box is above the reference threshold. It needs Windows' standard (white) pointer, at any size; a black or inverted pointer scheme won't be seen. If **Hide pointer while typing** is on in Windows' mouse settings, it doesn't matter, because cursor mode sends no keys after the reset.
 
 The block sizes, at least 0.045 of the width by 0.06 of the height (about 43x32 pixels at 960x540), survive H.264 compression and chroma subsampling comfortably.
 
@@ -167,7 +171,7 @@ It needs `tools/vita.sh` and the Vita setup in `docs/DEVELOPMENT.md`, with the c
 | `enable_frame_pacer` | `true`, `false` | The frame pacer |
 | `enable_vita_vblank_wait` | `true`, `false` | V-Sync |
 | `stats_overlay` | `0`, `1`, `2` | Overlay off, fps or full (its drawing cost counts in the results; off by default in `run.sh`) |
-| `bench_input` | `key`, `mouse`, `gamepad` | What the timed presses send: Space, a left click or gamepad A. Each takes a different route through the host, so comparing them shows where input delay comes from: `tools/bench/run.sh key:bench_input=key mouse:bench_input=mouse pad:bench_input=gamepad` |
+| `bench_input` | `key`, `mouse`, `gamepad`, `cursor` | What the timed presses send. `key`, `mouse` and `gamepad` send Space, a left click or gamepad A, and wait for the page to light its marker. Each takes a different route through the host. `cursor` instead moves the mouse pointer between two targets, which Windows draws and Sunshine captures, so it times the host's input and capture **without the browser**. Compare it with `key` to see how much of the delay is the browser: `tools/bench/run.sh key:bench_input=key cursor:bench_input=cursor` |
 
 To compare **builds** rather than settings, deploy each build with `tools/vita.sh push` and run the same variant against it, with a different label.
 
@@ -202,4 +206,4 @@ These live in `moonlight.conf`, and the menu sets the first two:
 | `bench_label` | empty | Copied into the report, e.g. a variant name |
 | `bench_autorun` | `false` | Run once at launch and exit; cleared before the run starts |
 | `bench_quit_app` | `true` | Quit the app on the computer when the run ends |
-| `bench_input` | `key` | What the timed presses send: `key`, `mouse` or `gamepad` |
+| `bench_input` | `key` | What the timed presses send: `key`, `mouse`, `gamepad` or `cursor` |
