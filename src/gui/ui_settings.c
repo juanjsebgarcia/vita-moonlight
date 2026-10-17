@@ -28,6 +28,8 @@
 #include <vita2d.h>
 #include <Limelight.h>
 #include "debug.h"
+#include "../util.h"
+#include "ui_recommended.h"
 extern char* strdup(const char*);
 
 static unsigned int settings_special_codes[] = {0,
@@ -459,7 +461,12 @@ enum {
   SETTINGS_BENCH_RUN,
   SETTINGS_BENCH_SECONDS,
   SETTINGS_HIDE_DEVELOPER,
-  SETTINGS_DECODE_YUV
+  SETTINGS_DECODE_YUV,
+  SETTINGS_BLUETOOTH_WARNING,
+  SETTINGS_RECOMMENDED,
+  SETTINGS_BITRATE_CUSTOM,
+  SETTINGS_ABOUT,
+  SETTINGS_APP_LIST_STYLE
 };
 
 enum {
@@ -501,18 +508,23 @@ enum {
   SETTINGS_VIEW_BENCH_SECONDS,
   SETTINGS_VIEW_HIDE_DEVELOPER,
   SETTINGS_VIEW_DECODE_YUV,
+  SETTINGS_VIEW_BLUETOOTH_WARNING,
+  SETTINGS_VIEW_RECOMMENDED,
+  SETTINGS_VIEW_BITRATE_CUSTOM,
+  SETTINGS_VIEW_APP_LIST_STYLE,
 
   SETTINGS_VIEW_MAX_COUNT,
 };
 
 static int SETTINGS_VIEW_IDX[SETTINGS_VIEW_MAX_COUNT];
 
-// Writes a setting's value into its row. Row 0 is never a setting, so 0 means
-// the setting has no row in this menu (hidden mid-stream, or not listed) and
-// the value is skipped rather than written over the first row.
+// Writes a setting's value into its row. -1 means the setting has no row in
+// this menu (another tab, hidden mid-stream, or not listed) and the value is
+// skipped. Any row can be a setting, the first included, now tabs have no
+// category row at the top.
 #define SET_ROW_VALUE(VIEW, VALUE) \
   do { \
-    if (SETTINGS_VIEW_IDX[(VIEW)] > 0) { \
+    if (SETTINGS_VIEW_IDX[(VIEW)] >= 0) { \
       strcpy(menu[SETTINGS_VIEW_IDX[(VIEW)]].subname, (VALUE)); \
     } \
   } while (0)
@@ -547,11 +559,76 @@ static int move_idx_in_array(char *array[], int count, char *find, int index_dis
 // options are shown or hidden
 #define SETTINGS_REBUILD 0x42
 
+// Settings is split into tabs, switched with L and R, instead of one long list
+enum {
+  TAB_STREAM,
+  TAB_SYSTEM,
+  TAB_CONTROLS,
+  TAB_DEVELOPER,
+  TAB_ABOUT,
+  TAB_COUNT,
+};
+
+static const char *TAB_NAMES[TAB_COUNT] = {"Stream", "System", "Controls", "Developer", "About"};
+static int settings_tab = TAB_STREAM;
+
+// The Developer tab only exists in developer mode
+static bool tab_shown(int tab) {
+  return tab != TAB_DEVELOPER || config.developer_mode;
+}
+
+static void move_tab(int step) {
+  do {
+    settings_tab = (settings_tab + step + TAB_COUNT) % TAB_COUNT;
+  } while (!tab_shown(settings_tab));
+}
+
 // Number of rows in the settings menu, so the help can look up a row's title
 static int settings_menu_count = 0;
 
 // Plain-language help for each setting, shown with triangle. Written for the
 // player, not the developer: what it does, and when to change it.
+// Bitrate steps on the Bitrate row, in kbps, then Custom, which enables the
+// Custom bitrate row below it for any value in kbps, as the setting has always
+// been entered. A saved value that isn't a step opens on Custom unchanged, so
+// upgrading never alters anyone's bitrate; the range only applies to new entries.
+static const int BITRATE_STEPS_KBPS[] = {5000, 10000, 15000, 20000, 25000, 30000};
+#define BITRATE_STEP_COUNT ((int)(sizeof(BITRATE_STEPS_KBPS) / sizeof(BITRATE_STEPS_KBPS[0])))
+#define BITRATE_CUSTOM_MIN_KBPS 500
+#define BITRATE_CUSTOM_MAX_KBPS 100000
+static bool bitrate_custom = false;
+
+static int bitrate_step_index(int kbps) {
+  for (int i = 0; i < BITRATE_STEP_COUNT; i++) {
+    if (BITRATE_STEPS_KBPS[i] == kbps) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+static void format_mbps(char *out, size_t size, int kbps) {
+  if (kbps % 1000 == 0) {
+    snprintf(out, size, "%d Mbps", kbps / 1000);
+  } else {
+    snprintf(out, size, "%.1f Mbps", kbps / 1000.0f);
+  }
+}
+
+// Shows the bitrate on both rows, and greys out Custom bitrate unless the
+// Bitrate row is on Custom
+static void sync_bitrate_rows(menu_entry *menu) {
+  char value[32];
+  format_mbps(value, sizeof(value), config.stream.bitrate);
+  char kbps[32];
+  snprintf(kbps, sizeof(kbps), "%d kbps", config.stream.bitrate);
+  SET_ROW_VALUE(SETTINGS_VIEW_BITRATE, bitrate_custom ? "Custom" : value);
+  SET_ROW_VALUE(SETTINGS_VIEW_BITRATE_CUSTOM, kbps);
+  if (SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM] >= 0) {
+    menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM]].disabled = !bitrate_custom;
+  }
+}
+
 static const char *settings_help_text(int id) {
   switch (id) {
     case SETTINGS_RESOLUTION:
@@ -562,9 +639,17 @@ static const char *settings_help_text(int id) {
       return "Frames per second your PC sends. 60 is the smoothest. Try 30 if the stream stutters "
              "or your Wi-Fi is weak: it needs about half the data. 24 suits films.";
     case SETTINGS_BITRATE:
-      return "How much video is sent each second, in kilobits (10000 = 10 Mbps). Higher looks "
-             "sharper but needs a stronger Wi-Fi signal. The Vita's Wi-Fi is happiest at around "
-             "5000 to 10000. Lower it if the picture goes blocky or the stream stutters.";
+      return "How much video is sent each second. Higher looks sharper but needs a stronger "
+             "signal and adds a little delay; on the Vita's screen the picture stops improving at "
+             "about 15 to 20 Mbps. 10 suits weaker Wi-Fi, 20 a strong signal. Lower it if the "
+             "picture goes blocky or stutters. Custom lets you type any value below.";
+    case SETTINGS_ABOUT:
+      return "About this app: its version, where the project lives and who looks after it, and "
+             "the two projects it works with: Moonlight, the streaming client it's built on, and "
+             "Sunshine, the host you run on your PC.";
+    case SETTINGS_BITRATE_CUSTOM:
+      return "Any bitrate, in kilobits per second (10000 = 10 Mbps), from 500 to 100000. Choose "
+             "Custom on the Bitrate row above to use it.";
     case SETTINGS_SOPS:
       return "Lets GeForce Experience change your game's own graphics settings to suit the stream. "
              "Only does anything with NVIDIA GeForce Experience; Sunshine ignores it. Turn it off "
@@ -587,6 +672,16 @@ static const char *settings_help_text(int id) {
     case SETTINGS_ENABLE_FRAME_PACER:
       return "Throws away extra frames when more arrive than your FPS setting. It can cause a "
              "small hitch every few seconds, so off is recommended.";
+    case SETTINGS_RECOMMENDED:
+      return "Sets resolution, frame rate and bitrate to what worked best in testing, for your "
+             "connection and for what matters most to you. Auto-detect tests the connection where "
+             "you'll play and picks for you. During a stream it can restart the stream to apply "
+             "them; Auto-detect itself needs the game closed first.";
+    case SETTINGS_BLUETOOTH_WARNING:
+      return "Bluetooth and Wi-Fi share the Vita's 2.4 GHz radio, so while Bluetooth is on the "
+             "stream can stutter or lose frames, more so with a Bluetooth controller or headphones "
+             "in use. If you aren't using a Bluetooth device, turn it off in the Vita's Settings, "
+             "under Bluetooth Devices.";
     case SETTINGS_PACKET_SIZE:
       return "How big each chunk of video sent over Wi-Fi is. 1392 sends fewer chunks per frame, "
              "which can be smoother on a good connection. If the video breaks up or won't start, "
@@ -623,9 +718,14 @@ static const char *settings_help_text(int id) {
       return "Swaps X and O in Moonlight's own menus, so O confirms and X goes back, like on "
              "Japanese consoles. Doesn't change any buttons in your games.";
     case SETTINGS_SHOW_FPS:
-      return "Shows stream information on screen. fps: just the frame rate. full: frame rate, "
-             "bitrate, lost frames, delays and Wi-Fi signal, to help track down stutter or lag. "
+      return "Shows stream information on screen. fps: the frame rate and Wi-Fi signal. full: "
+             "frame rate, bitrate, lost frames, delays and Wi-Fi signal, to help track down stutter "
+             "or lag. The Wi-Fi signal turns yellow below 60%, a sign to move closer to your router. "
              "Use left and right to change.";
+    case SETTINGS_APP_LIST_STYLE:
+      return "How a PC's games and apps are listed when you connect to it. Box art: a row of "
+             "game covers to scroll through with left and right. Text: a plain list, which "
+             "uses less memory. Covers are saved on the memory card after the first visit.";
     case SETTINGS_INPUT_SYNC:
       return "Reads your buttons in step with the Vita's controls, which saves battery without "
              "adding lag. If touch controls feel slower than before, turn it off.";
@@ -705,6 +805,22 @@ static void settings_draw(void) {
   const char *hint = "Help";
   const int glyph_size = 14;
   const int gap = 6;
+
+  // The tab bar, above the box on the left, level with the clock on the right
+  const int tab_spacing = 16;
+  int tab_x = 480 - 300;
+  int tab_y = 272 - 200 - 10;
+  tab_x += draw_button_glyph(BUTTON_GLYPH_L, tab_x, tab_y, glyph_size) + gap * 2;
+  for (int tab = 0; tab < TAB_COUNT; tab++) {
+    if (!tab_shown(tab)) {
+      continue;
+    }
+    unsigned int colour = tab == settings_tab ? 0xff00ff00 : 0xffaaaaaa;
+    vita2d_font_draw_text(font, tab_x, tab_y, colour, 18, TAB_NAMES[tab]);
+    tab_x += vita2d_font_text_width(font, 18, TAB_NAMES[tab]) + tab_spacing;
+  }
+  draw_button_glyph(BUTTON_GLYPH_R, tab_x - tab_spacing + gap * 2, tab_y, glyph_size);
+
   int width = glyph_size + gap + vita2d_font_text_width(font, 18, hint);
   // The settings menu uses the default 600x400 box, centred on the 960x544 screen
   int x = 480 + 300 - width;
@@ -713,8 +829,21 @@ static void settings_draw(void) {
   vita2d_font_draw_text(font, x, y, 0xffffffff, 18, hint);
 }
 
+static int settings_back(void *context);
+
 static int settings_loop(int id, void *context, const input_data *input) {
   menu_entry *menu = context;
+
+  // L and R switch tabs. Pressing both together, as for developer mode, moves
+  // back and forth and lands on the same tab.
+  bool pressed_once = (input->buttons & SCE_CTRL_HOLD) == 0;
+  // sceCtrlPeekBufferPositive reports the shoulder buttons on the L2/R2 bits
+  bool left_tab = (input->buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) != 0;
+  bool right_tab = (input->buttons & (SCE_CTRL_R1 | SCE_CTRL_R2)) != 0;
+  if (pressed_once && left_tab != right_tab) {
+    move_tab(left_tab ? -1 : 1);
+    return SETTINGS_REBUILD;
+  }
 
   if ((input->buttons & SCE_CTRL_TRIANGLE) && (input->buttons & SCE_CTRL_HOLD) == 0) {
     // read_buttons() only reports newly pressed buttons, so check L and R are held directly
@@ -726,8 +855,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
       config.developer_mode = !config.developer_mode;
       ui_settings_save_config();
       display_error(config.developer_mode
-                    ? "Developer options are now shown at the end of Settings."
+                    ? "Developer options are now shown, in the Developer tab."
                     : "Developer options are hidden.");
+      settings_tab = config.developer_mode ? TAB_DEVELOPER : TAB_STREAM;
       return SETTINGS_REBUILD;
     }
     show_settings_help(menu, id);
@@ -768,6 +898,24 @@ static int settings_loop(int id, void *context, const input_data *input) {
       snprintf(value, sizeof(value), "%d s", config.bench_seconds);
       SET_ROW_VALUE(SETTINGS_VIEW_BENCH_SECONDS, value);
     }
+    return 0;
+  }
+  // Only on confirm: returning early otherwise would skip the row values
+  // being filled in below while the cursor rests here, which it does at first
+  if (id == SETTINGS_RECOMMENDED && (input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+    // Rebuilt whatever happened: the values may have changed, and auto-detect
+    // may have streamed, as a benchmark run does
+    ui_recommended_settings_menu();
+    if (ui_recommended_take_restart()) {
+      // Save and leave, so whoever opened Settings restarts the stream
+      settings_back(NULL);
+      return SETTINGS_RESTART_STREAM;
+    }
+    return SETTINGS_REBUILD;
+  }
+  // The Bluetooth warning has nothing to change, so confirm explains it too
+  if (id == SETTINGS_BLUETOOTH_WARNING && (input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+    show_settings_help(menu, id);
     return 0;
   }
   bool did_change = 0;
@@ -918,20 +1066,39 @@ static int settings_loop(int id, void *context, const input_data *input) {
 
       did_change = 1;
       break;
-    case SETTINGS_BITRATE:
+    case SETTINGS_BITRATE: {
+      bool forward = right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0);
+      if (!left && !forward) {
+        break;
+      }
+      // The steps, then Custom as the last position
+      int position = bitrate_custom ? BITRATE_STEP_COUNT : bitrate_step_index(config.stream.bitrate);
+      if (position < 0) {
+        position = BITRATE_STEP_COUNT;
+      }
+      position = (position + (left ? BITRATE_STEP_COUNT : 1)) % (BITRATE_STEP_COUNT + 1);
+      bitrate_custom = position == BITRATE_STEP_COUNT;
+      if (!bitrate_custom) {
+        config.stream.bitrate = BITRATE_STEPS_KBPS[position];
+      }
+      did_change = 1;
+      break;
+    }
+    case SETTINGS_BITRATE_CUSTOM:
       if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
         break;
       }
       {
         char value[512];
-        int ret;
-        if ((ret = ime_dialog_number(value, "Enter bitrate: ", "")) == 0) {
-          int bitrate = atoi(value);
-          if (bitrate) {
-            config.stream.bitrate = bitrate;
+        char current_kbps[16];
+        snprintf(current_kbps, sizeof(current_kbps), "%d", config.stream.bitrate);
+        if (ime_dialog_number(value, "Bitrate in kbps (10000 = 10 Mbps)", current_kbps) == 0) {
+          int kbps = atoi(value);
+          if (kbps >= BITRATE_CUSTOM_MIN_KBPS && kbps <= BITRATE_CUSTOM_MAX_KBPS) {
+            config.stream.bitrate = kbps;
             did_change = 1;
           } else {
-            display_error("Incorrect bitrate entered: %s", value);
+            display_error("Enter a bitrate from %d to %d kbps.", BITRATE_CUSTOM_MIN_KBPS, BITRATE_CUSTOM_MAX_KBPS);
           }
         }
       }
@@ -1073,6 +1240,15 @@ static int settings_loop(int id, void *context, const input_data *input) {
       }
       did_change = 1;
       break;
+    case SETTINGS_APP_LIST_STYLE:
+      // Only two styles, so left, right and confirm all switch between them
+      if (left || right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0)) {
+        config.app_list_style = (config.app_list_style + 1) % APP_LIST_STYLE_COUNT;
+      } else {
+        break;
+      }
+      did_change = 1;
+      break;
     case SETTINGS_LOCAL_AUDIO:
       if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
         break;
@@ -1206,8 +1382,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
   sprintf(current, "%d", config.stream.fps);
   MENU_REPLACE(SETTINGS_VIEW_FPS, current);
 
-  sprintf(current, "%d", config.stream.bitrate);
-  MENU_REPLACE(SETTINGS_VIEW_BITRATE, current);
+  sync_bitrate_rows(menu);
 
   sprintf(current, "%s", config.sops ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_SOPS, current);
@@ -1250,6 +1425,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
   static const char *stats_overlay_names[STATS_OVERLAY_COUNT] = {"off", "fps", "full"};
   sprintf(current, "%s", stats_overlay_names[config.stats_overlay]);
   MENU_REPLACE(SETTINGS_VIEW_SHOW_FPS, current);
+
+  sprintf(current, "%s", config.app_list_style == APP_LIST_TEXT ? "text" : "box art");
+  MENU_REPLACE(SETTINGS_VIEW_APP_LIST_STYLE, current);
 
   sprintf(current, "%s", config.localaudio ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_LOCAL_AUDIO, current);
@@ -1316,29 +1494,56 @@ static int settings_back(void *context) {
 // Eliminado: hotkeys_menu y referencias, ya que los atajos ahora son fijos
 
 int ui_settings_menu() {
-  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (40 at most today). Each
+  // Must hold every MENU_ENTRY, MENU_CATEGORY and MENU_MESSAGE below (43 at most today). Each
   // entry is about 1 KB of the main thread stack, so do not oversize it
   menu_entry menu[44];
   int idx;
+  // A fresh visit opens on the first tab; rebuilds stay on the current one
+  settings_tab = TAB_STREAM;
 rebuild:
   idx = 0;
-  // Rows are re-numbered on every build; 0 means the setting has no row
-  memset(SETTINGS_VIEW_IDX, 0, sizeof(SETTINGS_VIEW_IDX));
+  if (!tab_shown(settings_tab)) {
+    settings_tab = TAB_STREAM;
+  }
+  // Rows belong to the tab set by MENU_TAB; only the current tab's are added.
+  // Before the first MENU_TAB, rows show on every tab.
+  int building_tab = -1;
+  // Rows are re-numbered on every build; -1 (all bits set) means no row
+  memset(SETTINGS_VIEW_IDX, 0xff, sizeof(SETTINGS_VIEW_IDX));
   // Mid-stream, only list settings that take effect on resume. The rest (such as
   // resolution, bitrate or controller type) are agreed with the PC when a stream
   // starts, so they come back once it ends.
   int stream_status = connection_get_status();
   bool streaming = stream_status == LI_CONNECTED || stream_status == LI_MINIMIZED;
+#define TAB_ACTIVE (building_tab < 0 || building_tab == settings_tab)
+#define MENU_TAB(TAB) \
+  do { \
+    building_tab = (TAB); \
+  } while (0)
 #define MENU_CATEGORY(NAME) \
   do { \
-    menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true }; \
-    idx++; \
+    if (TAB_ACTIVE) { \
+      menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true }; \
+      idx++; \
+    } \
   } while (0)
 #define MENU_ENTRY(ID, TAG, NAME, SUFFIX) \
   do { \
-    menu[idx] = (menu_entry) { .name = (NAME), .id = (ID), .suffix = (SUFFIX) }; \
-    SETTINGS_VIEW_IDX[(TAG)] = idx; \
-    idx++; \
+    if (TAB_ACTIVE) { \
+      menu[idx] = (menu_entry) { .name = (NAME), .id = (ID), .suffix = (SUFFIX) }; \
+      SETTINGS_VIEW_IDX[(TAG)] = idx; \
+      idx++; \
+    } \
+  } while(0)
+// A line of information on the About tab: selectable, so the tab can scroll
+// and show help, but there's nothing to change
+#define MENU_INFO(NAME, VALUE) \
+  do { \
+    if (TAB_ACTIVE) { \
+      menu[idx] = (menu_entry) { .name = (NAME), .id = SETTINGS_ABOUT }; \
+      snprintf(menu[idx].subname, sizeof(menu[idx].subname), "%s", (VALUE)); \
+      idx++; \
+    } \
   } while(0)
 #define MENU_ENTRY_BETWEEN_STREAMS(ID, TAG, NAME, SUFFIX) \
   do { \
@@ -1348,17 +1553,27 @@ rebuild:
   } while (0)
 #define MENU_MESSAGE(MESSAGE) \
   do { \
-    menu[idx] = (menu_entry) { .name = "", .disabled = true, .subname = (MESSAGE) }; \
-    idx++; \
+    if (TAB_ACTIVE) { \
+      menu[idx] = (menu_entry) { .name = "", .disabled = true, .subname = (MESSAGE) }; \
+      idx++; \
+    } \
   } while(0)
 
+  if (vita_bluetooth_enabled()) {
+    MENU_ENTRY(SETTINGS_BLUETOOTH_WARNING, SETTINGS_VIEW_BLUETOOTH_WARNING,
+               "Bluetooth is on, which can disturb Wi-Fi", "");
+    menu[idx - 1].warning = true;
+  }
   if (streaming) {
     MENU_MESSAGE("Settings that need a new stream return once this one ends.");
   }
-  MENU_CATEGORY("Stream");
+  MENU_TAB(TAB_STREAM);
+  // Listed mid-stream too: it can restart the stream to apply its settings
+  MENU_ENTRY(SETTINGS_RECOMMENDED, SETTINGS_VIEW_RECOMMENDED, "Apply recommended settings", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_RESOLUTION, SETTINGS_VIEW_RESOLUTION, "Resolution", ICON_LEFT_RIGHT_ARROWS);
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_FPS, SETTINGS_VIEW_FPS, "FPS", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE, SETTINGS_VIEW_BITRATE, "Bitrate", "");
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE, SETTINGS_VIEW_BITRATE, "Bitrate", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE_CUSTOM, SETTINGS_VIEW_BITRATE_CUSTOM, "Custom bitrate", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_SOPS, SETTINGS_VIEW_SOPS, "Change graphical game settings for performance", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_FRAME_INVAL, SETTINGS_VIEW_ENABLE_FRAME_INVAL, "Enable reference frame invalidation", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_STREAM_OPTIMIZE, SETTINGS_VIEW_ENABLE_STREAM_OPTIMIZE, "Enable stream optimization", "");
@@ -1371,14 +1586,15 @@ rebuild:
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_DECODE_YUV, SETTINGS_VIEW_DECODE_YUV, "Fast colour decoding", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_LOCAL_AUDIO, SETTINGS_VIEW_LOCAL_AUDIO, "Enable local audio", "");
 
-  MENU_CATEGORY("System");
+  MENU_TAB(TAB_SYSTEM);
   MENU_ENTRY(SETTINGS_SAVE_DEBUG_LOG, SETTINGS_VIEW_SAVE_DEBUG_LOG, "Enable debug log", "");
   MENU_ENTRY(SETTINGS_DISABLE_POWERSAVE, SETTINGS_VIEW_DISABLE_POWERSAVE, "Disable power save", "");
   MENU_ENTRY(SETTINGS_BOOST_CLOCKS, SETTINGS_VIEW_BOOST_CLOCKS, "Boost CPU/GPU clocks while streaming", "");
   MENU_ENTRY(SETTINGS_JP_LAYOUT, SETTINGS_VIEW_JP_LAYOUT, "Swap X & O for Moonlight", "");
   MENU_ENTRY(SETTINGS_SHOW_FPS, SETTINGS_VIEW_SHOW_FPS, "Stats overlay", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY(SETTINGS_APP_LIST_STYLE, SETTINGS_VIEW_APP_LIST_STYLE, "App list", ICON_LEFT_RIGHT_ARROWS);
 
-  MENU_CATEGORY("Input");
+  MENU_TAB(TAB_CONTROLS);
 
   MENU_ENTRY(SETTINGS_INPUT_SYNC, SETTINGS_VIEW_INPUT_SYNC, "Sync input to controller sampling", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_MOTION_CONTROLS, SETTINGS_VIEW_ENABLE_MOTION_CONTROLS, "Enable Gyroscope reporting", "");
@@ -1401,7 +1617,7 @@ rebuild:
   // Shown after holding L and R and pressing triangle
   char bench_target[256] = "";
   if (config.developer_mode) {
-    MENU_CATEGORY("Developer");
+    MENU_TAB(TAB_DEVELOPER);
     if (streaming) {
       MENU_MESSAGE("The benchmark can't run during a stream.");
     } else if (!ui_connect_server_ready()) {
@@ -1420,6 +1636,16 @@ rebuild:
     MENU_ENTRY(SETTINGS_HIDE_DEVELOPER, SETTINGS_VIEW_HIDE_DEVELOPER, "Hide developer options", "");
   }
 
+  MENU_TAB(TAB_ABOUT);
+  char version[32];
+  snprintf(version, sizeof(version), "v%d.%d.%d", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
+  MENU_INFO("Moonlight for PS Vita", version);
+  MENU_INFO("Project", "github.com/xyzz/vita-moonlight");
+  MENU_INFO("Maintained by", "AorsiniYT, d3m3vilurr, xyzz");
+  MENU_INFO("Built on Moonlight", "moonlight-stream.org");
+  MENU_INFO("Host for your PC", "Sunshine: github.com/LizardByte/Sunshine");
+  MENU_INFO("Licence", "GNU GPL version 3");
+
   // Inicializar el subname de todas las opciones antes de mostrar el menú
   char current[256];
   // Resolution
@@ -1428,9 +1654,9 @@ rebuild:
   // FPS
   sprintf(current, "%d", config.stream.fps);
   SET_ROW_VALUE(SETTINGS_VIEW_FPS, current);
-  // Bitrate
-  sprintf(current, "%d", config.stream.bitrate);
-  SET_ROW_VALUE(SETTINGS_VIEW_BITRATE, current);
+  // Bitrate: on Custom whenever the value isn't one of the steps
+  bitrate_custom = bitrate_step_index(config.stream.bitrate) < 0;
+  sync_bitrate_rows(menu);
   // Controller type
   int current_idx = get_controller_type_index(config.controller_type);
   snprintf(current, sizeof(current), "%s", controller_type_names[current_idx]);

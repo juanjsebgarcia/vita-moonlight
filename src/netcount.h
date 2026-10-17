@@ -19,3 +19,6 @@ typedef struct {
 uint32_t netcount_lost(const netcount *start, const netcount *end);
 
 void netcount_read(netcount *out);
+
+// Call before a stream starts, while no video is being received
+void netcount_reset(void);

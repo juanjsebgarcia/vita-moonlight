@@ -80,6 +80,7 @@ typedef struct _CONFIGURATION {
   bool decode_yuv;
   bool jp_layout;
   int stats_overlay; // STATS_OVERLAY_* from stats.h
+  int app_list_style; // APP_LIST_* below
   bool enable_frame_pacer;
   bool center_region_only;
   bool save_debug_log;
@@ -105,6 +106,13 @@ typedef struct _CONFIGURATION {
   int controller_type; // 1: Xbox, 2: PS (default), 3: Nintendo, 4: Generic
   bool swap_shoulder_buttons; // Nuevo: swap R1/L1 <-> R2/L2
 } CONFIGURATION, *PCONFIGURATION;
+
+// Values for config.app_list_style: how a PC's games and apps are listed
+enum {
+  APP_LIST_BOXART = 0,
+  APP_LIST_TEXT = 1,
+  APP_LIST_STYLE_COUNT
+};
 
 extern CONFIGURATION config;
 extern char *config_path;

@@ -71,6 +71,12 @@ int __wrap_recvUdpSocket(int s, char *buffer, int size, bool useSelect) {
   return ret;
 }
 
+void netcount_reset(void) {
+  // The next video packet starts a new sequence, even if the new stream's
+  // socket reuses the old one's descriptor
+  video_socket = -1;
+}
+
 void netcount_read(netcount *out) {
   out->received = received;
   out->gaps = gaps;
