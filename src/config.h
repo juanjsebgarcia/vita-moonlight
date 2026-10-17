@@ -60,8 +60,27 @@ typedef struct _CONFIGURATION {
   bool enable_front_touchzones;
   struct special_keys special_keys;
   bool disable_powersave;
+  bool boost_clocks;
+  bool direct_decode; // decode on common-c's receive thread, as before the decode thread
+  bool input_sync_to_controller; // pace input reads to controller samples instead of 2 ms polling
+  // Developer options, shown in Settings after L + R + triangle
+  bool developer_mode;
+  // Benchmark against tools/bench/bench.html streamed from the host
+  int bench_seconds;
+  char *bench_app;    // Sunshine app that shows the benchmark page
+  char *bench_host;   // paired host to use; empty means the first paired host
+  char *bench_label;  // free text copied into the report, e.g. a variant name
+  bool bench_autorun; // run once at launch, write the report and exit (cleared after)
+  bool bench_quit_app; // quit the app on the host when the run ends
+  char *bench_input;  // what a timed press sends: key, mouse or gamepad
+  bool bench_grab;    // save decoded frames at fixed page ticks, to compare picture quality
+  int bench_idr_hz;   // ask the host for this many keyframes a second while measuring, 0 for none
+  // Decode to YUV (NV21) and let the GPU convert it while drawing; about 45%
+  // less hardware decode time than RGBA output
+  bool decode_yuv;
   bool jp_layout;
-  bool show_fps;
+  int stats_overlay; // STATS_OVERLAY_* from stats.h
+  int app_list_style; // APP_LIST_* below
   bool enable_frame_pacer;
   // How long to hold the next frame's packets while the current one is
   // incomplete, in case its late packets arrive (0 gives up immediately)
@@ -90,6 +109,13 @@ typedef struct _CONFIGURATION {
   int controller_type; // 1: Xbox, 2: PS (default), 3: Nintendo, 4: Generic
   bool swap_shoulder_buttons; // Nuevo: swap R1/L1 <-> R2/L2
 } CONFIGURATION, *PCONFIGURATION;
+
+// Values for config.app_list_style: how a PC's games and apps are listed
+enum {
+  APP_LIST_BOXART = 0,
+  APP_LIST_TEXT = 1,
+  APP_LIST_STYLE_COUNT
+};
 
 extern CONFIGURATION config;
 extern char *config_path;

@@ -71,10 +71,22 @@ void touchabsolute_handle_ds4(const TouchData* touch, SceRtcTick* current) {
 void touchabsolute_handle_absolute(const TouchData* touch, SceRtcTick* current, int* front_state, short* finger_count, TouchData* swipe, TouchData* touch_old) {
     // Lógica movida desde vita.c (modo 2)
     if (touchabsolute_is_enabled()) {
+        // The input thread polls much faster than the touch panel samples, so only
+        // send a position when the finger lands or actually moves
+        static bool was_touching = false;
+        static int last_x = -1;
+        static int last_y = -1;
         if (touch->finger > 0) {
             int x = touch->points[0].x;
             int y = touch->points[0].y;
-            LiSendMousePositionEvent(x, y, 960, 544);
+            if (!was_touching || x != last_x || y != last_y) {
+                LiSendMousePositionEvent(x, y, 960, 544);
+                last_x = x;
+                last_y = y;
+            }
+            was_touching = true;
+        } else {
+            was_touching = false;
         }
         // Click izquierdo y derecho según número de dedos
         static int prev_finger_count __attribute__((unused)) = 0;
@@ -168,7 +180,11 @@ void touchabsolute_handle_absolute(const TouchData* touch, SceRtcTick* current, 
         if (touch->finger > 0) {
           switch (touch->finger) {
             case 1:
-              move_mouse(*swipe, *touch);
+              // Absolute mode already sends the finger's position, and a relative
+              // move on top would leave the cursor offset once the drag stops
+              if (!touchabsolute_is_enabled()) {
+                move_mouse(*swipe, *touch);
+              }
               break;
             case 2:
               move_wheel(*swipe, *touch);
@@ -194,6 +210,8 @@ void touchabsolute_handle_tablet(const TouchData* touch) {
       mouse_released = true;
     }
     static uint8_t prev_finger_active[10] __attribute__((unused)) = {0};
+    static int prev_x[10] = {0};
+    static int prev_y[10] = {0};
     for (int i = 0; i < 10; ++i) {
       int x = (i < touch->finger) ? touch->points[i].x : 0;
       int y = (i < touch->finger) ? touch->points[i].y : 0;
@@ -203,7 +221,9 @@ void touchabsolute_handle_tablet(const TouchData* touch) {
       if (is_active && !prev_finger_active[i]) {
         LiSendTouchEvent(LI_TOUCH_EVENT_DOWN, i, norm_x, norm_y, 1.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
         vita_debug_log("[TOUCHSCREEN] DOWN finger=%d x=%.3f y=%.3f", i, norm_x, norm_y);
-      } else if (is_active && prev_finger_active[i]) {
+      } else if (is_active && prev_finger_active[i] && (x != prev_x[i] || y != prev_y[i])) {
+        // Only report a move when the finger has actually moved, as the input
+        // thread polls much faster than the touch panel samples
         LiSendTouchEvent(LI_TOUCH_EVENT_MOVE, i, norm_x, norm_y, 1.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
         vita_debug_log("[TOUCHSCREEN] MOVE finger=%d x=%.3f y=%.3f", i, norm_x, norm_y);
       } else if (!is_active && prev_finger_active[i]) {
@@ -211,5 +231,7 @@ void touchabsolute_handle_tablet(const TouchData* touch) {
         vita_debug_log("[TOUCHSCREEN] UP finger=%d", i);
       }
       prev_finger_active[i] = is_active;
+      prev_x[i] = x;
+      prev_y[i] = y;
     }
 }

@@ -65,6 +65,7 @@ void connection_connection_started() {
     return;
   }
   vita_debug_log("connection started\n");
+  vita_debug_log("WARNING: debug logging is enabled and slows streaming. Disable it before judging performance.\n");
   connection_status = LI_CONNECTED;
   start_output();
   vitavideo_hide_poor_net_indicator();
@@ -98,7 +99,9 @@ static void connection_connection_terminated(int error_code) {
 
   LiStopConnection();
 
-  if (connection_status == LI_CONNECTED) {
+  // pause_output() leaves the power state running, so a stream quit from the
+  // pause menu must still go through stop_output() to restore the clocks
+  if (connection_status == LI_CONNECTED || connection_status == LI_MINIMIZED) {
     stop_output();
   }
   vita_debug_log("connection terminated\n");

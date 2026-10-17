@@ -17,16 +17,20 @@
 #include "../util.h"
 #include "../check_host.h"
 #include "../debug.h"
+#include "../bench.h"
 
 #include <stdarg.h>
+#include <psp2/kernel/processmgr.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 
+#include <psp2/kernel/processmgr.h>
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/ctrl.h>
+#include <vita2d.h>
 
 extern SceNetInitParam net_param;
 
@@ -62,11 +66,175 @@ enum {
   HOST_MANAGE_BACK
 };
 
+// Wake on LAN and connect: how long to wait for the PC, how often to check
+// and to resend the packet (a PC can miss the first while its network card
+// powers up)
+#define WAKE_TIMEOUT_SECONDS 120
+#define WAKE_CHECK_INTERVAL_US (2 * 1000 * 1000)
+#define WAKE_RESEND_SECONDS 10
+
+// The row the cursor is on, so the draw callback knows when to show the
+// square-button hint
+static int host_manage_cursor;
+
+// Sends the magic packet to the host's subnet. Returns false, after saying
+// why, when it can't.
+static bool send_wake_packet(const device_info_t *info) {
+  if (!info->mac[0]) {
+    display_error("No MAC address is saved for %s, so it can't be woken. Connect to it once while "
+                  "it's on, and Moonlight will remember it.", info->name);
+    return false;
+  }
+  if (!info->internal[0]) {
+    display_error("No IP address is saved for %s.", info->name);
+    return false;
+  }
+  // The broadcast address of its /24: the IP with the last part replaced by 255
+  char broadcast[32] = {0};
+  strncpy(broadcast, info->internal, sizeof(broadcast) - 1);
+  char *last_dot = strrchr(broadcast, '.');
+  if (last_dot == NULL) {
+    display_error("%s's IP address (%s) isn't one Wake on LAN can use.", info->name, info->internal);
+    return false;
+  }
+  strcpy(last_dot + 1, "255");
+  extern bool send_wol_packet(const char *mac, const char *ip_broadcast, int port);
+  if (!send_wol_packet(info->mac, broadcast, 9)) {
+    vita_debug_log("[UI] Wake-on-LAN failed for %s (%s)", info->name, info->mac);
+    display_error("Couldn't send the Wake on LAN packet to %s.", info->name);
+    return false;
+  }
+  vita_debug_log("[UI] Wake-on-LAN sent to %s (%s)", info->name, info->mac);
+  return true;
+}
+
+static bool cancel_pressed(void) {
+  SceCtrlData pad = {0};
+  sceCtrlPeekBufferPositive(0, &pad, 1);
+  return (pad.buttons & config.btn_cancel) != 0;
+}
+
+// Wakes the host and waits until it answers. Returns true once it's online,
+// false if the player cancelled or it didn't wake in time (after saying so).
+static bool wake_and_wait(device_info_t *info) {
+  if (!send_wake_packet(info)) {
+    return false;
+  }
+  stop_host_scan();
+  uint64_t start = sceKernelGetSystemTimeWide();
+  uint64_t last_send = start;
+  while (true) {
+    int elapsed = (int)((sceKernelGetSystemTimeWide() - start) / 1000000);
+    if (elapsed >= WAKE_TIMEOUT_SECONDS) {
+      display_error("%s didn't wake up within %d minutes. Check it's plugged in, connected by "
+                    "cable, and set up for Wake on LAN.", info->name, WAKE_TIMEOUT_SECONDS / 60);
+      return false;
+    }
+    flash_message("Waking %s...\n\nWaiting for it to start: %d s.\nPress %s to stop.", info->name, elapsed,
+                  config.jp_layout ? "X" : "O");
+    // Nobody touches the Vita while waiting, so keep the screen on, as input would
+    sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DEFAULT);
+    struct host_status st = check_host_status(info);
+    if (st.status != HOST_OFFLINE) {
+      vita_debug_log("[UI] %s answered after %d s", info->name, elapsed);
+      if (st.status == HOST_IP_CHANGED && st.current_ip[0] && strcmp(st.current_ip, info->internal) != 0) {
+        // It woke up on a new address: record it as the host scan would, so
+        // connecting asks whether to use it instead of trying the old one
+        for (int i = 0; i < known_devices.count; i++) {
+          if (&known_devices.devices[i] == info) {
+            pending_ip_update_idx = i;
+            snprintf(pending_ip_update, sizeof(pending_ip_update), "%s", st.current_ip);
+          }
+        }
+      }
+      return true;
+    }
+    if (sceKernelGetSystemTimeWide() - last_send >= WAKE_RESEND_SECONDS * 1000000ULL) {
+      extern bool send_wol_packet(const char *mac, const char *ip_broadcast, int port);
+      char broadcast[32] = {0};
+      strncpy(broadcast, info->internal, sizeof(broadcast) - 1);
+      char *last_dot = strrchr(broadcast, '.');
+      if (last_dot != NULL) {
+        strcpy(last_dot + 1, "255");
+        send_wol_packet(info->mac, broadcast, 9);
+      }
+      last_send = sceKernelGetSystemTimeWide();
+    }
+    // Wait between checks, watching for cancel
+    for (int i = 0; i < 20; i++) {
+      if (cancel_pressed()) {
+        flash_message("Stopped waiting for %s.", info->name);
+        sceKernelDelayThread(800 * 1000);
+        return false;
+      }
+      sceKernelDelayThread(WAKE_CHECK_INTERVAL_US / 20);
+    }
+  }
+}
+
+static void connect_host(device_info_t *info);
+
+// Shown outside the box, bottom right, while the Wake row is selected
+static void host_manage_draw(void) {
+  if (host_manage_cursor != HOST_MANAGE_WAKE) {
+    return;
+  }
+  const char *hint = "WoL only";
+  const int glyph_size = 14;
+  const int gap = 6;
+  int width = glyph_size + gap + vita2d_font_text_width(font, 18, hint);
+  // The host menu is a 600x320 box, centred on the 960x544 screen
+  int x = 480 + 300 - width;
+  int y = 272 + 160 + 26;
+  x += draw_button_glyph(BUTTON_GLYPH_SQUARE, x, y, glyph_size) + gap;
+  vita2d_font_draw_text(font, x, y, 0xffffffff, 18, hint);
+}
+
+// Connects to a paired host, confirming first if its IP has changed
+static void connect_host(device_info_t *info) {
+  vita_debug_log("[UI] Menú gestión: conectar a %s", info->name);
+  stop_host_scan();
+  // Si la IP está cambiada, pedir confirmación antes de emparejar
+  extern int pending_ip_update_idx;
+  extern char pending_ip_update[64];
+  int host_idx = -1;
+  for (int i = 0; i < known_devices.count; i++) {
+    if (&known_devices.devices[i] == info) {
+      host_idx = i;
+      break;
+    }
+  }
+  if (host_idx >= 0 && pending_ip_update_idx == host_idx && pending_ip_update[0] != '\0') {
+    char msg[320];
+    snprintf(msg, sizeof(msg), "%s's IP changed!\nOld: %s\nNew: %s\nDo you want to pair with the new IP?", device_label(info), info->internal, pending_ip_update);
+    int res = display_confirm(msg);
+    if (res) {
+      ui_check_ip_update(info, pending_ip_update);
+      device_info_t *updated = find_device(info->name);
+      if (updated) info = updated;
+      ui_connect_paired_device(info);
+    } else {
+      flash_message("Connection cancelled");
+    }
+  } else {
+    ui_connect_paired_device(info);
+  }
+}
+
 static int ui_host_manage_menu_loop(int cursor, void *context, const input_data *input) {
   device_info_t *info = (device_info_t *)context;
+  host_manage_cursor = cursor;
   // Permitir regresar con el botón cancelar (O)
   if ((input->buttons & config.btn_cancel) != 0) {
     return 1; // Salir del menú
+  }
+  // Square on the Wake row: only send the packet, as Wake on LAN used to
+  if (cursor == HOST_MANAGE_WAKE && (input->buttons & SCE_CTRL_SQUARE) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+    if (send_wake_packet(info)) {
+      flash_message("Wake on LAN sent to %s.", info->name);
+      sceKernelDelayThread(1500 * 1000);
+    }
+    return 0;
   }
   if ((input->buttons & config.btn_confirm) == 0 || (input->buttons & SCE_CTRL_HOLD) != 0) {
     return 0;
@@ -90,69 +258,15 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
       return 1;
     }
     case HOST_MANAGE_WAKE: {
-      vita_debug_log("[UI] Menú gestión: Wake-on-LAN %s", info->name);
-      if (!info->mac[0]) {
-        flash_message("No MAC saved for this host");
-        vita_debug_log("[UI] Wake-on-LAN: No MAC for %s", info->name);
-        sceKernelDelayThread(2*1000*1000);
+      vita_debug_log("[UI] Host menu: wake and connect %s", info->name);
+      if (wake_and_wait(info)) {
+        connect_host(info);
         return 1;
       }
-      // Calcular broadcast a partir de la IP interna
-      char broadcast[32] = {0};
-      const char *ip = info->internal;
-      if (!ip[0]) {
-        flash_message("No IP for this host");
-        return 1;
-      }
-      // Copiar IP y reemplazar el último octeto por 255
-      strncpy(broadcast, ip, sizeof(broadcast)-1);
-      char *last_dot = strrchr(broadcast, '.');
-      if (last_dot) {
-        strcpy(last_dot+1, "255");
-      } else {
-        flash_message("Invalid IP");
-        return 1;
-      }
-      extern bool send_wol_packet(const char *mac, const char *ip_broadcast, int port);
-      bool wol_ok = send_wol_packet(info->mac, broadcast, 9);
-      if (wol_ok) {
-        flash_message("Wake-on-LAN sent!");
-        vita_debug_log("[UI] Wake-on-LAN enviado a %s (%s)", info->name, info->mac);
-      } else {
-        flash_message("Wake-on-LAN failed");
-        vita_debug_log("[UI] Wake-on-LAN falló para %s (%s)", info->name, info->mac);
-      }
-      sceKernelDelayThread(2*1000*1000);
-      return 1;
+      return 0;
     }
     case HOST_MANAGE_CONNECT: {
-      vita_debug_log("[UI] Menú gestión: conectar a %s", info->name);
-      stop_host_scan();
-      // Si la IP está cambiada, pedir confirmación antes de emparejar
-      extern int pending_ip_update_idx;
-      extern char pending_ip_update[64];
-      int host_idx = -1;
-      for (int i = 0; i < known_devices.count; i++) {
-        if (&known_devices.devices[i] == info) {
-          host_idx = i;
-          break;
-        }
-      }
-      if (host_idx >= 0 && pending_ip_update_idx == host_idx && pending_ip_update[0] != '\0') {
-        char msg[320];
-        snprintf(msg, sizeof(msg), "%s's IP changed!\nOld: %s\nNew: %s\nDo you want to pair with the new IP?", device_label(info), info->internal, pending_ip_update);
-        int res = display_confirm(msg);
-        if (res) {
-          ui_check_ip_update(info, pending_ip_update);
-          device_info_t *updated = find_device(info->name);
-          if (updated) info = updated;
-          ui_connect_paired_device(info);
-        } else {
-          flash_message("Connection cancelled");
-        }
-      } else {
-        ui_connect_paired_device(info);
-      }
+      connect_host(info);
       return 1;
     }
     case HOST_MANAGE_DELETE: {
@@ -265,7 +379,7 @@ void ui_host_manage_menu(device_info_t *info) {
   // Opciones (sin Info)
   menu[idx++] = (menu_entry){ .name = "Connect", .id = HOST_MANAGE_CONNECT };
   // menu[idx++] = (menu_entry){ .name = "Check MAC", .id = HOST_MANAGE_CHECK_MAC }; // Oculta la opción Check MAC
-  menu[idx++] = (menu_entry){ .name = "Wake on LAN (WOL)", .id = HOST_MANAGE_WAKE };
+  menu[idx++] = (menu_entry){ .name = "Wake on LAN and connect", .id = HOST_MANAGE_WAKE };
 // Opción extra para pruebas
 #define HOST_MANAGE_CHECK_MAC 3001
   menu[idx++] = (menu_entry){ .name = "Force connect", .id = HOST_MANAGE_FORCE_CONNECT };
@@ -274,7 +388,8 @@ void ui_host_manage_menu(device_info_t *info) {
   menu[idx++] = (menu_entry){ .name = "Change Name", .id = HOST_MANAGE_CHANGE_NAME };
   menu[idx++] = (menu_entry){ .name = "Back", .id = HOST_MANAGE_BACK };
   menu_geom geom = make_geom_centered(600, 320);
-  display_menu(menu, idx, &geom, &ui_host_manage_menu_loop, &ui_host_manage_menu_back, NULL, info);
+  host_manage_cursor = 0;
+  display_menu(menu, idx, &geom, &ui_host_manage_menu_loop, &ui_host_manage_menu_back, &host_manage_draw, info);
 }
 
 int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
@@ -388,9 +503,16 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
       vita_debug_log("[UI] Seleccionado: Settings");
       vita_debug_log("[UI] Deteniendo escaneo de hosts antes de entrar a Settings");
       stop_host_scan();
-      ui_settings_menu();
-      exit_menu = 0;
-      start_host_scan();
+      if (ui_settings_menu() == SETTINGS_RESTART_STREAM) {
+        // Back to the paused stream's menu afterwards, as Resume does
+        ui_connect_restart_stream();
+        ui_connect_resume();
+        exit_menu = 2;
+        break;
+      }
+      // Rebuilt, which restarts the host scan: Auto-detect may have connected
+      // to a PC, and the menu should offer to resume that connection
+      exit_menu = 2;
       break;
     case MAIN_MENU_QUIT:
       vita_debug_log("[UI] Seleccionado: Quit");
@@ -564,6 +686,15 @@ void gui_init() {
 
 void gui_loop() {
   gui_init();
+
+  if (config.bench_autorun) {
+    // An unattended benchmark (tools/bench/run.sh): clear the flag first, so a
+    // failed run can't leave the app benchmarking on every launch, then exit
+    config.bench_autorun = false;
+    config_save(config_path, &config);
+    vitabench_run(true);
+    sceKernelExitProcess(0);
+  }
 
   while (ui_main_menu() == 2);
 

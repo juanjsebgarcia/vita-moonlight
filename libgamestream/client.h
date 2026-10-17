@@ -24,6 +24,7 @@
 #include <Limelight.h>
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #define MIN_SUPPORTED_GFE_VERSION 3
 #define MAX_SUPPORTED_GFE_VERSION 7
@@ -46,6 +47,9 @@ typedef struct _SERVER_DATA {
 int gs_init(PSERVER_DATA server, char* address, unsigned short httpPort, const char *keyDirectory, int logLevel, bool unsupported);
 int gs_start_app(PSERVER_DATA server, PSTREAM_CONFIGURATION config, int appId, bool sops, bool localaudio, int gamepad_mask);
 int gs_applist(PSERVER_DATA server, PAPP_LIST *app_list);
+// Downloads an app's box art (a PNG from Sunshine). On GS_OK, *image holds
+// *image_size bytes that the caller frees.
+int gs_app_boxart(PSERVER_DATA server, int app_id, long timeout_seconds, char **image, size_t *image_size);
 int gs_unpair(PSERVER_DATA server);
 int gs_pair(PSERVER_DATA server, char* pin);
 int gs_quit_app(PSERVER_DATA server);

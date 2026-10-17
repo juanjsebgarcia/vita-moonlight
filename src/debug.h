@@ -20,5 +20,6 @@
 #include <stdbool.h>
 
 void vita_debug_log(const char *s, ...);
+void vita_debug_log_thread(const char *label);
 
 bool vita_debug_init();

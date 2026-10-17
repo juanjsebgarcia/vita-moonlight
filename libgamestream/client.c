@@ -773,6 +773,31 @@ int gs_applist(PSERVER_DATA server, PAPP_LIST *list) {
   return ret;
 }
 
+int gs_app_boxart(PSERVER_DATA server, int app_id, long timeout_seconds, char **image, size_t *image_size) {
+  char url[4096];
+  uuid_t uuid;
+  char uuid_str[UUID_STRLEN];
+  PHTTP_DATA data = http_create_data();
+  if (data == NULL)
+    return GS_OUT_OF_MEMORY;
+
+  uuid_generate_random(uuid);
+  uuid_unparse(uuid, uuid_str);
+  // AssetType 2, AssetIdx 0 is the box art in GameStream. Sunshine ignores both
+  // and returns the app's image-path PNG, or its default cover if it has none.
+  snprintf(url, sizeof(url), "https://%s:%u/appasset?uniqueid=%s&uuid=%s&appid=%d&AssetType=2&AssetIdx=0",
+           server->serverInfo.address, server->httpsPort, unique_id, uuid_str, app_id);
+  if (http_request_timeout(url, data, timeout_seconds) != GS_OK) {
+    http_free_data(data);
+    return GS_IO_ERROR;
+  }
+
+  *image = data->memory;
+  *image_size = data->size;
+  free(data);
+  return GS_OK;
+}
+
 int gs_start_app(PSERVER_DATA server, STREAM_CONFIGURATION *config, int appId, bool sops, bool localaudio, int gamepad_mask) {
   int ret = GS_OK;
   uuid_t uuid;

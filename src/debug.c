@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <psp2/kernel/threadmgr.h>
 #include <psp2/rtc.h>
 #include <stdlib.h>
 #include "../src/gui/mdns_log.h"
@@ -35,6 +36,11 @@ bool vita_debug_init() {
   return true;
 }
 
+// Warning: when save_debug_log is on, every call allocates 8 KB, takes a global
+// mutex and flushes to the memory card. It is called from the video, audio and
+// input threads (on dropped frames, touch events and common-c's own logging),
+// so it noticeably slows streaming. Never measure performance with it enabled,
+// and avoid adding calls on per-frame or per-event paths.
 void vita_debug_log(const char *s, ...) {
   if (!config.save_debug_log) {
     return;
@@ -82,3 +88,23 @@ void vita_debug_log(const char *s, ...) {
   pthread_mutex_unlock(&print_mutex);
 }
 
+
+// Logs the calling thread's scheduling state, to check which priority and cores
+// the streaming threads really end up with
+void vita_debug_log_thread(const char *label) {
+  if (!config.save_debug_log) {
+    return;
+  }
+
+  SceKernelThreadInfo info = {0};
+  info.size = sizeof(info);
+  int ret = sceKernelGetThreadInfo(sceKernelGetThreadId(), &info);
+  if (ret < 0) {
+    vita_debug_log("[THREAD] %s: sceKernelGetThreadInfo failed 0x%x", label, ret);
+    return;
+  }
+
+  vita_debug_log("[THREAD] %s (%s): priority init 0x%x current 0x%x, affinity init 0x%x current 0x%x, cpu %d",
+                 label, info.name, info.initPriority, info.currentPriority,
+                 info.initCpuAffinityMask, info.currentCpuAffinityMask, info.currentCpuId);
+}

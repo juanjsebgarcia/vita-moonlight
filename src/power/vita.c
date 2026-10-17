@@ -21,14 +21,63 @@
 #include <psp2/kernel/processmgr.h>
 #include <psp2/power.h>
 #include "../config.h"
+#include "../debug.h"
 
 enum {
   ENABLE_ALL = 0,
   DISABLE_SUSPEND = 1,
 };
 
+enum {
+  BOOST_ARM_CLOCK_MHZ = 444,
+  BOOST_BUS_CLOCK_MHZ = 222,
+  BOOST_GPU_CLOCK_MHZ = 222,
+  BOOST_GPU_XBAR_CLOCK_MHZ = 166,
+};
+
+typedef struct {
+  int arm;
+  int bus;
+  int gpu;
+  int gpu_xbar;
+} clock_state;
+
 static int powermode = ENABLE_ALL;
 static bool active_power_thread = false;
+static bool clocks_boosted = false;
+static clock_state saved_clocks = {0};
+
+static void boost_clocks() {
+  if (clocks_boosted) {
+    return;
+  }
+  saved_clocks.arm = scePowerGetArmClockFrequency();
+  saved_clocks.bus = scePowerGetBusClockFrequency();
+  saved_clocks.gpu = scePowerGetGpuClockFrequency();
+  saved_clocks.gpu_xbar = scePowerGetGpuXbarClockFrequency();
+
+  scePowerSetArmClockFrequency(BOOST_ARM_CLOCK_MHZ);
+  scePowerSetBusClockFrequency(BOOST_BUS_CLOCK_MHZ);
+  scePowerSetGpuClockFrequency(BOOST_GPU_CLOCK_MHZ);
+  scePowerSetGpuXbarClockFrequency(BOOST_GPU_XBAR_CLOCK_MHZ);
+  clocks_boosted = true;
+
+  vita_debug_log("Clocks boosted (arm/bus/gpu/xbar): %d/%d/%d/%d -> %d/%d/%d/%d MHz",
+                 saved_clocks.arm, saved_clocks.bus, saved_clocks.gpu, saved_clocks.gpu_xbar,
+                 scePowerGetArmClockFrequency(), scePowerGetBusClockFrequency(),
+                 scePowerGetGpuClockFrequency(), scePowerGetGpuXbarClockFrequency());
+}
+
+static void restore_clocks() {
+  if (!clocks_boosted) {
+    return;
+  }
+  scePowerSetArmClockFrequency(saved_clocks.arm);
+  scePowerSetBusClockFrequency(saved_clocks.bus);
+  scePowerSetGpuClockFrequency(saved_clocks.gpu);
+  scePowerSetGpuXbarClockFrequency(saved_clocks.gpu_xbar);
+  clocks_boosted = false;
+}
 
 int vitapower_thread(SceSize args, void *argp) {
   while (1) {
@@ -67,8 +116,16 @@ void vitapower_config(CONFIGURATION config) {
 
 void vitapower_start() {
   active_power_thread = true;
+  // Read the global config so a change made in the settings menu applies to the next stream
+  if (config.boost_clocks) {
+    boost_clocks();
+  } else {
+    // Turned off from the pause menu during this stream
+    restore_clocks();
+  }
 }
 
 void vitapower_stop() {
   active_power_thread = false;
+  restore_clocks();
 }
