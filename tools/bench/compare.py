@@ -29,6 +29,11 @@ METRICS = [
     ("vblank wait p95 ms", ("vblank_wait_ms", "p95")),
     ("replaced", ("frames", "replaced_before_shown")),
     ("Mbps", ("bitrate_mbps",)),
+    ("wire Mbps", ("packets", "payload_mbps")),
+    ("FEC recovered", ("packets", "fec_recovered")),
+    ("FEC failed", ("packets", "fec_failed")),
+    ("RTT ms", ("rtt_ms", "avg")),
+    ("RTT var ms", ("rtt_ms", "variance_avg")),
     ("rssi %", ("wifi", "rssi_avg_percent")),
 ]
 

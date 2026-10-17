@@ -146,6 +146,8 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->bench_input = STR(value);
     } else if (strcmp(name, "bench_grab") == 0) {
       config->bench_grab = BOOL(value);
+    } else if (strcmp(name, "bench_idr_hz") == 0) {
+      config->bench_idr_hz = INT(value);
     } else if (strcmp(name, "decode_yuv") == 0) {
       config->decode_yuv = BOOL(value);
     } else if (strcmp(name, "jp_layout") == 0) {
@@ -248,6 +250,7 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_bool(fd, "bench_quit_app", config->bench_quit_app);
   write_config_string(fd, "bench_input", config->bench_input);
   write_config_bool(fd, "bench_grab", config->bench_grab);
+  write_config_int(fd, "bench_idr_hz", config->bench_idr_hz);
   write_config_bool(fd, "decode_yuv", config->decode_yuv);
   write_config_bool(fd, "jp_layout", config->jp_layout);
   write_config_int(fd, "stats_overlay", config->stats_overlay);
@@ -334,6 +337,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->bench_quit_app = true;
   config->bench_input = "key";
   config->bench_grab = false;
+  config->bench_idr_hz = 0;
   config->decode_yuv = true;
   config->jp_layout = false;
   config->stats_overlay = STATS_OVERLAY_OFF;
