@@ -774,10 +774,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
     }
     return 0;
   }
-  if (id == SETTINGS_RECOMMENDED) {
-    if ((input->buttons & config.btn_confirm) == 0 || (input->buttons & SCE_CTRL_HOLD)) {
-      return 0;
-    }
+  // Only on confirm: returning early otherwise would skip the row values
+  // being filled in below while the cursor rests here, which it does at first
+  if (id == SETTINGS_RECOMMENDED && (input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0) {
     // Rebuilt whatever happened: the values may have changed, and auto-detect
     // may have streamed, as a benchmark run does
     ui_recommended_settings_menu();
@@ -789,10 +788,8 @@ static int settings_loop(int id, void *context, const input_data *input) {
     return SETTINGS_REBUILD;
   }
   // The Bluetooth warning has nothing to change, so confirm explains it too
-  if (id == SETTINGS_BLUETOOTH_WARNING) {
-    if ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0) {
-      show_settings_help(menu, id);
-    }
+  if (id == SETTINGS_BLUETOOTH_WARNING && (input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+    show_settings_help(menu, id);
     return 0;
   }
   bool did_change = 0;
