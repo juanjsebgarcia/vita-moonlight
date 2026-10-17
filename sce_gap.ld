@@ -8,6 +8,8 @@
  * ends 8 KB before a boundary, at a cost of up to 64 KB of eboot. */
 SECTIONS
 {
-  .sce_gap : { BYTE(0) . = ALIGN(. + 0x2000, 0x10000) - 0x2000; }
+  /* Inside a section, "." is the offset from the section's start, so the
+   * padding is worked out from the absolute address */
+  .sce_gap : { BYTE(0) . += ALIGN(ABSOLUTE(.) + 0x2000, 0x10000) - 0x2000 - ABSOLUTE(.); }
 }
 INSERT AFTER .eh_frame;

@@ -68,13 +68,15 @@ cmd_build() {
     -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
     -e VITA_OPT_LEVEL="${VITA_OPT_LEVEL:-}" \
     "$IMAGE" sh -ec '
+      # Hand the build output back to the host user even when the build fails,
+      # with the LiveArea template the build rewrites
+      trap "chown -R \"\$HOST_UID:\$HOST_GID\" build sce_sys/livearea/contents/template.xml 2>/dev/null || true" EXIT
       vdpm pacman -- -Rdd --noconfirm openssl-1.1.1 >/dev/null 2>&1 || true
       vdpm pacman -- -S --noconfirm openssl >/dev/null
       opt=""
       if [ -n "$VITA_OPT_LEVEL" ]; then opt="-DVITA_OPT_LEVEL=$VITA_OPT_LEVEL"; fi
       cmake -S . -B build $opt >/dev/null
       make -C build -j"$(nproc)"
-      chown -R "$HOST_UID:$HOST_GID" build
     '
   ls -l "$REPO_ROOT/build/eboot.bin" "$REPO_ROOT/build/moonlight.vpk"
 }
@@ -139,7 +141,7 @@ cmd_log() {
 cmd_crash() {
   require_vita
   local newest
-  newest="$(curl -sf --max-time 10 "$(ftp_url "ux0:/data/")" | awk '/\.psp2dmp$/ {print $NF}' | sort | tail -n 1)"
+  newest="$(curl -sf --max-time 10 "$(ftp_url "ux0:/data/")" | tr -d '\r' | awk '/\.psp2dmp$/ {print $NF}' | sort | tail -n 1)"
   [ -n "$newest" ] || die "no core dumps in ux0:data"
   curl -sf --max-time 60 "$(ftp_url "ux0:/data/$newest")" -o "$REPO_ROOT/build/$newest"
   echo "saved build/$newest"
