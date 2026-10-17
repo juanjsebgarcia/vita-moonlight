@@ -191,8 +191,6 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->motion_controls_scalar_y = FLT(value);
     } else if (strcmp(name, "language") == 0) {
       config->language = STR(value);
-    } else if (strcmp(name, "keyboard_layout") == 0) {
-      config->keyboard_layout = INT(value);
     } else if (strcmp(name, "touchscreen_mode") == 0) {
       config->touchscreen_mode = atoi(value);
     } else if (strcmp(name, "controller_type") == 0) {
@@ -275,7 +273,6 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_int(fd, "double_tap_sprint_step_time", config->double_tap_sprint_step_time);
   write_config_float(fd, "motion_controls_scalar_x", config->motion_controls_scalar_x);
   write_config_float(fd, "motion_controls_scalar_y", config->motion_controls_scalar_y);
-  write_config_int(fd, "keyboard_layout", config->keyboard_layout);
   write_config_string(fd, "language", config->language);
   write_config_int(fd, "touchscreen_mode", config->touchscreen_mode);
   write_config_bool(fd, "swap_shoulder_buttons", config->swap_shoulder_buttons); // Guardar swap_shoulder_buttons en la raíz
