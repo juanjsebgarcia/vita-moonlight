@@ -154,6 +154,7 @@ target_link_libraries(${PROJECT_NAME}.elf
 	-lvita2d
 	-lSceGxm_stub
 	-lScePgf_stub
+	-lSceSysmodule_stub
 	-lSceCommonDialog_stub
 	-lfreetype
 	-lpng

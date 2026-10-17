@@ -125,12 +125,12 @@ static void host_manage_draw(void) {
   const char *hint = tr(STR_HOST_HINT_WAKE_ONLY);
   const int glyph_size = 14;
   const int gap = 6;
-  int width = glyph_size + gap + vita2d_font_text_width(font, 18, hint);
+  int width = glyph_size + gap + rich_text_width(18, hint);
   // The host menu is a 600x320 box, centred on the 960x544 screen
   int x = 480 + 300 - width;
   int y = 272 + 160 + 26;
   x += draw_button_glyph(BUTTON_GLYPH_SQUARE, x, y, glyph_size) + gap;
-  vita2d_font_draw_text(font, x, y, 0xffffffff, 18, hint);
+  draw_rich_text(x, y, 0xffffffff, 18, hint);
 }
 
 // Connects to a paired host, confirming first if its IP has changed
