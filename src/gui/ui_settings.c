@@ -514,12 +514,13 @@ enum {
 
 static int SETTINGS_VIEW_IDX[SETTINGS_VIEW_MAX_COUNT];
 
-// Writes a setting's value into its row. Row 0 is never a setting, so 0 means
-// the setting has no row in this menu (hidden mid-stream, or not listed) and
-// the value is skipped rather than written over the first row.
+// Writes a setting's value into its row. -1 means the setting has no row in
+// this menu (another tab, hidden mid-stream, or not listed) and the value is
+// skipped. Any row can be a setting, the first included, now tabs have no
+// category row at the top.
 #define SET_ROW_VALUE(VIEW, VALUE) \
   do { \
-    if (SETTINGS_VIEW_IDX[(VIEW)] > 0) { \
+    if (SETTINGS_VIEW_IDX[(VIEW)] >= 0) { \
       strcpy(menu[SETTINGS_VIEW_IDX[(VIEW)]].subname, (VALUE)); \
     } \
   } while (0)
@@ -619,7 +620,7 @@ static void sync_bitrate_rows(menu_entry *menu) {
   snprintf(kbps, sizeof(kbps), "%d kbps", config.stream.bitrate);
   SET_ROW_VALUE(SETTINGS_VIEW_BITRATE, bitrate_custom ? "Custom" : value);
   SET_ROW_VALUE(SETTINGS_VIEW_BITRATE_CUSTOM, kbps);
-  if (SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM] > 0) {
+  if (SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM] >= 0) {
     menu[SETTINGS_VIEW_IDX[SETTINGS_VIEW_BITRATE_CUSTOM]].disabled = !bitrate_custom;
   }
 }
@@ -1474,8 +1475,8 @@ rebuild:
   // Rows belong to the tab set by MENU_TAB; only the current tab's are added.
   // Before the first MENU_TAB, rows show on every tab.
   int building_tab = -1;
-  // Rows are re-numbered on every build; 0 means the setting has no row
-  memset(SETTINGS_VIEW_IDX, 0, sizeof(SETTINGS_VIEW_IDX));
+  // Rows are re-numbered on every build; -1 (all bits set) means no row
+  memset(SETTINGS_VIEW_IDX, 0xff, sizeof(SETTINGS_VIEW_IDX));
   // Mid-stream, only list settings that take effect on resume. The rest (such as
   // resolution, bitrate or controller type) are agreed with the PC when a stream
   // starts, so they come back once it ends.
