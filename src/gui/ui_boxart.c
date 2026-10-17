@@ -152,6 +152,8 @@ static int download_cover(int app_id, const char *path) {
   if (size <= NO_ARTWORK_MAX_BYTES) {
     vita_debug_log("[BOXART] app %d: no artwork on the host (%u bytes), showing its name", app_id, (unsigned)size);
     free(image);
+    // The artwork may have been removed on the host: forget an old cover too
+    sceIoRemove(path);
     return FETCH_NONE;
   }
 
