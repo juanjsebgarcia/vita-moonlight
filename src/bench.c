@@ -721,6 +721,24 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   fprintf(f, "}\n");
 }
 
+// Writes the report to a temporary file and then moves it into place, so a
+// tool polling over FTP never reads a half-written report. The old file is
+// removed first, since a rename over an existing file can fail on the Vita.
+static void write_report_file(const char *path, const char *started, const char *host, const char *app,
+                              const char *error, float seconds, const link_samples *link,
+                              report_summary *summary) {
+  char tmp[REPORT_PATH_MAX + 48];
+  snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+  FILE *f = fopen(tmp, "w");
+  if (f == NULL) {
+    return;
+  }
+  write_report(f, started, host, app, error, seconds, link, summary);
+  fclose(f);
+  sceIoRemove(path);
+  sceIoRename(tmp, path);
+}
+
 static void save_report(const char *started_compact, const char *started, const char *host, const char *app,
                         const char *error, float seconds, const link_samples *link, report_summary *summary) {
   char dir[REPORT_PATH_MAX];
@@ -729,20 +747,12 @@ static void save_report(const char *started_compact, const char *started, const 
   snprintf(summary->path, sizeof(summary->path), "%.*s/bench-%s.json",
            (int)(sizeof(summary->path) - 64), dir, started_compact);
 
-  FILE *f = fopen(summary->path, "w");
-  if (f) {
-    write_report(f, started, host, app, error, seconds, link, summary);
-    fclose(f);
-  }
-  // A fixed name too, so tools can always find the latest run
+  write_report_file(summary->path, started, host, app, error, seconds, link, summary);
+  // A fixed name too, so tools can always find the latest run. write_report
+  // sorts the series in place, which the first write already did.
   char latest[REPORT_PATH_MAX + 32];
   snprintf(latest, sizeof(latest), "%s/last-bench.json", dir);
-  f = fopen(latest, "w");
-  if (f) {
-    // write_report sorts the series in place, which percentiles already did
-    write_report(f, started, host, app, error, seconds, link, summary);
-    fclose(f);
-  }
+  write_report_file(latest, started, host, app, error, seconds, link, summary);
   vita_debug_log("[BENCH] report written to %s", summary->path);
 }
 
