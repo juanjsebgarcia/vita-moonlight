@@ -377,7 +377,9 @@ static int auto_detect(void) {
     display_error("Couldn't read the Wi-Fi signal. Check the Vita is connected to Wi-Fi.");
     return RECOMMENDED_NONE;
   }
-  flash_message("Testing the connection to %s...", ui_connect_server_name());
+  flash_message("Testing the connection to %s.\n\nPlease wait while the connection is "
+                "benchmarked. The PC's desktop shows for about %d seconds.",
+                ui_connect_server_name(), TEST_SECONDS);
   char err[256] = "";
   if (!test_stream(&result, err, sizeof(err))) {
     display_error("Auto-detect couldn't finish the connection test: %s", err);
