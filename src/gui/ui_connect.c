@@ -166,6 +166,10 @@ int ui_connect_open_headless(device_info_t *info, char *err, size_t err_len) {
   snprintf(current_host, sizeof(current_host), "%s", info->name);
   connection_reset();
 
+  // Forget the previous PC's apps first: if this PC's list can't be read,
+  // a stale list would let a later attempt start one of those IDs here.
+  // Not freed, as elsewhere: menu rows may still point at its names.
+  server_applist = NULL;
   if (gs_applist(&server, &server_applist) != GS_OK) {
     snprintf(err, err_len, "Can't read the app list from %s: %s", info->name, gs_error ? gs_error : "");
     return -1;
