@@ -143,6 +143,7 @@ cmd_crash() {
   local newest
   newest="$(curl -sf --max-time 10 "$(ftp_url "ux0:/data/")" | tr -d '\r' | awk '/\.psp2dmp$/ {print $NF}' | sort | tail -n 1)"
   [ -n "$newest" ] || die "no core dumps in ux0:data"
+  mkdir -p "$REPO_ROOT/build"
   curl -sf --max-time 60 "$(ftp_url "ux0:/data/$newest")" -o "$REPO_ROOT/build/$newest"
   echo "saved build/$newest"
   echo "decode with: vita-parse-core build/$newest build/moonlight.elf"
