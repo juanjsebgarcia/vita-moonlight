@@ -26,6 +26,11 @@ static gui_draw_callback gui_global_draw_callback;
 static gui_loop_callback gui_global_loop_callback;
 
 vita2d_font *font;
+// The same font again, only for the small labels inside button glyphs.
+// vita2d caches each character once, at the size it's first drawn, so small
+// labels drawn with the main font made later full-size letters (such as the
+// L in "Licence", after an L button glyph) come out small.
+static vita2d_font *glyph_font;
 
 menu_geom make_geom_centered(int w, int h) {
   menu_geom geom = {0};
@@ -156,6 +161,9 @@ void draw_menu(menu_entry menu[], int total_elements, menu_geom geom, int cursor
       text_color = 0xff00ff00; // Verde para seleccionado
     }
     if (!menu[i].disabled) {
+      if (menu[i].warning && cursor != cursor_idx) {
+        text_color = 0xff00d0ff;
+      }
       cursor_idx++;
     } else {
       text_color = 0xffaaaaaa;
@@ -294,10 +302,10 @@ static void draw_label(const char *label, float cx, float top, float height, uns
   if (font_size < 8) {
     font_size = 8;
   }
-  int width = vita2d_font_text_width(font, font_size, label);
+  int width = vita2d_font_text_width(glyph_font, font_size, label);
   // y is the baseline, so drop it by roughly half the cap height below the middle
   float baseline = top + height / 2.0f + font_size * 0.36f;
-  vita2d_font_draw_text(font, (int)(cx - width / 2.0f), (int)baseline, color, font_size, label);
+  vita2d_font_draw_text(glyph_font, (int)(cx - width / 2.0f), (int)baseline, color, font_size, label);
 }
 
 // Width of a labelled pill for this label at this height
@@ -306,7 +314,7 @@ static int pill_width(const char *label, int size) {
   if (font_size < 8) {
     font_size = 8;
   }
-  int width = vita2d_font_text_width(font, font_size, label) + size / 2 + 4;
+  int width = vita2d_font_text_width(glyph_font, font_size, label) + size / 2 + 4;
   return width > size ? width : size;
 }
 
@@ -521,6 +529,23 @@ static void draw_button_captions(menu_geom geom, char *buttons_captions[], int b
   }
 }
 
+#define ALERT_WIDTH 400
+#define ALERT_MIN_HEIGHT 200
+// Room under the text for the button captions, which sit 10 px above the
+// bottom edge, plus a gap so the last line never touches them
+#define ALERT_BUTTON_AREA 52
+
+// An alert box tall enough for its wrapped text and the buttons, never
+// shorter than the standard 200 px, and no taller than the screen allows
+static menu_geom alert_geom_for(const char *message) {
+  char lines[ALERT_MAX_LINES][WRAP_LINE_MAX];
+  int line_count = wrap_text(message, ALERT_WIDTH - ALERT_SIDE_PADDING * 2, lines, ALERT_MAX_LINES);
+  int height = ALERT_TOP_PADDING + line_count * UI_LINE_HEIGHT + ALERT_BUTTON_AREA;
+  height = height < ALERT_MIN_HEIGHT ? ALERT_MIN_HEIGHT : height;
+  height = height > HEIGHT - 40 ? HEIGHT - 40 : height;
+  return make_geom_centered(ALERT_WIDTH, height);
+}
+
 void draw_alert(char *message, menu_geom geom, char *buttons_captions[], int buttons_count) {
   vita2d_draw_rectangle(geom.x, geom.y, geom.width, geom.height, 0x18fffff);
 
@@ -652,6 +677,11 @@ int display_menu(menu_entry menu[], int total_elements, menu_geom *geom_ptr,
     offset -= cursor_y < geom.y ? 8 : 0;
     offset -= cursor_y > geom.total_y - geom.el * 2 ? -8 : 0;
 
+    // The callback can swap confirm and cancel (Swap X & O in Settings), so
+    // read this frame's press with the buttons it was made with. Otherwise
+    // the X that opened Settings counts as cancel and closes this menu too.
+    SceCtrlButtons cancel_button = config.btn_cancel;
+
     if (cb) {
       exit_code = cb(menu[real_cursor].id, context, &input);
       if (exit_code) {
@@ -663,7 +693,7 @@ int display_menu(menu_entry menu[], int total_elements, menu_geom *geom_ptr,
       gui_global_loop_callback(menu[real_cursor].id, context, &input);
     }
 
-    if (input.buttons & config.btn_cancel && (input.buttons & SCE_CTRL_HOLD) == 0) {
+    if (input.buttons & cancel_button && (input.buttons & SCE_CTRL_HOLD) == 0) {
       if (!back_cb || back_cb(context) == 0) {
         exit_code = 1;
         goto error;
@@ -684,7 +714,7 @@ error:
 void display_alert(char *message, char *button_captions[], int buttons_count,
                    gui_loop_callback cb, void *context) {
 
-  menu_geom alert_geom = make_geom_centered(400, 200);
+  menu_geom alert_geom = alert_geom_for(message);
 
   while (true) {
     ui_start();
@@ -807,7 +837,7 @@ void flash_message(char *format, ...) {
 
   ui_end();
 
-  menu_geom alert_geom = make_geom_centered(400, 200);
+  menu_geom alert_geom = alert_geom_for(buf);
   ui_start();
 
   vita2d_draw_rectangle(0, 0, WIDTH, HEIGHT, 0xff000000);
@@ -824,6 +854,7 @@ void guilib_init(gui_loop_callback global_loop_cb, gui_draw_callback global_draw
   vita2d_init();
   vita2d_set_clear_color(0xff000000);
   font = vita2d_load_font_file("app0:assets/nerdfont.ttf");
+  glyph_font = vita2d_load_font_file("app0:assets/nerdfont.ttf");
 
   gui_global_draw_callback = global_draw_cb;
   gui_global_loop_callback = global_loop_cb;
@@ -831,7 +862,7 @@ void guilib_init(gui_loop_callback global_loop_cb, gui_draw_callback global_draw
 
 int display_confirm(const char* message) {
     char* buttons[] = {"X: Yes", "O: No"};
-    menu_geom geom = make_geom_centered(400, 200);
+    menu_geom geom = alert_geom_for(message);
     while (1) {
         ui_start();
         draw_alert((char*)message, geom, buttons, 2);

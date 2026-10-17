@@ -79,6 +79,8 @@ add_executable(${PROJECT_NAME}.elf
 	src/gui/ime.c
 	src/gui/ui.c
 	src/gui/ui_settings.c
+	src/gui/ui_recommended.c
+	src/gui/ui_boxart.c
 	src/gui/ui_connect.c
 	src/gui/ui_device.c
 	src/gui/ui_hotkey.c
@@ -173,6 +175,7 @@ target_link_libraries(${PROJECT_NAME}.elf
 	-lSceTouch_stub
 	-lSceNet_stub
 	-lSceNetCtl_stub
+	-lSceRegistryMgr_stub
 	-lScePower_stub
 	-lSceVideodec_stub
 	-lSceCommonDialog_stub

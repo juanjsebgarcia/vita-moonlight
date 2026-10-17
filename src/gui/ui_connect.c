@@ -4,6 +4,7 @@
 #include "errors.h"
 #include "guilib.h"
 #include "ime.h"
+#include "ui_boxart.h"
 #include "ui_settings.h"
 
 #include "../connection.h"
@@ -13,6 +14,7 @@
 #include "../util.h"
 #include "../device.h"
 #include "../debug.h"
+#include "../netcount.h"
 
 #include "client.h"
 #include "errors.h"
@@ -63,9 +65,14 @@ int get_app_name(PAPP_LIST list, int id, char *name) {
   return 0;
 }
 
+// Set by start_stream once the host has launched the app, even if the stream
+// then fails to start
+static bool start_launched_app = false;
+
 // Starts streaming appId. Returns 0, or a negative code with a message in err,
 // so callers decide whether to show it (the benchmark runs without dialogs).
 static int start_stream(int appId, char *err, size_t err_len) {
+  start_launched_app = false;
   // TODO support force controller id
   vita_debug_log("Running gs_start_app...");
   int ret = gs_start_app(&server, &config.stream, appId, config.sops, config.localaudio, 1);
@@ -80,6 +87,7 @@ static int start_stream(int appId, char *err, size_t err_len) {
     return ret;
   }
   vita_debug_log("App started.");
+  start_launched_app = true;
 
   enum platform system = VITA;
   int drFlags = 0;
@@ -159,6 +167,10 @@ int ui_connect_open_headless(device_info_t *info, char *err, size_t err_len) {
   snprintf(current_host, sizeof(current_host), "%s", info->name);
   connection_reset();
 
+  // Forget the previous PC's apps first: if this PC's list can't be read,
+  // a stale list would let a later attempt start one of those IDs here.
+  // Not freed, as elsewhere: menu rows may still point at its names.
+  server_applist = NULL;
   if (gs_applist(&server, &server_applist) != GS_OK) {
     snprintf(err, err_len, "Can't read the app list from %s: %s", info->name, gs_error ? gs_error : "");
     return -1;
@@ -205,11 +217,36 @@ int ui_connect_find_bench_app(const char *preferred, char *found, size_t found_l
   return match->id;
 }
 
+int ui_connect_find_app(const char *name) {
+  for (PAPP_LIST app = server_applist; app != NULL; app = app->next) {
+    if (strcasecmp(app->name, name) == 0) {
+      return app->id;
+    }
+  }
+  return -1;
+}
+
 int ui_connect_start_app_by_id(int app_id, char *err, size_t err_len) {
+  // Auto-detect and the benchmark quit their app afterwards. Over a running
+  // app, the host would resume that one instead, and they'd then close it.
+  if (server.currentGame != 0) {
+    snprintf(err, err_len, "An app is already running on %s. Quit it from the "
+             "PC's menu first.", ui_connect_server_name());
+    return -1;
+  }
   vitapower_config(config);
   vitainput_config(config);
   connection_paired();
-  return start_stream(app_id, err, err_len);
+  // Count this stream's video packets afresh (src/netcount.c)
+  netcount_reset();
+  int ret = start_stream(app_id, err, err_len);
+  if (ret != 0 && start_launched_app) {
+    // The app started but its stream didn't: close it again, since the host
+    // was idle before (this also clears server.currentGame)
+    ui_connect_quit_app();
+    ui_connect_return_to_server();
+  }
+  return ret;
 }
 
 void ui_connect_return_to_server(void) {
@@ -222,14 +259,21 @@ void ui_connect_return_to_server(void) {
 }
 
 int ui_connect_quit_app(void) {
-  return gs_quit_app(&server);
+  int ret = gs_quit_app(&server);
+  if (ret == GS_OK) {
+    // As the menu's Quit does, so the apps can be started again
+    server.currentGame = 0;
+  }
+  return ret;
 }
 
 enum {
-  CONNECT_PAIRUNPAIR = 13,
+  CONNECT_PAIRUNPAIR = -100, // negative: app rows use the host's app IDs as menu IDs
   CONNECT_DISCONNECT,
   CONNECT_QUITAPP,
-  CONNECT_SETTINGS
+  CONNECT_SETTINGS,
+  // The row of box art covers, which stands for every app
+  CONNECT_BOXART
 };
 
 #define QUIT_RELOAD 2
@@ -246,18 +290,38 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
     menu[i].disabled = (server.currentGame != 0);
   }
 
+  ui_boxart_set_focus(id == CONNECT_BOXART);
+  if (id == CONNECT_BOXART) {
+    ui_boxart_input(input->buttons);
+  }
+
   if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
     return 0;
+  }
+
+  if (id == CONNECT_BOXART) {
+    // Starts the selected cover's app, as choosing it in the text list does
+    id = ui_boxart_selected_app();
+    if (id == 0) {
+      return 0;
+    }
   }
 
   int ret;
 
   switch (id) {
-    case CONNECT_SETTINGS:
+    case CONNECT_SETTINGS: {
+      int app_list_style = config.app_list_style;
       // Settings that apply to a running stream take effect on Resume, which
-      // reloads the input and power settings and restarts output
-      ui_settings_menu();
-      return 0;
+      // reloads the input and power settings and restarts output. The rest
+      // need a new stream, which Settings can ask for.
+      if (ui_settings_menu() == SETTINGS_RESTART_STREAM) {
+        ui_connect_restart_stream();
+        return connection_get_status() == LI_DISCONNECTED ? 1 : QUIT_RELOAD;
+      }
+      // Rebuild to show the apps in the newly chosen style
+      return config.app_list_style != app_list_style ? QUIT_RELOAD : 0;
+    }
     case CONNECT_PAIRUNPAIR:
       if (server.paired) {
         flash_message("Unpairing...");
@@ -333,6 +397,8 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
       switch (status) {
         case LI_MINIMIZED:
           if (server.currentGame == id) {
+            // The covers drawn this frame stay in memory until the menu closes
+            ui_boxart_stop_loading();
             sceKernelDelayThread(500 * 1000);
             connection_resume();
             break;
@@ -340,6 +406,9 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
           // TODO: stop previous stream
         case LI_PAIRED:
           flash_message("Stream starting...");
+          // That frame has finished drawing, so the covers can go now: the
+          // stream needs the memory and the network more
+          ui_boxart_close();
           ui_connect_stream(id);
           break;
       }
@@ -402,6 +471,9 @@ int ui_connect(char *name, char *address, uint16_t port) {
 int ui_connected_menu() {
   int ret;
   int app_count = 0;
+  // pos[] marks the app rows, which ui_connect_loop disables mid-stream; clear
+  // it so a menu without them never uses the last menu's rows
+  pos[0] = pos[1] = 0;
   if (server.paired) {
     ret = gs_applist(&server, &server_applist);
     if (ret != GS_OK) {
@@ -453,7 +525,12 @@ int ui_connected_menu() {
            server.serverInfo.serverInfoGfeVersion);
 
   MENU_MESSAGE(server_info, 0xffffffff);
-  MENU_MESSAGE("", 0);
+
+  // Covers need the room under the menu, so the menu is kept short
+  bool boxart = config.app_list_style == APP_LIST_BOXART && server.paired && server_applist != NULL;
+  if (!boxart) {
+    MENU_MESSAGE("", 0);
+  }
 
   if (!server.paired) {
     // pairing
@@ -491,7 +568,12 @@ int ui_connected_menu() {
     MENU_ENTRY(CONNECT_DISCONNECT, "Disconnect");
 
     // app list
-    if (server_applist != NULL) {
+    if (boxart) {
+      pos[0] = idx;
+      MENU_ENTRY(CONNECT_BOXART, "Applications");
+      menu[idx - 1].suffix = ui_boxart_counter();
+      pos[1] = idx;
+    } else if (server_applist != NULL) {
       MENU_CATEGORY("Applications");
 
       pos[0] = idx;
@@ -503,12 +585,22 @@ int ui_connected_menu() {
       }
 
       pos[1] = idx;
-    } else {
-      pos[0] = -1;
     }
   }
 
-  return display_menu(menu, idx, NULL, &ui_connect_loop, NULL, NULL, &menu);
+  if (!boxart) {
+    return display_menu(menu, idx, NULL, &ui_connect_loop, NULL, NULL, &menu);
+  }
+
+  // The menu sits at the top, as tall as its rows, with the covers beneath it
+  menu_geom geom = make_geom_centered(600, (idx + 1) * 24);
+  geom.y = 30;
+  geom.total_y = geom.y + geom.height;
+  ui_boxart_open(&server, current_host, server_applist, server.currentGame);
+  ret = display_menu(menu, idx, &geom, &ui_connect_loop, NULL, &ui_boxart_draw, &menu);
+  // display_menu has finished its last frame, so the textures can be freed
+  ui_boxart_close();
+  return ret;
 }
 
 device_info_t* ui_connect_and_pairing(device_info_t *info) {
@@ -597,6 +689,26 @@ paired:
   }
 
   return info;
+}
+
+void ui_connect_restart_stream(void) {
+  int app_id = server.currentGame;
+  if (app_id == 0 || connection_get_status() != LI_MINIMIZED) {
+    return;
+  }
+  flash_message("Restarting the stream with the new settings...");
+  // The app keeps running on the host; only our stream ends
+  connection_terminate();
+  sceKernelDelayThread(500 * 1000);
+  connection_reset();
+  connection_paired();
+  vitapower_config(config);
+  vitainput_config(config);
+  // A resume carries the new resolution, frame rate and bitrate
+  ui_connect_stream(app_id);
+  while (connection_is_connected()) {
+    sceKernelDelayThread(500 * 1000);
+  }
 }
 
 void ui_connect_resume() {

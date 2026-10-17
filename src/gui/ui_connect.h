@@ -21,6 +21,9 @@ const char *ui_connect_server_name(void);
 // match on preferred, otherwise the first app with "bench" in its name.
 // Returns its id with its name in found, or -1 if there isn't one.
 int ui_connect_find_bench_app(const char *preferred, char *found, size_t found_len);
+// Finds an app on the connected host by name, ignoring case. Returns its id,
+// or -1 if there isn't one.
+int ui_connect_find_app(const char *name);
 // Starts streaming an app on the connected host. Returns 0, or a negative
 // code with a message in err.
 int ui_connect_start_app_by_id(int app_id, char *err, size_t err_len);
@@ -29,3 +32,7 @@ int ui_connect_start_app_by_id(int app_id, char *err, size_t err_len);
 void ui_connect_return_to_server(void);
 // Quits the app running on the host the last connection used
 int ui_connect_quit_app(void);
+// Ends the paused stream and resumes the same app with the current stream
+// settings, which the host applies on resume, then waits while it streams.
+// For applying settings that only take effect on a new stream.
+void ui_connect_restart_stream(void);

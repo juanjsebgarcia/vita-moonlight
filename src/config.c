@@ -154,6 +154,8 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->jp_layout = BOOL(value);
     } else if (strcmp(name, "stats_overlay") == 0) {
       config->stats_overlay = INT(value);
+    } else if (strcmp(name, "app_list_style") == 0) {
+      config->app_list_style = INT(value);
     } else if (strcmp(name, "show_fps") == 0) {
       // Older configs only had an FPS on/off switch
       if (BOOL(value) && config->stats_overlay == STATS_OVERLAY_OFF) {
@@ -254,6 +256,7 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_bool(fd, "decode_yuv", config->decode_yuv);
   write_config_bool(fd, "jp_layout", config->jp_layout);
   write_config_int(fd, "stats_overlay", config->stats_overlay);
+  write_config_int(fd, "app_list_style", config->app_list_style);
   write_config_bool(fd, "save_debug_log", config->save_debug_log);
   write_config_bool(fd, "enable_front_touchzones", config->enable_front_touchzones);
 
@@ -341,6 +344,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->decode_yuv = true;
   config->jp_layout = false;
   config->stats_overlay = STATS_OVERLAY_OFF;
+  config->app_list_style = APP_LIST_BOXART;
   // Off by default: it counts frames in ~1 s windows and drops any excess, so jitter
   // around 60 fps periodically discards a decoded frame and causes a visible hitch
   config->enable_frame_pacer = false;
@@ -419,6 +423,10 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
 
   if (config->stats_overlay < STATS_OVERLAY_OFF || config->stats_overlay >= STATS_OVERLAY_COUNT) {
     config->stats_overlay = STATS_OVERLAY_OFF;
+  }
+
+  if (config->app_list_style < 0 || config->app_list_style >= APP_LIST_STYLE_COUNT) {
+    config->app_list_style = APP_LIST_BOXART;
   }
 
   // Larger packets would be IP-fragmented on a standard 1500-byte MTU
