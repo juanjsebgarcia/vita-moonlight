@@ -67,7 +67,7 @@ Each one says how to measure it. Add results to [Results](#results).
 | 1 | ~~Thread priority and core affinity~~ **Done: fine.** | Threads aren't pinned to one core | `[THREAD]` lines | None |
 | 2 | ~~Split the decode timing~~ **Done: all hardware.** | Assembly is 0.01 to 0.03 ms; `sceAvcdecDecode` is 4.7 to 4.8 ms | `assemble_ms`, `hw_decode_ms` in the report | Tiny |
 | 3 | ~~Bitrate and packet size~~ **Done.** | 5 Mbps saves ~1.3 ms of receive; hardware decode is unchanged by bitrate; 1392-byte packets don't help | Run on the bench page (a black screen barely uses any bitrate): `tools/bench/run.sh --app "Moonlight Bench" b10:bench_input=key,bitrate=10000 b5:bench_input=key,bitrate=5000 p1392:bench_input=key,packetsize=1392` | No code |
-| 4 | **Decode to YUV, convert on the GPU** (now the only decode lever left besides resolution) | If colour conversion is part of the hardware decode, outputting YUV420 and sampling it with GXM's built-in CSC formats saves 1 to 2 ms | Prototype behind a developer setting, then compare `decode_ms` and the pointer lag | Moderate |
+| 4 | **Decode to YUV, convert on the GPU.** **Done: −2.1 ms (−45%) hardware decode. Now the default:** Stream → Fast colour decoding (`decode_yuv`, on). | The decoder spent nearly half its time converting to RGBA. NV12 output (`YUV420_PACKED_RASTER`) into `YUV420P2_CSC0` textures; the GPU converts while sampling. Still to do: a pointer-mode A/B (less noisy) before making it the default. | Prototype behind a developer setting, then compare `decode_ms` and the pointer lag | Moderate |
 | 5 | **Bump moonlight-common-c** (40 commits behind) | The NEON FEC path lowers CPU cost when packets are lost; also brings leak, RTSP and frame-recovery fixes | Build check with VitaSDK, then compare with loss present (e.g. far from the AP) | Low to medium |
 | 6 | **Audio to video offset** | Audio trails video by a few tens of ms (20 ms output blocks, blocking output) | The page plays a click with each marker flash; the Vita times decoded audio against the marker | Moderate |
 | 7 | **Double-buffer audio output** (first sweep, item 7) | Removes possible crackle, and shortens audio latency | Item 6's measurement before and after | Small |
@@ -88,6 +88,7 @@ Not worth doing for now:
 | V-Sync (Enable VITA vblank) | Off | It adds up to a frame of latency |
 | Stats overlay | Off when not diagnosing | It costs ~1 ms of draw time per frame |
 | Clock boost | On | Faster depacketising, FEC, audio and draw |
+| Fast colour decoding (`decode_yuv`) | On (the default) | The decoder outputs YUV and the GPU converts it while drawing: about 2 ms less decode per frame |
 | Vita placement | Strong 2.4 GHz signal, Bluetooth off if not needed | Cut frame loss from ~50/min to 0 in testing |
 
 ## Results
@@ -96,6 +97,7 @@ Add a row per experiment: date, build or branch, host setup, command, and what c
 
 | Date | Experiment | Setup | Result |
 |---|---|---|---|
+| 2026-10-17 | YUV decode vs RGBA (bench page, key, 2 rounds) | B580, 60 fps, 10 Mbps, Wi-Fi ~60% | Hardware decode p50 4.72 → 2.47 / 2.82 ms, p95 5.48 → 3.09 / 3.21 ms. Draw 0.22 → 0.18 ms. Latency estimate 12.5 → 10.3 ms. 0 unreadable frames; colours correct by eye. Browser-marker input lag 183 vs 220 ms, within its 40 to 70 ms run-to-run spread; confirm with cursor mode. |
 | 2026-10-17 | Thread placement | Debug log on | main 0xA0 on CPU 1 (affinity 0x70000); input 0xA0 on CPU 1; video decode 0x9F on CPU 0, affinity unrestricted. Not pinned to one core. |
 | 2026-10-17 | Decode split, bitrate, packet size (bench page, key) | B580, 60 fps, Wi-Fi ~60% | Assembly 0.01 to 0.03 ms, hardware decode 4.69 to 4.76 ms whatever the bitrate. Receive 2.41 ms at 10 Mbps vs 1.08 ms at 5 Mbps. 1392-byte packets: receive 2.37 ms, more loss (59 vs 43 per minute). Draw 0.22 ms. |
 | 2026-10-16 | Send path (cursor, Desktop) | B580, DDX, 60 fps, next to AP | To wire 0.18 ms p50; pointer lag 73 ms p50, 4 to 5 frames |

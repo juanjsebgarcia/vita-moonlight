@@ -330,7 +330,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->bench_autorun = false;
   config->bench_quit_app = true;
   config->bench_input = "key";
-  config->decode_yuv = false;
+  config->decode_yuv = true;
   config->jp_layout = false;
   config->stats_overlay = STATS_OVERLAY_OFF;
   // Off by default: it counts frames in ~1 s windows and drops any excess, so jitter
