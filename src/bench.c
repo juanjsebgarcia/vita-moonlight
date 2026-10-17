@@ -304,6 +304,14 @@ bool vitabench_active(void) {
   return phase != PHASE_IDLE;
 }
 
+// 4 for RGBA output, 1 when the probes read the Y plane of a YUV frame
+static int probe_bpp = 4;
+
+static int pixel_lum(const uint8_t *p) {
+  // The channel order doesn't matter for telling black from white
+  return probe_bpp == 1 ? p[0] : (p[0] + p[1] + p[2]) / 3;
+}
+
 // Average luminance of a 3x3 patch at a point given as fractions of the region
 static int probe(const uint8_t *pixels, int stride_bytes, float x1, float y1, float x2, float y2,
                  float fx, float fy) {
@@ -312,9 +320,7 @@ static int probe(const uint8_t *pixels, int stride_bytes, float x1, float y1, fl
   int total = 0;
   for (int dy = -1; dy <= 1; dy++) {
     for (int dx = -1; dx <= 1; dx++) {
-      const uint8_t *p = pixels + (cy + dy) * stride_bytes + (cx + dx) * 4;
-      // The channel order doesn't matter for telling black from white
-      total += (p[0] + p[1] + p[2]) / 3;
+      total += pixel_lum(pixels + (cy + dy) * stride_bytes + (cx + dx) * probe_bpp);
     }
   }
   return total / 9;
@@ -332,8 +338,7 @@ static int probe_box_max(const uint8_t *pixels, int stride_bytes, float x1, floa
   for (int y = top; y <= bottom; y++) {
     const uint8_t *row = pixels + y * stride_bytes;
     for (int x = left; x <= right; x++) {
-      const uint8_t *p = row + x * 4;
-      int lum = (p[0] + p[1] + p[2]) / 3;
+      int lum = pixel_lum(row + x * probe_bpp);
       if (lum > max) {
         max = lum;
       }
@@ -342,13 +347,15 @@ static int probe_box_max(const uint8_t *pixels, int stride_bytes, float x1, floa
   return max;
 }
 
-// The decoder writes RGBA, 4 bytes per pixel
+// The decoder writes RGBA, 4 bytes per pixel, or in YUV mode NV21: the Y
+// plane, then a half-height plane of interleaved V and U
 static size_t frame_bytes(int stride_bytes, int texture_height) {
-  return (size_t)stride_bytes * texture_height;
+  size_t plane = (size_t)stride_bytes * texture_height;
+  return probe_bpp == 1 ? plane + plane / 2 : plane;
 }
 
 static const char *frame_format(void) {
-  return "rgba";
+  return probe_bpp == 1 ? "nv21" : "rgba";
 }
 
 // Copies the frame if tick is one of the grab ticks, exactly, so every run
@@ -387,11 +394,12 @@ static void free_grabs(void) {
 }
 
 void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t hw_start_us, uint64_t decoded_us,
-                             const uint8_t *pixels, int stride_bytes, int texture_height,
+                             const uint8_t *pixels, int stride_bytes, int bytes_per_pixel, int texture_height,
                              float region_x1, float region_y1, float region_x2, float region_y2) {
   if (phase == PHASE_IDLE || pixels == NULL) {
     return;
   }
+  probe_bpp = bytes_per_pixel;
 
   // Read the strip outside the lock; it's the only part that touches pixels
   int white = probe(pixels, stride_bytes, region_x1, region_y1, region_x2, region_y2,
@@ -789,12 +797,12 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   fprintf(f, ",\n  \"seconds\": %.1f,\n", seconds);
   fprintf(f, "  \"settings\": {\"width\": %d, \"height\": %d, \"fps\": %d, \"bitrate_kbps\": %d, "
              "\"packet_size\": %d, \"direct_decode\": %s, \"input_sync\": %s, \"boost_clocks\": %s, "
-             "\"frame_pacer\": %s, \"vblank_wait\": %s, \"stats_overlay\": %d, \"debug_log\": %s},\n",
+             "\"frame_pacer\": %s, \"vblank_wait\": %s, \"stats_overlay\": %d, \"debug_log\": %s, \"decode_yuv\": %s},\n",
           config.stream.width, config.stream.height, config.stream.fps, config.stream.bitrate,
           config.stream.packetSize, config.direct_decode ? "true" : "false",
           config.input_sync_to_controller ? "true" : "false", config.boost_clocks ? "true" : "false",
           config.enable_frame_pacer ? "true" : "false", config.enable_vita_vblank_wait ? "true" : "false",
-          config.stats_overlay, config.save_debug_log ? "true" : "false");
+          config.stats_overlay, config.save_debug_log ? "true" : "false", config.decode_yuv ? "true" : "false");
   fprintf(f, "  \"frames\": {\"received\": %u, \"rendered\": %u, \"fps_received\": %.2f, \"fps_rendered\": %.2f, "
              "\"lost_network\": %u, \"idr\": %u, \"replaced_before_shown\": %u, \"freezes\": %u},\n",
           state.frames_received, state.frames_rendered,

@@ -458,7 +458,8 @@ enum {
   SETTINGS_PACKET_SIZE,
   SETTINGS_BENCH_RUN,
   SETTINGS_BENCH_SECONDS,
-  SETTINGS_HIDE_DEVELOPER
+  SETTINGS_HIDE_DEVELOPER,
+  SETTINGS_DECODE_YUV
 };
 
 enum {
@@ -499,6 +500,7 @@ enum {
   SETTINGS_VIEW_BENCH_RUN,
   SETTINGS_VIEW_BENCH_SECONDS,
   SETTINGS_VIEW_HIDE_DEVELOPER,
+  SETTINGS_VIEW_DECODE_YUV,
 
   SETTINGS_VIEW_MAX_COUNT,
 };
@@ -592,6 +594,11 @@ static const char *settings_help_text(int id) {
     case SETTINGS_DIRECT_DECODE:
       return "For troubleshooting only. Uses the older way of handling video, which stutters more "
              "on a busy Wi-Fi network. Leave it off unless you want to compare the two.";
+    case SETTINGS_DECODE_YUV:
+      return "Lets the Vita's graphics chip handle the colour conversion while it draws each "
+             "frame, which nearly halves the video decoder's work (about 2 ms less per frame). "
+             "The picture looks the same. Only turn this off if colours look wrong, such as a "
+             "green or pink tint.";
     case SETTINGS_BENCH_RUN:
       return "Streams the benchmark page (tools/bench/bench.html) from this computer and measures "
              "input lag, latency, frame rate and dropped frames, then saves a report to the "
@@ -732,6 +739,11 @@ static int settings_loop(int id, void *context, const input_data *input) {
     ui_settings_save_config();
     vitabench_run(false);
     return SETTINGS_REBUILD;
+  }
+  if (id == SETTINGS_DECODE_YUV && confirm) {
+    config.decode_yuv = !config.decode_yuv;
+    SET_ROW_VALUE(SETTINGS_VIEW_DECODE_YUV, config.decode_yuv ? "yes" : "no");
+    return 0;
   }
   if (id == SETTINGS_HIDE_DEVELOPER && confirm) {
     config.developer_mode = false;
@@ -1248,6 +1260,9 @@ static int settings_loop(int id, void *context, const input_data *input) {
   sprintf(current, "%s", config.direct_decode ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_DIRECT_DECODE, current);
 
+  sprintf(current, "%s", config.decode_yuv ? "yes" : "no");
+  MENU_REPLACE(SETTINGS_VIEW_DECODE_YUV, current);
+
   sprintf(current, "%s", config.input_sync_to_controller ? "yes" : "no");
   MENU_REPLACE(SETTINGS_VIEW_INPUT_SYNC, current);
 
@@ -1353,6 +1368,7 @@ rebuild:
 
   MENU_ENTRY(SETTINGS_ENABLE_FRAME_PACER, SETTINGS_VIEW_ENABLE_FRAME_PACER, "Enable frame pacer", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_PACKET_SIZE, SETTINGS_VIEW_PACKET_SIZE, "Video packet size", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_DECODE_YUV, SETTINGS_VIEW_DECODE_YUV, "Fast colour decoding", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_LOCAL_AUDIO, SETTINGS_VIEW_LOCAL_AUDIO, "Enable local audio", "");
 
   MENU_CATEGORY("System");
