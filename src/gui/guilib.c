@@ -655,6 +655,11 @@ int display_menu(menu_entry menu[], int total_elements, menu_geom *geom_ptr,
     offset -= cursor_y < geom.y ? 8 : 0;
     offset -= cursor_y > geom.total_y - geom.el * 2 ? -8 : 0;
 
+    // The callback can swap confirm and cancel (Swap X & O in Settings), so
+    // read this frame's press with the buttons it was made with. Otherwise
+    // the X that opened Settings counts as cancel and closes this menu too.
+    SceCtrlButtons cancel_button = config.btn_cancel;
+
     if (cb) {
       exit_code = cb(menu[real_cursor].id, context, &input);
       if (exit_code) {
@@ -666,7 +671,7 @@ int display_menu(menu_entry menu[], int total_elements, menu_geom *geom_ptr,
       gui_global_loop_callback(menu[real_cursor].id, context, &input);
     }
 
-    if (input.buttons & config.btn_cancel && (input.buttons & SCE_CTRL_HOLD) == 0) {
+    if (input.buttons & cancel_button && (input.buttons & SCE_CTRL_HOLD) == 0) {
       if (!back_cb || back_cb(context) == 0) {
         exit_code = 1;
         goto error;
