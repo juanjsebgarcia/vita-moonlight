@@ -180,13 +180,13 @@ int end_search_thread(SceUID thid) {
 }
 
 static int ui_search_device_callback(int id, void *context, const input_data *input) {
-  if ((input->buttons & SCE_CTRL_TRIANGLE) != 0) {
+  if (ui_pressed(input, UI_INTENT_HELP)) {
     vita_debug_log("[mDNS] TRIÁNGULO presionado: refrescando búsqueda\n");
     stop_search_thread_if_running();
     start_search_thread();
     return 2; // Fuerza refresco del menú
   }
-  if ((input->buttons & config.btn_confirm) == 0 || (input->buttons & SCE_CTRL_HOLD) != 0) {
+  if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
     // if remain slot, reload discovered devices
     if (!DEVICE_ENTRY_IDX[DEVICE_VIEW_ITEM + found_device - 1]) {
       return 2;
