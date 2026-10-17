@@ -14,8 +14,10 @@ and 10 px otherwise. Button markers such as {start} count as their symbol.
 
 It checks the Settings rows (label, value and arrows, with the widest value
 each can show), the Settings notes, the Recommended settings rows, the tab
-bar, and the alert buttons. Values that depend on the player (a PC or app
-name) are estimated with a typical one. Exits 1 if anything doesn't fit.
+bar, the alert buttons, and the rows of the deadzone editor, the special
+keys menu and a PC's menus. Values that depend on the player (a PC or app
+name, a typed or stepped number) are checked at their realistic widest.
+Exits 1 if anything doesn't fit.
 """
 
 import argparse
@@ -41,6 +43,12 @@ GLYPH = 14
 PILLS = {"l": "L", "r": "R", "l2": "L2", "r2": "R2", "start": "START", "select": "SELECT"}
 MARKERS = {"cross", "circle", "triangle", "square", "confirm", "cancel", "dpad", "up", "down", "left",
            "right", "ps", "left_stick", "right_stick", "l3", "r3", "front_touch", "rear_touch"} | set(PILLS)
+# Stand-ins for what the player chooses, at their realistic widest: a
+# Windows PC name is at most 15 characters, and DESKTOP- plus 7 is the default
+PC_NAME = "DESKTOP-ABC1234"
+APP_NAME = "Steam Big Picture"
+DEADZONE = "945"
+ADDRESS = "255.255.255.255"
 ARROWS = ""  # ICON_LEFT_RIGHT_ARROWS, drawn after an adjustable row's value
 
 
@@ -183,11 +191,13 @@ def value_candidates(fn, t, language_names):
         "controller_type_value": lambda: ["PlayStation"],
         "mouse_accel_value": lambda: ["100"],
         "touch_mode_value": lambda: [t("TOUCH_OFF"), t("TOUCH_DS4"), t("TOUCH_MOUSE_ABSOLUTE"), t("TOUCH_TABLET")],
-        "sprint_time_value": lambda: ["500"],
-        "deadzone_value": lambda: [",".join([fill(t("UNIT_PIXELS"), "20")] * 4)],
-        # A typical PC and app name: longer ones run off, as English does
-        "bench_target_value": lambda: [fill(t("SET_BENCH_TARGET"), "Desktop", "MY-PC"),
-                                       fill(t("SET_BENCH_NO_APP"), "MY-PC")],
+        # Typed in, without a limit; a double tap takes well under 10 s
+        "sprint_time_value": lambda: ["1000"],
+        # deadzone_loop() moves each edge 15 px at a time, without a limit;
+        # three digits is as wide as a useful edge gets on a 960x544 screen
+        "deadzone_value": lambda: [",".join([fill(t("UNIT_PIXELS"), DEADZONE)] * 4)],
+        "bench_target_value": lambda: [fill(t("SET_BENCH_TARGET"), APP_NAME, PC_NAME),
+                                       fill(t("SET_BENCH_NO_APP"), PC_NAME)],
         "bench_seconds_value": lambda: [fill(t("UNIT_SECONDS"), "60")],
         "language_value": lambda: [fill(t("SET_LANGUAGE_AUTO"), name) for name in language_names],
         "version_value": lambda: ["v0.13.2"],
@@ -247,6 +257,23 @@ def checks(t, language_names):
     out.append(("Recommended REC_ROW_WEAK", rec_room, t("REC_ROW_WEAK"), [t("REC_FITS_NOW")], False))
     out.append(("Recommended (signal row)", rec_room, "",
                 [t("REC_WIRED"), t("REC_MOBILE"), t("REC_NO_WIFI"), fill(t("REC_WIFI_NOW"), "100")], False))
+    # The rear touch deadzone editor: a 250 px menu, a value per edge
+    for key in ("DEADZONE_TOP", "DEADZONE_RIGHT", "DEADZONE_BOTTOM", "DEADZONE_LEFT"):
+        out.append((f"Deadzone editor {key}", 250 - 22, t(key), [fill(t("UNIT_PIXELS"), DEADZONE)], True))
+    # Touchscreen special keys: the default menu, a key per corner
+    keys = [t(k) for k in ("SPECIAL_NONE", "SPECIAL_PAUSE", "SPECIAL_KEYBOARD", "SPECIAL_GUIDE",
+                           "SPECIAL_MOUSE_LEFT", "SPECIAL_MOUSE_RIGHT", "SPECIAL_MOUSE_MIDDLE")]
+    for key in ("SPECIAL_TOP_LEFT", "SPECIAL_TOP_RIGHT", "SPECIAL_BOTTOM_LEFT", "SPECIAL_BOTTOM_RIGHT"):
+        out.append((f"Special keys {key}", settings_room, t(key), keys, False))
+    for key in ("SPECIAL_OFFSET", "SPECIAL_SIZE"):
+        out.append((f"Special keys {key}", settings_room, t(key), ["544"], False))
+    # A PC's menu (600 px): its address, with its status on the right
+    out.append(("PC menu address and status", settings_room, fill(t("HOST_ADDRESS_LINE"), ADDRESS, "47989"),
+                [t(k) for k in ("HOST_UNPAIRED", "HOST_PAIRED_ONLINE", "HOST_UNPAIRED_ONLINE", "HOST_PAIRED_OFFLINE",
+                                "HOST_UNPAIRED_OFFLINE", "HOST_STATUS_IP_CHANGED")], False))
+    # The apps row of a connected PC's menu, with the cover counter
+    out.append(("PC menu CONNECTED_APPS", settings_room, t("CONNECTED_APPS"),
+                [fill(t("BOXART_COUNTER"), "100", "100")], True))
     return out
 
 

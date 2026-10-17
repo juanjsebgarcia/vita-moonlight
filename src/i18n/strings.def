@@ -235,7 +235,7 @@ S(MAIN_QUIT, "Quit", "Leaves Moonlight")
 /* A PC's menu */
 S(HOST_MENU_HEADING, "Host management", "Heading")
 S(HOST_TITLE, "Host: {0}", "{0} = PC name")
-S(HOST_ADDRESS_LINE, "IP: {0}  PORT: {1}", "{0} = IP address, {1} = port number")
+S(HOST_ADDRESS_LINE, "IP: {0}:{1}", "{0} = IP address, {1} = port number; the PC's status follows on the same line: keep short")
 S(HOST_UNPAIRED, "Unpaired", "")
 S(HOST_PAIRED_ONLINE, "Paired (Online)", "")
 S(HOST_UNPAIRED_ONLINE, "Unpaired (Online)", "")
