@@ -82,6 +82,9 @@ typedef struct _CONFIGURATION {
   int stats_overlay; // STATS_OVERLAY_* from stats.h
   int app_list_style; // APP_LIST_* below
   bool enable_frame_pacer;
+  // How long to hold the next frame's packets while the current one is
+  // incomplete, in case its late packets arrive (0 gives up immediately)
+  int video_reorder_wait_ms;
   bool center_region_only;
   bool save_debug_log;
   struct input_config inputs[MAX_INPUTS];

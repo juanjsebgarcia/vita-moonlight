@@ -54,3 +54,6 @@ int gs_unpair(PSERVER_DATA server);
 int gs_pair(PSERVER_DATA server, char* pin);
 int gs_quit_app(PSERVER_DATA server);
 int gs_get_server_mac(PSERVER_DATA server, char *mac, unsigned int size);
+// Set the name sent to the host when pairing (plain text, URL-encoded here).
+// Empty or NULL falls back to "PS Vita".
+void gs_set_device_name(const char *name);

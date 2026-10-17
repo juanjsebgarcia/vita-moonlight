@@ -113,6 +113,12 @@ Stay tuned for more improvements!
 ---
 
 
+## Development
+
+To build in Docker without installing VitaSDK, deploy builds to a Vita over Wi-Fi with `tools/vita.sh`, read logs and crash dumps, and benchmark changes, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+---
+
 ## Build Requirements
 
 - **VitaSDK** installed and configured on your system ([guide here](https://vitasdk.org/)).

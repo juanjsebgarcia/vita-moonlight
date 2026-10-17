@@ -2,6 +2,7 @@
 
 #include "guilib.h"
 #include "ime.h"
+#include "ui_keyboard.h"
 
 #include "../config.h"
 #include "../input/vita.h"
@@ -448,7 +449,6 @@ enum {
   SETTINGS_SPECIAL_KEYS,
   SETTINGS_ENABLE_SPECIAL_KEYS,
   SETTINGS_ENABLE_PSBUTTON_CAPTURE,
-  // SETTINGS_HOTKEYS, // Eliminado: hotkeys fijos
   SETTINGS_CONTROLLER_TYPE,
   SETTINGS_SWAP_SHOULDER_BUTTONS, // NUEVO: Swap R1/L1 <-> R2/L2
   SETTINGS_MOUSE_ACCEL,
@@ -494,7 +494,6 @@ enum {
   SETTINGS_VIEW_SPECIAL_KEYS,
   SETTINGS_VIEW_ENABLE_SPECIAL_KEYS,
   SETTINGS_VIEW_ENABLE_PSBUTTON_CAPTURE,
-  // SETTINGS_VIEW_HOTKEYS, // Eliminado: hotkeys fijos
   SETTINGS_VIEW_CONTROLLER_TYPE,
   SETTINGS_VIEW_SWAP_SHOULDER_BUTTONS, // NUEVO: Swap R1/L1 <-> R2/L2
   SETTINGS_VIEW_MOUSE_ACCEL,
@@ -1608,7 +1607,6 @@ rebuild:
   MENU_ENTRY(SETTINGS_BACK_DEADZONE, SETTINGS_VIEW_BACK_DEADZONE, "Back touchscreen deadzone", "");
   MENU_ENTRY(SETTINGS_ENABLE_SPECIAL_KEYS, SETTINGS_VIEW_ENABLE_SPECIAL_KEYS, "Enable touchscreen special keys", "");
   MENU_ENTRY(SETTINGS_SPECIAL_KEYS, SETTINGS_VIEW_SPECIAL_KEYS, "Touchscreen special keys", "");
-  // MENU_ENTRY(SETTINGS_HOTKEYS, SETTINGS_VIEW_HOTKEYS, "Configure hotkeys", ""); // Eliminado: hotkeys fijos
   // NUEVO: Opción para usar la pantalla táctil como touchpad DS4
   MENU_ENTRY(SETTINGS_TOUCH_MODE_SELECT, SETTINGS_VIEW_TOUCH_MODE_SELECT, "Touchscreen mode", "");
   MENU_CATEGORY("Keyboard");
