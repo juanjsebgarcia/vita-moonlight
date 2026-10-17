@@ -452,16 +452,22 @@ static bool ask_number(const char *title, int current, int *result) {
 static int run_action(const setting_def *setting) {
   int number;
   switch (setting->action) {
-    case SETTING_ACTION_RECOMMENDED:
+    case SETTING_ACTION_RECOMMENDED: {
       // Rebuilt whatever happened: the values may have changed, and
       // auto-detect may have streamed, as a benchmark run does
+      int bitrate = config.stream.bitrate;
       ui_recommended_settings_menu();
+      if (config.stream.bitrate != bitrate) {
+        // A preset was applied: show it on its step rather than as Custom
+        settings_sync_bitrate();
+      }
       if (ui_recommended_take_restart()) {
         // Save and leave, so whoever opened Settings restarts the stream
         settings_back(NULL);
         return SETTINGS_RESTART_STREAM;
       }
       return SETTINGS_REBUILD;
+    }
     case SETTING_ACTION_CUSTOM_BITRATE:
       if (ask_number("Bitrate in kbps (10000 = 10 Mbps)", config.stream.bitrate, &number)) {
         if (number >= BITRATE_CUSTOM_MIN_KBPS && number <= BITRATE_CUSTOM_MAX_KBPS) {
