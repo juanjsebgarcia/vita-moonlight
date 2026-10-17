@@ -314,7 +314,9 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
 
   switch (id) {
     case CONNECT_SETTINGS: {
-      int app_list_style = config.app_list_style;
+      // Stop fetching covers first: Settings can start a stream (Auto-detect,
+      // the benchmark, a restart), and a download would compete with it
+      ui_boxart_stop_loading();
       // Settings that apply to a running stream take effect on Resume, which
       // reloads the input and power settings and restarts output. The rest
       // need a new stream, which Settings can ask for.
@@ -322,8 +324,9 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
         ui_connect_restart_stream();
         return connection_get_status() == LI_DISCONNECTED ? 1 : QUIT_RELOAD;
       }
-      // Rebuild to show the apps in the newly chosen style
-      return config.app_list_style != app_list_style ? QUIT_RELOAD : 0;
+      // Rebuilt, which restarts the cover loader, and shows the apps in the
+      // newly chosen style if that changed
+      return QUIT_RELOAD;
     }
     case CONNECT_PAIRUNPAIR:
       if (server.paired) {

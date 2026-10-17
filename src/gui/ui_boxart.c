@@ -167,7 +167,11 @@ static int download_cover(int app_id, const char *path) {
     written = fclose(file) == 0 && written;
   }
   free(image);
-  sceIoRemove(path);
+  // Replace the old cover only once the new one is safely written, so a full
+  // memory card never costs the cover already cached
+  if (written) {
+    sceIoRemove(path);
+  }
   if (!written || sceIoRename(temp_path, path) < 0) {
     vita_debug_log("[BOXART] app %d: couldn't save %s", app_id, path);
     sceIoRemove(temp_path);

@@ -299,6 +299,9 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
   config.stream.width = 1280;
   config.stream.height = 720;
   config.stream.bitrate = 20000;
+  // The packet counter (src/netcount.c) only sees full-size video packets,
+  // so test at the default size even if the player set a small one
+  config.stream.packetSize = 1024;
 
   bool ok = false;
   if (ui_connect_start_app_by_id(app_id, err, err_len) != 0) {
