@@ -521,7 +521,7 @@ int ui_recommended_settings_menu(void) {
     priority = PRIORITY_BALANCED;
   }
   menu[ROW_NOW] = (menu_entry) { .name = "", .disabled = true };
-  menu[ROW_PRIORITY] = (menu_entry) { .name = "What matters most", .id = ROW_PRIORITY, .suffix = ICON_LEFT_RIGHT_ARROWS };
+  menu[ROW_PRIORITY] = (menu_entry) { .name = "What matters most", .id = ROW_PRIORITY, .adjustable = true };
   menu[ROW_AUTO] = (menu_entry) { .name = "Auto-detect: test where you'll play", .id = ROW_AUTO };
   menu[ROW_GOOD] = (menu_entry) { .name = "Good connection: near the router, or wired", .id = ROW_GOOD };
   menu[ROW_WEAK] = (menu_entry) { .name = "Weak connection: further away or through walls", .id = ROW_WEAK };

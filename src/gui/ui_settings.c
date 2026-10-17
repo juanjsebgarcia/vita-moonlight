@@ -178,10 +178,10 @@ static int deadzone_settings_menu() {
 
   menu_entry menu[16];
   int idx = 0;
-  menu[idx++] = (menu_entry) { .name = "Top: ", .disabled = false, .id = 0, .suffix = ICON_LEFT_RIGHT_ARROWS };
-  menu[idx++] = (menu_entry) { .name = "Left: ", .disabled = false, .id = 1, .suffix = ICON_LEFT_RIGHT_ARROWS };
-  menu[idx++] = (menu_entry) { .name = "Bottom: ", .disabled = false, .id = 2, .suffix = ICON_LEFT_RIGHT_ARROWS };
-  menu[idx++] = (menu_entry) { .name = "Right: ", .disabled = false, .id = 3, .suffix = ICON_LEFT_RIGHT_ARROWS };
+  menu[idx++] = (menu_entry) { .name = "Top: ", .disabled = false, .id = 0, .adjustable = true };
+  menu[idx++] = (menu_entry) { .name = "Left: ", .disabled = false, .id = 1, .adjustable = true };
+  menu[idx++] = (menu_entry) { .name = "Bottom: ", .disabled = false, .id = 2, .adjustable = true };
+  menu[idx++] = (menu_entry) { .name = "Right: ", .disabled = false, .id = 3, .adjustable = true };
 
   menu_geom geom = make_geom_centered(250, 120);
   geom.x = 50;
@@ -1525,10 +1525,10 @@ rebuild:
       idx++; \
     } \
   } while (0)
-#define MENU_ENTRY(ID, TAG, NAME, SUFFIX) \
+#define MENU_ENTRY(ID, TAG, NAME, ADJUSTABLE) \
   do { \
     if (TAB_ACTIVE) { \
-      menu[idx] = (menu_entry) { .name = (NAME), .id = (ID), .suffix = (SUFFIX) }; \
+      menu[idx] = (menu_entry) { .name = (NAME), .id = (ID), .adjustable = (ADJUSTABLE) }; \
       SETTINGS_VIEW_IDX[(TAG)] = idx; \
       idx++; \
     } \
@@ -1543,10 +1543,10 @@ rebuild:
       idx++; \
     } \
   } while(0)
-#define MENU_ENTRY_BETWEEN_STREAMS(ID, TAG, NAME, SUFFIX) \
+#define MENU_ENTRY_BETWEEN_STREAMS(ID, TAG, NAME, ADJUSTABLE) \
   do { \
     if (!streaming) { \
-      MENU_ENTRY((ID), (TAG), (NAME), (SUFFIX)); \
+      MENU_ENTRY((ID), (TAG), (NAME), (ADJUSTABLE)); \
     } \
   } while (0)
 #define MENU_MESSAGE(MESSAGE) \
@@ -1559,57 +1559,57 @@ rebuild:
 
   if (vita_bluetooth_enabled()) {
     MENU_ENTRY(SETTINGS_BLUETOOTH_WARNING, SETTINGS_VIEW_BLUETOOTH_WARNING,
-               "Bluetooth is on, which can disturb Wi-Fi", "");
-    menu[idx - 1].warning = true;
+               "Bluetooth is on, which can disturb Wi-Fi", false);
+    menu[idx - 1].status = MENU_STATUS_WARNING;
   }
   if (streaming) {
     MENU_MESSAGE("Settings that need a new stream return once this one ends.");
   }
   MENU_TAB(TAB_STREAM);
   // Listed mid-stream too: it can restart the stream to apply its settings
-  MENU_ENTRY(SETTINGS_RECOMMENDED, SETTINGS_VIEW_RECOMMENDED, "Apply recommended settings", "");
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_RESOLUTION, SETTINGS_VIEW_RESOLUTION, "Resolution", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_FPS, SETTINGS_VIEW_FPS, "FPS", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE, SETTINGS_VIEW_BITRATE, "Bitrate", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE_CUSTOM, SETTINGS_VIEW_BITRATE_CUSTOM, "Custom bitrate", "");
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_SOPS, SETTINGS_VIEW_SOPS, "Change graphical game settings for performance", "");
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_FRAME_INVAL, SETTINGS_VIEW_ENABLE_FRAME_INVAL, "Enable reference frame invalidation", "");
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_STREAM_OPTIMIZE, SETTINGS_VIEW_ENABLE_STREAM_OPTIMIZE, "Enable stream optimization", "");
-  MENU_ENTRY(SETTINGS_ENABLE_VITA_VBLANK_WAIT, SETTINGS_VIEW_ENABLE_VITA_VBLANK_WAIT, "Enable VITA vblank", "");
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_CENTER_REGION_ONLY, SETTINGS_VIEW_CENTER_REGION_ONLY, "Fill screen (crop edges)", "");
+  MENU_ENTRY(SETTINGS_RECOMMENDED, SETTINGS_VIEW_RECOMMENDED, "Apply recommended settings", false);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_RESOLUTION, SETTINGS_VIEW_RESOLUTION, "Resolution", true);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_FPS, SETTINGS_VIEW_FPS, "FPS", true);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE, SETTINGS_VIEW_BITRATE, "Bitrate", true);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE_CUSTOM, SETTINGS_VIEW_BITRATE_CUSTOM, "Custom bitrate", false);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_SOPS, SETTINGS_VIEW_SOPS, "Change graphical game settings for performance", false);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_FRAME_INVAL, SETTINGS_VIEW_ENABLE_FRAME_INVAL, "Enable reference frame invalidation", false);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_STREAM_OPTIMIZE, SETTINGS_VIEW_ENABLE_STREAM_OPTIMIZE, "Enable stream optimization", false);
+  MENU_ENTRY(SETTINGS_ENABLE_VITA_VBLANK_WAIT, SETTINGS_VIEW_ENABLE_VITA_VBLANK_WAIT, "Enable VITA vblank", false);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_CENTER_REGION_ONLY, SETTINGS_VIEW_CENTER_REGION_ONLY, "Fill screen (crop edges)", false);
 
 
-  MENU_ENTRY(SETTINGS_ENABLE_FRAME_PACER, SETTINGS_VIEW_ENABLE_FRAME_PACER, "Enable frame pacer", "");
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_PACKET_SIZE, SETTINGS_VIEW_PACKET_SIZE, "Video packet size", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_DECODE_YUV, SETTINGS_VIEW_DECODE_YUV, "Fast colour decoding", "");
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_LOCAL_AUDIO, SETTINGS_VIEW_LOCAL_AUDIO, "Enable local audio", "");
+  MENU_ENTRY(SETTINGS_ENABLE_FRAME_PACER, SETTINGS_VIEW_ENABLE_FRAME_PACER, "Enable frame pacer", false);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_PACKET_SIZE, SETTINGS_VIEW_PACKET_SIZE, "Video packet size", true);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_DECODE_YUV, SETTINGS_VIEW_DECODE_YUV, "Fast colour decoding", false);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_LOCAL_AUDIO, SETTINGS_VIEW_LOCAL_AUDIO, "Enable local audio", false);
 
   MENU_TAB(TAB_SYSTEM);
-  MENU_ENTRY(SETTINGS_SAVE_DEBUG_LOG, SETTINGS_VIEW_SAVE_DEBUG_LOG, "Enable debug log", "");
-  MENU_ENTRY(SETTINGS_DISABLE_POWERSAVE, SETTINGS_VIEW_DISABLE_POWERSAVE, "Disable power save", "");
-  MENU_ENTRY(SETTINGS_BOOST_CLOCKS, SETTINGS_VIEW_BOOST_CLOCKS, "Boost CPU/GPU clocks while streaming", "");
-  MENU_ENTRY(SETTINGS_JP_LAYOUT, SETTINGS_VIEW_JP_LAYOUT, "Swap X & O for Moonlight", "");
-  MENU_ENTRY(SETTINGS_SHOW_FPS, SETTINGS_VIEW_SHOW_FPS, "Stats overlay", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY(SETTINGS_APP_LIST_STYLE, SETTINGS_VIEW_APP_LIST_STYLE, "App list", ICON_LEFT_RIGHT_ARROWS);
+  MENU_ENTRY(SETTINGS_SAVE_DEBUG_LOG, SETTINGS_VIEW_SAVE_DEBUG_LOG, "Enable debug log", false);
+  MENU_ENTRY(SETTINGS_DISABLE_POWERSAVE, SETTINGS_VIEW_DISABLE_POWERSAVE, "Disable power save", false);
+  MENU_ENTRY(SETTINGS_BOOST_CLOCKS, SETTINGS_VIEW_BOOST_CLOCKS, "Boost CPU/GPU clocks while streaming", false);
+  MENU_ENTRY(SETTINGS_JP_LAYOUT, SETTINGS_VIEW_JP_LAYOUT, "Swap X & O for Moonlight", false);
+  MENU_ENTRY(SETTINGS_SHOW_FPS, SETTINGS_VIEW_SHOW_FPS, "Stats overlay", true);
+  MENU_ENTRY(SETTINGS_APP_LIST_STYLE, SETTINGS_VIEW_APP_LIST_STYLE, "App list", true);
 
   MENU_TAB(TAB_CONTROLS);
 
-  MENU_ENTRY(SETTINGS_INPUT_SYNC, SETTINGS_VIEW_INPUT_SYNC, "Sync input to controller sampling", "");
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_MOTION_CONTROLS, SETTINGS_VIEW_ENABLE_MOTION_CONTROLS, "Enable Gyroscope reporting", "");
-  MENU_ENTRY(SETTINGS_ENABLE_DOUBLE_TAP_SPRINT, SETTINGS_VIEW_ENABLE_DOUBLE_TAP_SPRINT, "Enable double tap to sprint", "");
-  MENU_ENTRY(SETTINGS_DOUBLE_TAP_SPRINT_STEP_TIME, SETTINGS_VIEW_DOUBLE_TAP_SPRINT_STEP_TIME, "Sprint double tap time", "");
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_CONTROLLER_TYPE, SETTINGS_VIEW_CONTROLLER_TYPE, "Controller type", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY(SETTINGS_SWAP_SHOULDER_BUTTONS, SETTINGS_VIEW_SWAP_SHOULDER_BUTTONS, "Swap R1/L1 <-> R2/L2", "");
-  MENU_ENTRY(SETTINGS_MOUSE_ACCEL, SETTINGS_VIEW_MOUSE_ACCEL, "Mouse acceleration", ICON_LEFT_RIGHT_ARROWS);
-  MENU_ENTRY(SETTINGS_ENABLE_MAPPING, SETTINGS_VIEW_ENABLE_MAPPING, "Enable mapping file", "");
-  MENU_ENTRY(SETTINGS_ENABLE_PSBUTTON_CAPTURE, SETTINGS_VIEW_ENABLE_PSBUTTON_CAPTURE, "Enable PS button capture", "");
-  MENU_ENTRY(SETTINGS_BACK_DEADZONE, SETTINGS_VIEW_BACK_DEADZONE, "Back touchscreen deadzone", "");
-  MENU_ENTRY(SETTINGS_ENABLE_SPECIAL_KEYS, SETTINGS_VIEW_ENABLE_SPECIAL_KEYS, "Enable touchscreen special keys", "");
-  MENU_ENTRY(SETTINGS_SPECIAL_KEYS, SETTINGS_VIEW_SPECIAL_KEYS, "Touchscreen special keys", "");
+  MENU_ENTRY(SETTINGS_INPUT_SYNC, SETTINGS_VIEW_INPUT_SYNC, "Sync input to controller sampling", false);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_ENABLE_MOTION_CONTROLS, SETTINGS_VIEW_ENABLE_MOTION_CONTROLS, "Enable Gyroscope reporting", false);
+  MENU_ENTRY(SETTINGS_ENABLE_DOUBLE_TAP_SPRINT, SETTINGS_VIEW_ENABLE_DOUBLE_TAP_SPRINT, "Enable double tap to sprint", false);
+  MENU_ENTRY(SETTINGS_DOUBLE_TAP_SPRINT_STEP_TIME, SETTINGS_VIEW_DOUBLE_TAP_SPRINT_STEP_TIME, "Sprint double tap time", false);
+  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_CONTROLLER_TYPE, SETTINGS_VIEW_CONTROLLER_TYPE, "Controller type", true);
+  MENU_ENTRY(SETTINGS_SWAP_SHOULDER_BUTTONS, SETTINGS_VIEW_SWAP_SHOULDER_BUTTONS, "Swap R1/L1 <-> R2/L2", false);
+  MENU_ENTRY(SETTINGS_MOUSE_ACCEL, SETTINGS_VIEW_MOUSE_ACCEL, "Mouse acceleration", true);
+  MENU_ENTRY(SETTINGS_ENABLE_MAPPING, SETTINGS_VIEW_ENABLE_MAPPING, "Enable mapping file", false);
+  MENU_ENTRY(SETTINGS_ENABLE_PSBUTTON_CAPTURE, SETTINGS_VIEW_ENABLE_PSBUTTON_CAPTURE, "Enable PS button capture", false);
+  MENU_ENTRY(SETTINGS_BACK_DEADZONE, SETTINGS_VIEW_BACK_DEADZONE, "Back touchscreen deadzone", false);
+  MENU_ENTRY(SETTINGS_ENABLE_SPECIAL_KEYS, SETTINGS_VIEW_ENABLE_SPECIAL_KEYS, "Enable touchscreen special keys", false);
+  MENU_ENTRY(SETTINGS_SPECIAL_KEYS, SETTINGS_VIEW_SPECIAL_KEYS, "Touchscreen special keys", false);
   // NUEVO: Opción para usar la pantalla táctil como touchpad DS4
-  MENU_ENTRY(SETTINGS_TOUCH_MODE_SELECT, SETTINGS_VIEW_TOUCH_MODE_SELECT, "Touchscreen mode", "");
+  MENU_ENTRY(SETTINGS_TOUCH_MODE_SELECT, SETTINGS_VIEW_TOUCH_MODE_SELECT, "Touchscreen mode", false);
   MENU_CATEGORY("Keyboard");
-  MENU_ENTRY(SETTINGS_KEYBOARD_LAYOUT, SETTINGS_VIEW_KEYBOARD_LAYOUT, "Keyboard layout", "");
+  MENU_ENTRY(SETTINGS_KEYBOARD_LAYOUT, SETTINGS_VIEW_KEYBOARD_LAYOUT, "Keyboard layout", false);
 
   // Shown after holding L and R and pressing triangle
   char bench_target[256] = "";
@@ -1626,11 +1626,11 @@ rebuild:
       } else {
         snprintf(bench_target, sizeof(bench_target), "no benchmark app on %s", ui_connect_server_name());
       }
-      MENU_ENTRY(SETTINGS_BENCH_RUN, SETTINGS_VIEW_BENCH_RUN, "Run benchmark", "");
-      MENU_ENTRY(SETTINGS_BENCH_SECONDS, SETTINGS_VIEW_BENCH_SECONDS, "Benchmark duration", ICON_LEFT_RIGHT_ARROWS);
+      MENU_ENTRY(SETTINGS_BENCH_RUN, SETTINGS_VIEW_BENCH_RUN, "Run benchmark", false);
+      MENU_ENTRY(SETTINGS_BENCH_SECONDS, SETTINGS_VIEW_BENCH_SECONDS, "Benchmark duration", true);
     }
-    MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_DIRECT_DECODE, SETTINGS_VIEW_DIRECT_DECODE, "Decode on network thread (legacy)", "");
-    MENU_ENTRY(SETTINGS_HIDE_DEVELOPER, SETTINGS_VIEW_HIDE_DEVELOPER, "Hide developer options", "");
+    MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_DIRECT_DECODE, SETTINGS_VIEW_DIRECT_DECODE, "Decode on network thread (legacy)", false);
+    MENU_ENTRY(SETTINGS_HIDE_DEVELOPER, SETTINGS_VIEW_HIDE_DEVELOPER, "Hide developer options", false);
   }
 
   MENU_TAB(TAB_ABOUT);

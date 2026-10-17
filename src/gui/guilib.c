@@ -169,7 +169,7 @@ void draw_menu(menu_entry menu[], int total_elements, menu_geom geom, int cursor
       text_color = 0xff00ff00; // Verde para seleccionado
     }
     if (!menu[i].disabled) {
-      if (menu[i].warning && cursor != cursor_idx) {
+      if (menu[i].status == MENU_STATUS_WARNING && cursor != cursor_idx) {
         text_color = 0xff00d0ff;
       }
       cursor_idx++;
@@ -177,8 +177,13 @@ void draw_menu(menu_entry menu[], int total_elements, menu_geom geom, int cursor
       text_color = 0xffaaaaaa;
     }
 
-    // Color del puntito de estado (solo para hosts, si menu[i].color != 0)
-    unsigned int dot_color = menu[i].color ? menu[i].color : 0xffaaaaaa;
+    // PCs get a dot in their status colour: green online, red offline, yellow
+    // at a new address
+    bool has_dot = menu[i].status == MENU_STATUS_ONLINE || menu[i].status == MENU_STATUS_OFFLINE ||
+                   menu[i].status == MENU_STATUS_CHANGED;
+    unsigned int dot_color = menu[i].status == MENU_STATUS_ONLINE ? 0xFF00FF00
+                             : menu[i].status == MENU_STATUS_OFFLINE ? 0xFF0000FF
+                             : 0xFF00FFFF;
 
     int el_x = geom.x + 10,
         el_y = geom.y + i * geom.el - offset + 10;
@@ -202,7 +207,7 @@ void draw_menu(menu_entry menu[], int total_elements, menu_geom geom, int cursor
     }
 
     // Dibuja el puntito de estado solo para hosts emparejados (solo menú principal)
-    if (menu[i].is_host_entry && menu[i].name && strlen(menu[i].name) > 0) {
+    if (has_dot && menu[i].name && strlen(menu[i].name) > 0) {
       int dot_radius = 8;
       int dot_x = el_x + dot_radius; // Asegura que el puntito no quede pegado al borde
       int dot_y = el_y + text_height / 2 + 2;
@@ -229,7 +234,22 @@ void draw_menu(menu_entry menu[], int total_elements, menu_geom geom, int cursor
     }
 
     int right_x_offset = 20;
-    if (menu[i].suffix) {
+    // Arrows for a value left and right change; a star for the current choice
+    const char *marker = menu[i].adjustable ? ICON_LEFT_RIGHT_ARROWS : menu[i].checked ? "*" : NULL;
+    if (marker) {
+      int text_width = vita2d_font_text_width(font, 18, marker);
+      vita2d_font_draw_text(
+          font,
+          el_x + geom.width - text_width - right_x_offset,
+          el_y + text_height,
+          text_color,
+          18,
+          marker
+          );
+
+      right_x_offset += text_width + 10;
+    }
+    if (menu[i].suffix && *menu[i].suffix) {
       int text_width = vita2d_font_text_width(font, 18, menu[i].suffix);
       vita2d_font_draw_text(
           font,

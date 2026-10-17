@@ -513,15 +513,15 @@ int ui_connected_menu() {
     menu[idx] = (menu_entry) { .name = (NAME), .id = (ID) }; \
     idx++; \
   } while(0)
-#define MENU_MESSAGE(MESSAGE, COLOR) \
+#define MENU_MESSAGE(MESSAGE) \
   do { \
-    menu[idx] = (menu_entry) { .name = (MESSAGE), .disabled = true, .color = (COLOR) }; \
+    menu[idx] = (menu_entry) { .name = (MESSAGE), .disabled = true }; \
     idx++; \
   } while(0)
 
   //header
   //MENU
-  MENU_MESSAGE("Connected to the server:", 0xffffffff);
+  MENU_MESSAGE("Connected to the server:");
   char server_info[256];
   unsigned short port = server.httpPort ? server.httpPort : server.httpsPort;
   snprintf(server_info, sizeof(server_info),
@@ -531,12 +531,12 @@ int ui_connected_menu() {
            server.gpuType,
            server.serverInfo.serverInfoGfeVersion);
 
-  MENU_MESSAGE(server_info, 0xffffffff);
+  MENU_MESSAGE(server_info);
 
   // Covers need the room under the menu, so the menu is kept short
   bool boxart = config.app_list_style == APP_LIST_BOXART && server.paired && server_applist != NULL;
   if (!boxart) {
-    MENU_MESSAGE("", 0);
+    MENU_MESSAGE("");
   }
 
   if (!server.paired) {
@@ -579,6 +579,7 @@ int ui_connected_menu() {
       pos[0] = idx;
       MENU_ENTRY(CONNECT_BOXART, "Applications");
       menu[idx - 1].suffix = ui_boxart_counter();
+      menu[idx - 1].adjustable = true;
       pos[1] = idx;
     } else if (server_applist != NULL) {
       MENU_CATEGORY("Applications");

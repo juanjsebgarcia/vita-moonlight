@@ -31,7 +31,7 @@ int keyboard_layout_menu(void) {
         menu[i].name = (char*)keyboard_layout_names[i];
         menu[i].id = i;
         menu[i].disabled = false;
-        menu[i].suffix = (i == config.keyboard_layout) ? "*" : "";
+        menu[i].checked = i == config.keyboard_layout;
     }
     menu_geom geom = make_geom_centered(320, 120);
     int sel = display_menu(menu, KB_LAYOUT_COUNT, &geom, &keyboard_layout_loop, NULL, NULL, menu);

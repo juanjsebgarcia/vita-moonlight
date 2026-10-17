@@ -361,7 +361,7 @@ static int loader_main(SceSize args, void *argp) {
 }
 
 static void update_counter(void) {
-  snprintf(counter_text, sizeof(counter_text), "%d of %d " ICON_LEFT_RIGHT_ARROWS, selected + 1, slot_count);
+  snprintf(counter_text, sizeof(counter_text), "%d of %d", selected + 1, slot_count);
 }
 
 void ui_boxart_stop_loading(void) {
