@@ -390,7 +390,13 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
       vita_debug_log("[UI] Seleccionado: Settings");
       vita_debug_log("[UI] Deteniendo escaneo de hosts antes de entrar a Settings");
       stop_host_scan();
-      ui_settings_menu();
+      if (ui_settings_menu() == SETTINGS_RESTART_STREAM) {
+        // Back to the paused stream's menu afterwards, as Resume does
+        ui_connect_restart_stream();
+        ui_connect_resume();
+        exit_menu = 2;
+        break;
+      }
       exit_menu = 0;
       start_host_scan();
       break;

@@ -640,9 +640,10 @@ static const char *settings_help_text(int id) {
       return "Throws away extra frames when more arrive than your FPS setting. It can cause a "
              "small hitch every few seconds, so off is recommended.";
     case SETTINGS_RECOMMENDED:
-      return "Sets resolution, frame rate and bitrate to what worked best in testing, for good or "
-             "weak Wi-Fi. Auto-detect measures the signal where you'll play and picks for you. "
-             "Can't be used while a game is streaming.";
+      return "Sets resolution, frame rate and bitrate to what worked best in testing, for your "
+             "connection and for what matters most to you. Auto-detect tests the connection where "
+             "you'll play and picks for you. During a stream it can restart the stream to apply "
+             "them; Auto-detect itself needs the game closed first.";
     case SETTINGS_BLUETOOTH_WARNING:
       return "Bluetooth and Wi-Fi share the Vita's 2.4 GHz radio, so while Bluetooth is on the "
              "stream can stutter or lose frames, more so with a Bluetooth controller or headphones "
@@ -775,6 +776,8 @@ static void settings_draw(void) {
   vita2d_font_draw_text(font, x, y, 0xffffffff, 18, hint);
 }
 
+static int settings_back(void *context);
+
 static int settings_loop(int id, void *context, const input_data *input) {
   menu_entry *menu = context;
 
@@ -837,6 +840,11 @@ static int settings_loop(int id, void *context, const input_data *input) {
     // Rebuilt whatever happened: the values may have changed, and auto-detect
     // may have streamed, as a benchmark run does
     ui_recommended_settings_menu();
+    if (ui_recommended_take_restart()) {
+      // Save and leave, so whoever opened Settings restarts the stream
+      settings_back(NULL);
+      return SETTINGS_RESTART_STREAM;
+    }
     return SETTINGS_REBUILD;
   }
   // The Bluetooth warning has nothing to change, so confirm explains it too
@@ -1455,7 +1463,8 @@ rebuild:
     MENU_MESSAGE("Settings that need a new stream return once this one ends.");
   }
   MENU_CATEGORY("Stream");
-  MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_RECOMMENDED, SETTINGS_VIEW_RECOMMENDED, "Apply recommended settings", "");
+  // Listed mid-stream too: it can restart the stream to apply its settings
+  MENU_ENTRY(SETTINGS_RECOMMENDED, SETTINGS_VIEW_RECOMMENDED, "Apply recommended settings", "");
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_RESOLUTION, SETTINGS_VIEW_RESOLUTION, "Resolution", ICON_LEFT_RIGHT_ARROWS);
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_FPS, SETTINGS_VIEW_FPS, "FPS", ICON_LEFT_RIGHT_ARROWS);
   MENU_ENTRY_BETWEEN_STREAMS(SETTINGS_BITRATE, SETTINGS_VIEW_BITRATE, "Bitrate", ICON_LEFT_RIGHT_ARROWS);

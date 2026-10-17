@@ -32,3 +32,7 @@ int ui_connect_start_app_by_id(int app_id, char *err, size_t err_len);
 void ui_connect_return_to_server(void);
 // Quits the app running on the host the last connection used
 int ui_connect_quit_app(void);
+// Ends the paused stream and resumes the same app with the current stream
+// settings, which the host applies on resume, then waits while it streams.
+// For applying settings that only take effect on a new stream.
+void ui_connect_restart_stream(void);
