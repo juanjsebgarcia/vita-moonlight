@@ -33,8 +33,16 @@ menu_geom make_geom_centered(int w, int h) {
   geom.width = w;
   geom.height = h;
   geom.total_y = geom.y + geom.height;
-  geom.el = 24;
+  geom.el = MENU_ROW_HEIGHT;
   return geom;
+}
+
+// Just tall enough for `rows` rows, up to MENU_MAX_HEIGHT, after which the
+// menu scrolls. The spare row covers the top margin and keeps the last row
+// clear of the point where display_menu starts scrolling.
+menu_geom make_geom_fitted(int w, int rows) {
+  int h = (rows + 1) * MENU_ROW_HEIGHT;
+  return make_geom_centered(w, h < MENU_MAX_HEIGHT ? h : MENU_MAX_HEIGHT);
 }
 
 void draw_border(menu_geom geom, unsigned int border_color) {
@@ -592,8 +600,7 @@ int display_menu(menu_entry menu[], int total_elements, menu_geom *geom_ptr,
   menu_geom geom;
 
   if (!geom_ptr) {
-    geom = make_geom_centered(600, 400);
-    geom.el = 24;
+    geom = make_geom_centered(600, MENU_MAX_HEIGHT);
   } else {
     geom = *geom_ptr;
   }
