@@ -225,18 +225,18 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
   device_info_t *info = (device_info_t *)context;
   host_manage_cursor = cursor;
   // Permitir regresar con el botón cancelar (O)
-  if ((input->buttons & config.btn_cancel) != 0) {
+  if (ui_held(input, UI_INTENT_CANCEL)) {
     return 1; // Salir del menú
   }
   // Square on the Wake row: only send the packet, as Wake on LAN used to
-  if (cursor == HOST_MANAGE_WAKE && (input->buttons & SCE_CTRL_SQUARE) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+  if (cursor == HOST_MANAGE_WAKE && ui_pressed(input, UI_INTENT_SECONDARY)) {
     if (send_wake_packet(info)) {
       flash_message("Wake on LAN sent to %s.", info->name);
       sceKernelDelayThread(1500 * 1000);
     }
     return 0;
   }
-  if ((input->buttons & config.btn_confirm) == 0 || (input->buttons & SCE_CTRL_HOLD) != 0) {
+  if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
     return 0;
   }
   switch (cursor) {
@@ -397,7 +397,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
   extern volatile int g_host_status_changed;
   extern volatile int g_host_scan_thread_status;
   // Refresco manual con Triángulo
-  if ((input->buttons & SCE_CTRL_TRIANGLE) != 0) {
+  if (ui_pressed(input, UI_INTENT_HELP)) {
     vita_debug_log("[UI] Refresco manual solicitado (Triángulo): reiniciando escaneo de hosts");
     stop_host_scan();
     start_host_scan();
@@ -433,7 +433,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
     return 2; // Forzar refresco del menú
   }
 
-  if ((input->buttons & config.btn_confirm) == 0 || (input->buttons & SCE_CTRL_HOLD) != 0) {
+  if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
     return 0;
   }
   // Permitir acceder al menú de gestión de host siempre, incluso si está offline o la IP cambió

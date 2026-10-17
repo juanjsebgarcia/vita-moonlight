@@ -295,10 +295,10 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
 
   ui_boxart_set_focus(id == CONNECT_BOXART);
   if (id == CONNECT_BOXART) {
-    ui_boxart_input(input->buttons);
+    ui_boxart_input(input);
   }
 
-  if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+  if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
     return 0;
   }
 

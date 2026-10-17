@@ -3,6 +3,7 @@
 #include <stdbool.h>
 
 #include "client.h"
+#include "guilib.h"
 
 // A PC's apps as a row of box art covers, drawn under the host menu. The covers
 // are downloaded on a background thread, kept on the memory card under
@@ -20,7 +21,7 @@ void ui_boxart_draw(void);
 void ui_boxart_set_focus(bool focused);
 // Left and right move along the row, L and R jump five, triangle downloads
 // the selected cover again
-void ui_boxart_input(int buttons);
+void ui_boxart_input(const input_data *input);
 // The selected app's id, or 0 if there is none
 int ui_boxart_selected_app(void);
 // "3 of 12" and arrows, for the menu row that stands for the covers; kept up to date

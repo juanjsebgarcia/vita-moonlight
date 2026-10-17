@@ -12,7 +12,7 @@ static const char* keyboard_layout_names[] = {
 };
 
 static int keyboard_layout_loop(int id, void *context, const input_data *input) {
-    if ((input->buttons & config.btn_confirm) && !(input->buttons & SCE_CTRL_HOLD)) {
+    if (ui_pressed(input, UI_INTENT_CONFIRM)) {
         // Selecciona el layout
         keyboardsystem_set_layout((KeyboardLayout)id);
         config.keyboard_layout = id;

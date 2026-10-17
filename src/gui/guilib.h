@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdbool.h>
 #include <vita2d.h>
 
@@ -73,10 +75,44 @@ struct menu_geom make_geom_fitted(int w, int rows);
 
 #define SCE_CTRL_HOLD 0x80000000
 
+// What a press means, whatever the buttons: confirm and cancel follow Swap X & O,
+// and L and R arrive on either of their bits. Screens act on these, so the
+// controls are decided in one place and any UI can drive the same screens.
+enum {
+  UI_INTENT_UP        = 1u << 0,
+  UI_INTENT_DOWN      = 1u << 1,
+  UI_INTENT_LEFT      = 1u << 2,
+  UI_INTENT_RIGHT     = 1u << 3,
+  UI_INTENT_CONFIRM   = 1u << 4,
+  UI_INTENT_CANCEL    = 1u << 5,
+  UI_INTENT_HELP      = 1u << 6,  // triangle
+  UI_INTENT_SECONDARY = 1u << 7,  // square
+  UI_INTENT_TAB_PREV  = 1u << 8,  // L
+  UI_INTENT_TAB_NEXT  = 1u << 9,  // R
+  UI_INTENT_START     = 1u << 10,
+  UI_INTENT_SELECT    = 1u << 11,
+  // Set when the intents repeat because the buttons are being held
+  UI_INTENT_REPEAT    = 1u << 31,
+};
+
 typedef struct input_data {
-  int buttons;
+  int buttons;           // raw, for the rare check that needs a particular button
+  unsigned int intents;  // UI_INTENT_* flags
   SceTouchData touch;
 } input_data;
+
+// Reads this frame's buttons and touch, with their intents
+input_data read_input(void);
+
+// Pressed this frame, and not repeating from being held: for actions
+static inline bool ui_pressed(const input_data *input, unsigned int intent) {
+  return (input->intents & intent) != 0 && (input->intents & UI_INTENT_REPEAT) == 0;
+}
+
+// Pressed, or repeating while held: for moving through lists and values
+static inline bool ui_held(const input_data *input, unsigned int intent) {
+  return (input->intents & intent) != 0;
+}
 
 typedef int (*gui_loop_callback) (int, void *, const input_data *);
 typedef int (*gui_back_callback) (void *);

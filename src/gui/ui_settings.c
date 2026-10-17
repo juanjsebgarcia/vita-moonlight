@@ -145,8 +145,8 @@ static void deadzone_draw() {
 static int deadzone_loop(int cursor, void *context, const input_data *input) {
   menu_entry *menu = context;
 
-  bool left = input->buttons & SCE_CTRL_LEFT;
-  bool right = input->buttons & SCE_CTRL_RIGHT;
+  bool left = ui_held(input, UI_INTENT_LEFT);
+  bool right = ui_held(input, UI_INTENT_RIGHT);
 
   int delta = left ? -15 : (right ? 15 : 0);
   switch (cursor) {
@@ -249,7 +249,7 @@ enum {
 static int select_special_key_loop(int id, void *context, const input_data *input) {
   int *code = context;
 
-  if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+  if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
     return 0;
   }
   if (id != SETTINGS_SELECT_SPECIAL_KEY_MANUAL) {
@@ -296,8 +296,8 @@ static int select_special_key_menu(int *code) {
 }
 
 static int special_keys_loop(int id, void *context, const input_data *input) {
-  bool left = input->buttons & SCE_CTRL_LEFT;
-  bool right = input->buttons & SCE_CTRL_RIGHT;
+  bool left = ui_held(input, UI_INTENT_LEFT);
+  bool right = ui_held(input, UI_INTENT_RIGHT);
   int selected_ord = -1;
   int delta = left ? -15 : (right ? 15 : 0);
 
@@ -309,7 +309,7 @@ static int special_keys_loop(int id, void *context, const input_data *input) {
       config.special_keys.size += delta;
       break;
     default:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       select_special_key_menu(&selected_ord);
@@ -833,18 +833,7 @@ static int settings_back(void *context);
 static int settings_loop(int id, void *context, const input_data *input) {
   menu_entry *menu = context;
 
-  // L and R switch tabs. Pressing both together, as for developer mode, moves
-  // back and forth and lands on the same tab.
-  bool pressed_once = (input->buttons & SCE_CTRL_HOLD) == 0;
-  // sceCtrlPeekBufferPositive reports the shoulder buttons on the L2/R2 bits
-  bool left_tab = (input->buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) != 0;
-  bool right_tab = (input->buttons & (SCE_CTRL_R1 | SCE_CTRL_R2)) != 0;
-  if (pressed_once && left_tab != right_tab) {
-    move_tab(left_tab ? -1 : 1);
-    return SETTINGS_REBUILD;
-  }
-
-  if ((input->buttons & SCE_CTRL_TRIANGLE) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+  if (ui_pressed(input, UI_INTENT_HELP)) {
     // read_buttons() only reports newly pressed buttons, so check L and R are held directly
     SceCtrlData pad = {0};
     sceCtrlPeekBufferPositive(0, &pad, 1);
@@ -863,7 +852,17 @@ static int settings_loop(int id, void *context, const input_data *input) {
     return 0;
   }
 
-  bool confirm = (input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0;
+  // L and R switch tabs, after triangle so the developer combination (L + R +
+  // triangle) wins when R and triangle land in the same frame. Pressing both
+  // shoulders together moves back and forth and lands on the same tab.
+  bool left_tab = ui_pressed(input, UI_INTENT_TAB_PREV);
+  bool right_tab = ui_pressed(input, UI_INTENT_TAB_NEXT);
+  if (left_tab != right_tab) {
+    move_tab(left_tab ? -1 : 1);
+    return SETTINGS_REBUILD;
+  }
+
+  bool confirm = ui_pressed(input, UI_INTENT_CONFIRM);
   if (id == SETTINGS_BENCH_RUN && confirm) {
     ui_settings_save_config();
     vitabench_run(false);
@@ -882,8 +881,8 @@ static int settings_loop(int id, void *context, const input_data *input) {
   if (id == SETTINGS_BENCH_SECONDS) {
     static const int durations[] = {30, 60, 120, 300};
     const int count = sizeof(durations) / sizeof(durations[0]);
-    bool left_pressed = (input->buttons & SCE_CTRL_LEFT) && (input->buttons & SCE_CTRL_HOLD) == 0;
-    bool right_pressed = (input->buttons & SCE_CTRL_RIGHT) && (input->buttons & SCE_CTRL_HOLD) == 0;
+    bool left_pressed = ui_pressed(input, UI_INTENT_LEFT);
+    bool right_pressed = ui_pressed(input, UI_INTENT_RIGHT);
     if (left_pressed || right_pressed || confirm) {
       int current = 0;
       for (int i = 0; i < count; i++) {
@@ -901,7 +900,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
   }
   // Only on confirm: returning early otherwise would skip the row values
   // being filled in below while the cursor rests here, which it does at first
-  if (id == SETTINGS_RECOMMENDED && (input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+  if (id == SETTINGS_RECOMMENDED && ui_pressed(input, UI_INTENT_CONFIRM)) {
     // Rebuilt whatever happened: the values may have changed, and auto-detect
     // may have streamed, as a benchmark run does
     ui_recommended_settings_menu();
@@ -913,19 +912,19 @@ static int settings_loop(int id, void *context, const input_data *input) {
     return SETTINGS_REBUILD;
   }
   // The Bluetooth warning has nothing to change, so confirm explains it too
-  if (id == SETTINGS_BLUETOOTH_WARNING && (input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0) {
+  if (id == SETTINGS_BLUETOOTH_WARNING && ui_pressed(input, UI_INTENT_CONFIRM)) {
     show_settings_help(menu, id);
     return 0;
   }
   bool did_change = 0;
-  bool left = (input->buttons & SCE_CTRL_LEFT) && (input->buttons & SCE_CTRL_HOLD) == 0;
-  bool right = (input->buttons & SCE_CTRL_RIGHT) && (input->buttons & SCE_CTRL_HOLD) == 0;
+  bool left = ui_pressed(input, UI_INTENT_LEFT);
+  bool right = ui_pressed(input, UI_INTENT_RIGHT);
 
   char current[256];
   int new_idx;
 
   if (id == SETTINGS_TOUCH_MODE_SELECT) {
-    if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+    if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
       static const char* mode_names[] = {"Off", "DS4 Touchpad", "Mouse Absolute", "Tablet (Sunshine)"};
       SET_ROW_VALUE(SETTINGS_VIEW_TOUCH_MODE_SELECT, mode_names[config.touchscreen_mode]);
       return 0;
@@ -940,7 +939,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
   }
   switch (id) {
     case SETTINGS_SWAP_SHOULDER_BUTTONS: {
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       swap_shoulder_buttons = !swap_shoulder_buttons;
@@ -958,7 +957,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
       break;
     }
     case SETTINGS_ENABLE_MAPPING: {
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
@@ -1066,7 +1065,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
       did_change = 1;
       break;
     case SETTINGS_BITRATE: {
-      bool forward = right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0);
+      bool forward = right || ui_pressed(input, UI_INTENT_CONFIRM);
       if (!left && !forward) {
         break;
       }
@@ -1084,7 +1083,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
       break;
     }
     case SETTINGS_BITRATE_CUSTOM:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       {
@@ -1103,28 +1102,28 @@ static int settings_loop(int id, void *context, const input_data *input) {
       }
       break;
     case SETTINGS_SOPS:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
       config.sops = !config.sops;
       break;
     case SETTINGS_ENABLE_FRAME_INVAL:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
       config.enable_ref_frame_invalidation = !config.enable_ref_frame_invalidation;
       break;
     case SETTINGS_ENABLE_STREAM_OPTIMIZE:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
       config.stream.streamingRemotely = config.stream.streamingRemotely ? 0 : 1;
       break;
     case SETTINGS_ENABLE_VITA_VBLANK_WAIT:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
@@ -1132,14 +1131,14 @@ static int settings_loop(int id, void *context, const input_data *input) {
       break;
     //Metalface--
     case SETTINGS_ENABLE_MOTION_CONTROLS:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
           break;
       }
       did_change = 1;
       config.enable_motion_controls = config.enable_motion_controls ? 0 : 1;
       break;
     case SETTINGS_MOTION_CONTROLS_SCALAR_X:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
           break;
       }
       {
@@ -1157,7 +1156,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
         break;
       }
     case SETTINGS_MOTION_CONTROLS_SCALAR_Y:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
           break;
       }
       {
@@ -1175,14 +1174,14 @@ static int settings_loop(int id, void *context, const input_data *input) {
       }
       break;
     case SETTINGS_ENABLE_DOUBLE_TAP_SPRINT:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
           break;
       }
       did_change = 1;
       config.enable_double_tap_sprint = config.enable_double_tap_sprint ? 0 : 1;
       break;
     case SETTINGS_DOUBLE_TAP_SPRINT_STEP_TIME:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
           break;
       }
       {
@@ -1201,28 +1200,28 @@ static int settings_loop(int id, void *context, const input_data *input) {
       break;
     //Metalface--
     case SETTINGS_SAVE_DEBUG_LOG:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
       config.save_debug_log = !config.save_debug_log;
       break;
     case SETTINGS_DISABLE_POWERSAVE:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
       config.disable_powersave = !config.disable_powersave;
       break;
     case SETTINGS_BOOST_CLOCKS:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
       config.boost_clocks = !config.boost_clocks;
       break;
     case SETTINGS_JP_LAYOUT:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
@@ -1232,7 +1231,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
       // Left/right or confirm cycles off -> fps -> full
       if (left) {
         config.stats_overlay = (config.stats_overlay + STATS_OVERLAY_COUNT - 1) % STATS_OVERLAY_COUNT;
-      } else if (right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0)) {
+      } else if (right || ui_pressed(input, UI_INTENT_CONFIRM)) {
         config.stats_overlay = (config.stats_overlay + 1) % STATS_OVERLAY_COUNT;
       } else {
         break;
@@ -1241,7 +1240,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
       break;
     case SETTINGS_APP_LIST_STYLE:
       // Only two styles, so left, right and confirm all switch between them
-      if (left || right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0)) {
+      if (left || right || ui_pressed(input, UI_INTENT_CONFIRM)) {
         config.app_list_style = (config.app_list_style + 1) % APP_LIST_STYLE_COUNT;
       } else {
         break;
@@ -1249,28 +1248,28 @@ static int settings_loop(int id, void *context, const input_data *input) {
       did_change = 1;
       break;
     case SETTINGS_LOCAL_AUDIO:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
       config.localaudio = !config.localaudio;
       break;
     case SETTINGS_ENABLE_FRAME_PACER:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
       config.enable_frame_pacer = !config.enable_frame_pacer;
       break;
     case SETTINGS_DIRECT_DECODE:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
       config.direct_decode = !config.direct_decode;
       break;
     case SETTINGS_INPUT_SYNC:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
@@ -1283,7 +1282,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
       int step = 0;
       if (left) {
         step = -1;
-      } else if (right || ((input->buttons & config.btn_confirm) && (input->buttons & SCE_CTRL_HOLD) == 0)) {
+      } else if (right || ui_pressed(input, UI_INTENT_CONFIRM)) {
         step = 1;
       } else {
         break;
@@ -1301,7 +1300,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
       break;
     }
     case SETTINGS_CENTER_REGION_ONLY:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       did_change = 1;
@@ -1309,20 +1308,20 @@ static int settings_loop(int id, void *context, const input_data *input) {
       break;
     // ...eliminado duplicado, la lógica completa está arriba...
     case SETTINGS_BACK_DEADZONE:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       deadzone_settings_menu();
       did_change = 1;
       break;
     case SETTINGS_SPECIAL_KEYS:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       special_keys_menu();
       break;
     case SETTINGS_ENABLE_SPECIAL_KEYS:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
 
@@ -1330,7 +1329,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
       did_change = 1;
       break;
     case SETTINGS_ENABLE_PSBUTTON_CAPTURE:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
 
@@ -1338,8 +1337,8 @@ static int settings_loop(int id, void *context, const input_data *input) {
       did_change = 1;
       break;
     case SETTINGS_MOUSE_ACCEL:
-      left = input->buttons & SCE_CTRL_LEFT;
-      right = input->buttons & SCE_CTRL_RIGHT;
+      left = ui_held(input, UI_INTENT_LEFT);
+      right = ui_held(input, UI_INTENT_RIGHT);
       if (!left && !right) {
           break;
       }
@@ -1358,7 +1357,7 @@ static int settings_loop(int id, void *context, const input_data *input) {
       did_change = 1;
       break;
     case SETTINGS_KEYBOARD_LAYOUT:
-      if ((input->buttons & config.btn_confirm) == 0 || input->buttons & SCE_CTRL_HOLD) {
+      if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
         break;
       }
       keyboard_layout_menu();

@@ -479,8 +479,7 @@ static int menu_loop(int id, void *context, const input_data *input) {
     refresh(menu);
   }
 
-  bool pressed_once = (input->buttons & SCE_CTRL_HOLD) == 0;
-  if ((input->buttons & SCE_CTRL_TRIANGLE) && pressed_once) {
+  if (ui_pressed(input, UI_INTENT_HELP)) {
     const char *help = help_text(id);
     if (help) {
       display_help(menu[id].name, help);
@@ -488,8 +487,8 @@ static int menu_loop(int id, void *context, const input_data *input) {
     return 0;
   }
   if (id == ROW_PRIORITY) {
-    bool left = (input->buttons & SCE_CTRL_LEFT) && pressed_once;
-    bool right = ((input->buttons & SCE_CTRL_RIGHT) || (input->buttons & config.btn_confirm)) && pressed_once;
+    bool left = ui_pressed(input, UI_INTENT_LEFT);
+    bool right = ui_pressed(input, UI_INTENT_RIGHT | UI_INTENT_CONFIRM);
     if (left || right) {
       // No battery on a PS TV, so no battery option
       int count = is_pstv() ? PRIORITY_BATTERY : PRIORITY_COUNT;
@@ -498,7 +497,7 @@ static int menu_loop(int id, void *context, const input_data *input) {
     }
     return 0;
   }
-  if ((input->buttons & config.btn_confirm) == 0 || !pressed_once) {
+  if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
     return 0;
   }
   if (id == ROW_AUTO) {
