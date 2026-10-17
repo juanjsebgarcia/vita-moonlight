@@ -6,19 +6,40 @@
 // are a few hundred bytes at most
 #define VIDEO_PACKET_MIN_BYTES 512
 
-static volatile uint32_t video_packets = 0;
+// Written only by common-c's video receive thread, the only one that gets
+// packets this big, so no lock is needed
+static volatile uint32_t received = 0;
+static volatile uint32_t expected = 0;
+static bool have_sequence = false;
+static uint16_t last_sequence = 0;
 
 // Wrapped at link time (-Wl,--wrap=recvUdpSocket), so common-c needs no change
 int __real_recvUdpSocket(int s, char *buffer, int size, bool useSelect);
 int __wrap_recvUdpSocket(int s, char *buffer, int size, bool useSelect) {
   int ret = __real_recvUdpSocket(s, buffer, size, useSelect);
-  // Only the video receive thread gets packets this big, so no lock is needed
-  if (ret >= VIDEO_PACKET_MIN_BYTES) {
-    video_packets++;
+  if (ret < VIDEO_PACKET_MIN_BYTES) {
+    return ret;
   }
+  // The RTP header's sequence number, big-endian at bytes 2 and 3. The host
+  // numbers every video packet in turn, so a gap is a packet lost on the way.
+  uint16_t sequence = (uint16_t)(((uint8_t)buffer[2] << 8) | (uint8_t)buffer[3]);
+  received++;
+  if (!have_sequence) {
+    have_sequence = true;
+    expected++;
+  } else {
+    uint16_t step = (uint16_t)(sequence - last_sequence);
+    // A step backwards is a late or repeated packet, already counted as expected
+    if (step == 0 || step >= 0x8000) {
+      return ret;
+    }
+    expected += step;
+  }
+  last_sequence = sequence;
   return ret;
 }
 
-uint32_t netcount_video_packets(void) {
-  return video_packets;
+void netcount_read(uint32_t *received_out, uint32_t *expected_out) {
+  *received_out = received;
+  *expected_out = expected;
 }
