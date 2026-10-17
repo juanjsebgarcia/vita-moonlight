@@ -8,9 +8,14 @@
 // readings to measure a stretch of the stream.
 typedef struct {
   uint32_t received;  // video packets that arrived, repeats not included
-  uint32_t lost;      // never arrived
-  uint32_t late;      // arrived after a newer packet, out of order
+  uint32_t gaps;      // skipped over in the sequence, whether or not they arrived later
+  uint32_t late;      // arrived after a newer packet, out of order, filling a gap
   uint32_t repeats;   // arrived more than once
 } netcount;
+
+// Packets that never arrived between two readings: the gaps less those
+// filled late. Kept as a difference of differences, since late can run
+// ahead of gaps for a moment.
+uint32_t netcount_lost(const netcount *start, const netcount *end);
 
 void netcount_read(netcount *out);
