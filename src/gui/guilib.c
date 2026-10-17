@@ -25,6 +25,11 @@ static gui_draw_callback gui_global_draw_callback;
 static gui_loop_callback gui_global_loop_callback;
 
 vita2d_font *font;
+// The same font again, only for the small labels inside button glyphs.
+// vita2d caches each character once, at the size it's first drawn, so small
+// labels drawn with the main font made later full-size letters (such as the
+// L in "Licence", after an L button glyph) come out small.
+static vita2d_font *glyph_font;
 
 menu_geom make_geom_centered(int w, int h) {
   menu_geom geom = {0};
@@ -293,10 +298,10 @@ static void draw_label(const char *label, float cx, float top, float height, uns
   if (font_size < 8) {
     font_size = 8;
   }
-  int width = vita2d_font_text_width(font, font_size, label);
+  int width = vita2d_font_text_width(glyph_font, font_size, label);
   // y is the baseline, so drop it by roughly half the cap height below the middle
   float baseline = top + height / 2.0f + font_size * 0.36f;
-  vita2d_font_draw_text(font, (int)(cx - width / 2.0f), (int)baseline, color, font_size, label);
+  vita2d_font_draw_text(glyph_font, (int)(cx - width / 2.0f), (int)baseline, color, font_size, label);
 }
 
 // Width of a labelled pill for this label at this height
@@ -305,7 +310,7 @@ static int pill_width(const char *label, int size) {
   if (font_size < 8) {
     font_size = 8;
   }
-  int width = vita2d_font_text_width(font, font_size, label) + size / 2 + 4;
+  int width = vita2d_font_text_width(glyph_font, font_size, label) + size / 2 + 4;
   return width > size ? width : size;
 }
 
@@ -822,6 +827,7 @@ void guilib_init(gui_loop_callback global_loop_cb, gui_draw_callback global_draw
   vita2d_init();
   vita2d_set_clear_color(0xff000000);
   font = vita2d_load_font_file("app0:assets/nerdfont.ttf");
+  glyph_font = vita2d_load_font_file("app0:assets/nerdfont.ttf");
 
   gui_global_draw_callback = global_draw_cb;
   gui_global_loop_callback = global_loop_cb;
