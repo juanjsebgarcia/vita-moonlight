@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <psp2/kernel/sysmem.h>
 #include <psp2/net/netctl.h>
 #include <psp2/registrymgr.h>
 
@@ -71,4 +72,21 @@ int vita_wifi_percent(void) {
     return -1;
   }
   return info.rssi_percentage;
+}
+
+// SceNetCtlInfo.device has no named values in VitaSDK. 0 is Wi-Fi
+// (SCE_NET_CTL_DEVICE_WIRELESS, as Vita3K returns it). The other values aren't
+// public, but the hardware settles it: a PS TV has Ethernet and no modem, and
+// a 3G Vita has a modem and no Ethernet.
+#define NETCTL_DEVICE_WIFI 0
+
+int vita_network_type(void) {
+  SceNetCtlInfo info;
+  if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_DEVICE, &info) < 0) {
+    return VITA_NETWORK_NONE;
+  }
+  if (info.device == NETCTL_DEVICE_WIFI) {
+    return VITA_NETWORK_WIFI;
+  }
+  return sceKernelGetModelForCDialog() == SCE_KERNEL_MODEL_VITATV ? VITA_NETWORK_WIRED : VITA_NETWORK_MOBILE;
 }
