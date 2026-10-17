@@ -133,6 +133,10 @@ bool was_button_pressed(short id);
 bool is_button_down(short id);
 bool is_rectangle_touched(const SceTouchData *touch, int lx, int ly, int rx, int ry);
 
+// The next display_menu opens with the cursor on the row with this id,
+// instead of the first, if it's there and can be selected
+void display_menu_select(int id);
+
 int display_menu(
         menu_entry menu[],
         int total_elements,

@@ -59,6 +59,7 @@
 #include <psp2/system_param.h>
 
 #include "client.h"
+#include "i18n/i18n.h"
 #include "graphics.h"
 #include "device.h"
 #include "gui/ui.h"
@@ -214,6 +215,8 @@ int main(int argc, char* argv[]) {
   config.log_file = fopen(log_path, "w");
   // After the log opens, so a failure to read the nickname is recorded
   set_pairing_device_name();
+  // After the nickname, which starts AppUtil, needed for the system language
+  i18n_init(config.language);
 
   load_all_known_devices();
   vita_debug_log_thread("main");

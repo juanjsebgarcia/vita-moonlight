@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "i18n/i18n.h"
+
 // Every setting in the Settings screen, described once: where it's listed,
 // what it's called, its help, how its value reads and how it changes. This
 // is data, with no drawing or dialogs, so any UI can list and change the
@@ -48,15 +50,16 @@ enum {
   SETTING_CONFIRM_STEPS    = 1 << 2,  // confirm also steps a choice forward
   SETTING_HELD_REPEATS     = 1 << 3,  // holding left or right keeps stepping
   SETTING_SAVE_AT_ONCE     = 1 << 4,  // saved as soon as it changes
+  SETTING_REBUILDS         = 1 << 5,  // every row changes with it, such as the language
 };
 
 typedef struct setting_def {
   int tab;
   setting_kind kind;
   unsigned int flags;
-  const char *label;
-  // Help shown with triangle, or NULL to use help_with() (or for none)
-  const char *help;
+  str_id label;
+  // Help shown with triangle, or STR_NONE to use help_with() (or for none)
+  str_id help;
   void (*help_with)(char *out, size_t size);
   // Whether it's listed now, or NULL for always
   bool (*listed)(void);
@@ -76,7 +79,7 @@ typedef struct setting_def {
 extern const setting_def SETTINGS[];
 extern const int SETTINGS_COUNT;
 
-extern const char *const SETTINGS_TAB_NAMES[SETTINGS_TAB_COUNT];
+extern const str_id SETTINGS_TAB_NAMES[SETTINGS_TAB_COUNT];
 
 // Whether a tab is shown: Developer only in developer mode
 bool settings_tab_shown(int tab);

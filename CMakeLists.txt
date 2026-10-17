@@ -71,6 +71,7 @@ add_executable(${PROJECT_NAME}.elf
 	src/bench.c
 	src/netcount.c
 	src/settings.c
+	src/i18n/i18n.c
 	src/session.c
 	src/hosts.c
 	src/ui_ops.c
@@ -179,6 +180,15 @@ add_custom_target(update_template_version ALL
 	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+# Every translation in lang/, packed as app0:lang/<file>
+file(GLOB LANG_FILES CONFIGURE_DEPENDS RELATIVE ${CMAKE_SOURCE_DIR}/lang ${CMAKE_SOURCE_DIR}/lang/*.ini)
+# The translators' template and the English snapshot aren't languages
+list(REMOVE_ITEM LANG_FILES template.ini source.ini)
+set(LANG_VPK_ARGS "")
+foreach(LANG_FILE ${LANG_FILES})
+	list(APPEND LANG_VPK_ARGS --add ../lang/${LANG_FILE}=lang/${LANG_FILE})
+endforeach()
+
 add_custom_target(${PROJECT_NAME}.vpk ALL
 	COMMAND vita-make-fself -a 0x2800000000000001 -at 0x0E -c ${PROJECT_NAME}.velf eboot.bin
 	COMMAND vita-pack-vpk -s param.sfo -b eboot.bin
@@ -187,6 +197,7 @@ add_custom_target(${PROJECT_NAME}.vpk ALL
 			--add ../sce_sys/livearea/contents/startup.png=sce_sys/livearea/contents/startup.png
 			--add ../sce_sys/livearea/contents/template.xml=sce_sys/livearea/contents/template.xml
 			--add ../assets/nerdfont.ttf=assets/nerdfont.ttf
+			${LANG_VPK_ARGS}
 			${PROJECT_NAME}.vpk
 )
 

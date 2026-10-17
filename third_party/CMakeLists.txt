@@ -22,6 +22,10 @@ add_library(inih STATIC
     inih/ini.c
 )
 target_include_directories(inih PUBLIC inih)
+# Translations have long lines (help texts, two or three bytes a character in
+# some scripts), and French puts a space before semicolons, which inih would
+# otherwise take for a comment
+target_compile_definitions(inih PUBLIC INI_MAX_LINE=4096 INI_ALLOW_INLINE_COMMENTS=0)
 
 add_library(libuuid STATIC
     libuuid/src/clear.c

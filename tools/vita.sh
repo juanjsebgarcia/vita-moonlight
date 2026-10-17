@@ -101,6 +101,19 @@ cmd_launch() {
   esac
 }
 
+# The translations live beside eboot.bin (app0:lang), which push would
+# otherwise leave as the VPK installed them
+push_languages() {
+  local file
+  for file in "$REPO_ROOT"/lang/*.ini; do
+    [ -f "$file" ] || continue
+    # The translators' template and the English snapshot aren't languages
+    case "$(basename "$file")" in template.ini|source.ini) continue ;; esac
+    curl -sSf --max-time 30 --ftp-create-dirs -T "$file" "$(ftp_url "ux0:/app/$TITLE_ID/lang/$(basename "$file")")" \
+      || die "couldn't upload $(basename "$file")"
+  done
+}
+
 cmd_push() {
   require_vita
   local eboot="$REPO_ROOT/build/eboot.bin"
@@ -114,6 +127,7 @@ cmd_push() {
   for attempt in 1 2 3 4 5 6 7 8; do
     if err="$(curl -sS --max-time 60 -T "$eboot" "$(ftp_url "ux0:/app/$TITLE_ID/eboot.bin")" 2>&1)"; then
       echo "uploaded $(wc -c < "$eboot" | tr -d ' ') bytes"
+      push_languages
       cmd_launch
       return 0
     fi
