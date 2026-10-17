@@ -25,11 +25,13 @@ FONTS = {"latin", "cjk-ja", "cjk-ko", "cjk-zh-hans", "cjk-zh-hant"}
 ENTRY = re.compile(r'^S\((\w+),\s*"((?:[^"\\]|\\.)*)",\s*"((?:[^"\\]|\\.)*)"\)', re.M)
 # {0}..{9} filled in by the code, and button markers such as {triangle}
 PLACEHOLDER = re.compile(r"\{(\d|[a-z][a-z0-9_]*)\}")
-PRINTF = re.compile(r"%[-+ #0-9.]*[sdifuxXcp%]")
+# No space flag: "60 % de" (a space before %, as many languages write it) is not a printf code
+PRINTF = re.compile(r"%[-+#0-9.]*[sdifuxXcp]")
 
 
 def unescape_c(text):
-    return text.replace('\\"', '"').replace("\\\\", "\\")
+    """Undoes the C escapes strings.def uses: \\n, \\" and \\\\."""
+    return re.sub(r'\\(.)', lambda m: {"n": "\n", '"': '"', "\\": "\\"}.get(m.group(1), m.group(0)), text)
 
 
 def read_english():
@@ -115,6 +117,8 @@ def check_language(path, english):
         translated += 1
         if sorted(PLACEHOLDER.findall(value)) != sorted(PLACEHOLDER.findall(english[key])):
             errors.append(f"{where}: placeholders or button markers differ from the English ({english[key]!r})")
+        if value.count("\\n") != escape_ini(english[key]).count("\\n") or "\\\\n" in value:
+            errors.append(f"{where}: line breaks differ from the English; write each one as \\n")
         if PRINTF.search(value):
             errors.append(f"{where}: printf specifier; use {{0}}, {{1}}... instead")
     return errors, translated, meta

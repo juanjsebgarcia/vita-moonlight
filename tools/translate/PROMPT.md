@@ -13,7 +13,7 @@ The screen is 960x544, the menus use a monospaced font at 18 px, and rows are ab
 ## 2. Tone
 
 - Plain, short, friendly and direct, like the system menus of a games console. Not marketing, not jokey, not stiff.
-- Address the player the way **PlayStation's own system software does in your language** (for example informal "du" in German, "tú" in Spanish, "tu" in French and Italian, polite neutral forms in Japanese and Korean). Be consistent across every string. Record the choice in your glossary.
+- Address the player the way **PlayStation's own system software does in your language**, as on the PS4 and PS5: for example "vous" in French, "du" in German, "tú" in Spanish, "você" in Brazilian Portuguese, and polite neutral forms in Japanese, Korean and Chinese. If you aren't sure what Sony uses, say so in your report. Be consistent across every string, and record the choice in your glossary.
 - Prefer the words **Sony uses on the PS Vita, PS4 and PS5** for the same thing: Settings, Back, Wi-Fi, Bluetooth, Network, PS button, touchpad, rear touch pad, front touch screen, controller, screen, standby, and so on. If Sony's term for your language is known, use it; otherwise use the most common gaming term.
 - Gaming terms that players in your language use in English (often "FPS", "V-Sync", "bitrate", "stream", "lag") may stay in English if that is what gamers say. Otherwise translate them. Decide once, record it in your glossary, and keep to it.
 - Help texts (keys ending `_HELP`) explain what a setting does and when to change it. Keep their meaning and advice exactly; you may restructure sentences so they read naturally.
