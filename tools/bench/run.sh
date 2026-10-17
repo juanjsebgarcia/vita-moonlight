@@ -12,6 +12,12 @@
 # The stats overlay and debug log are turned off for every run, since they
 # cost time themselves, unless a variant sets stats_overlay or save_debug_log.
 #
+# With bench_grab=true, the Vita also saves the decoded frame at fixed page
+# ticks. They're fetched next to the reports, and quality.py turns them into
+# PNGs and scores picture quality per variant, for example:
+#
+#   tools/bench/run.sh b10:bitrate=10000,bench_grab=true b20:bitrate=20000,bench_grab=true
+#
 # Variants run in turn, round after round (base, legacy, big, base, ...), so
 # Wi-Fi conditions changing over time affect them all alike.
 #
@@ -38,6 +44,7 @@ CMD_PORT="${VITA_CMD_PORT:-1338}"
 TITLE_ID="XYZZ00002"
 CONF_PATH="ux0:/data/moonlight/moonlight.conf"
 REPORT_PATH="ux0:/data/moonlight/reports/last-bench.json"
+REPORT_DIR="ux0:/data/moonlight/reports"
 
 seconds=60
 rounds=2
@@ -52,7 +59,7 @@ die() {
 }
 
 usage() {
-  sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+  awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
   exit 1
 }
 
@@ -126,6 +133,17 @@ restore() {
 }
 trap restore EXIT
 
+# Fetches the frame grabs a report lists (bench_grab=true), for quality.py
+fetch_grabs() {
+  local report="$1" name="$2" tick file
+  while read -r tick file; do
+    [ -n "$tick" ] || continue
+    fetch "$REPORT_DIR/$file" "$out/$name-grab-$tick.raw" || echo "  warning: couldn't fetch $file" >&2
+  done < <(python3 -I -c 'import json, sys
+for g in json.load(open(sys.argv[1])).get("grabs", []):
+    print(g["tick"], g["file"])' "$report")
+}
+
 run_variant() {
   local spec="$1" round="$2"
   local label="${spec%%:*}"
@@ -168,10 +186,12 @@ run_variant() {
       python3 -I -c 'import json, sys
 r = json.load(open(sys.argv[1]))
 if r.get("ok"):
-    print("  input lag p50 %.1f ms, latency est p50 %.1f ms, %.1f fps" % (
-        r["input_lag_ms"]["p50"], r["latency_estimate_ms"]["p50"], r["frames"]["fps_rendered"]))
+    print("  input lag p50 %.1f ms, latency est p50 %.1f ms, %.1f fps, %.1f Mbps, %d frames lost, %d grabs" % (
+        r["input_lag_ms"]["p50"], r["latency_estimate_ms"]["p50"], r["frames"]["fps_rendered"],
+        r["bitrate_mbps"], r["frames"]["lost_network"], len(r.get("grabs", []))))
 else:
     print("  failed: %s" % r.get("error"))' "$report"
+      fetch_grabs "$report" "$label-$round"
       return 0
     fi
   done
@@ -191,6 +211,11 @@ reports=("$out"/*.json)
 if [ ${#reports[@]} -gt 0 ]; then
   echo
   python3 -I "$BENCH_DIR/compare.py" "${reports[@]}" | tee "$out/summary.md"
+  grabs=("$out"/*-grab-*.raw)
+  if [ ${#grabs[@]} -gt 0 ]; then
+    echo
+    python3 -I "$BENCH_DIR/quality.py" "$out" | tee -a "$out/summary.md" || true
+  fi
   echo
   echo "reports and summary in $out"
 fi
