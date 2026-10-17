@@ -847,7 +847,7 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   uint32_t video_packets = link->rtp_end.packetCountVideo - link->rtp_start.packetCountVideo;
   uint32_t fec_packets = link->rtp_end.packetCountFec - link->rtp_start.packetCountFec;
   uint32_t received = link->net_end.received - link->net_start.received;
-  uint32_t lost = link->net_end.lost - link->net_start.lost;
+  uint32_t lost = netcount_lost(&link->net_start, &link->net_end);
   uint32_t late = link->net_end.late - link->net_start.late;
   uint32_t repeats = link->net_end.repeats - link->net_start.repeats;
   fprintf(f, "  \"packets\": {\"video\": %u, \"fec\": %u, \"received\": %u, \"lost\": %u, \"late\": %u, "

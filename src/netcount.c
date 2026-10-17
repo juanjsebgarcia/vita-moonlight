@@ -73,7 +73,13 @@ int __wrap_recvUdpSocket(int s, char *buffer, int size, bool useSelect) {
 
 void netcount_read(netcount *out) {
   out->received = received;
-  out->lost = gaps > late ? gaps - late : 0;
+  out->gaps = gaps;
   out->late = late;
   out->repeats = repeats;
+}
+
+uint32_t netcount_lost(const netcount *start, const netcount *end) {
+  uint32_t gap_count = end->gaps - start->gaps;
+  uint32_t late_count = end->late - start->late;
+  return gap_count > late_count ? gap_count - late_count : 0;
 }
