@@ -541,6 +541,8 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   au.pts.upper = 0xFFFFFFFF;
 
   int ret = 0;
+  // Separates assembling the frame from the hardware decode, for the benchmark
+  uint64_t hw_start_us = LiGetMicroseconds();
   ret = sceAvcdecDecode(decoder, &au, &array_picture);
   uint64_t decoded_us = LiGetMicroseconds();
   vitastats_frame_decoded(decoded_us - submit_us);
@@ -557,7 +559,7 @@ static int vita_submit_decode_unit(PDECODE_UNIT decodeUnit) {
   if (vitabench_active()) {
     // Read the benchmark page's strip from the texture this frame was decoded into
     vita2d_texture *decoded = frame_textures[back_texture_idx];
-    vitabench_frame_decoded(decodeUnit, submit_us, decoded_us,
+    vitabench_frame_decoded(decodeUnit, submit_us, hw_start_us, decoded_us,
                             vita2d_texture_get_datap(decoded), vita2d_texture_get_stride(decoded),
                             image_scaling.region_x1, image_scaling.region_y1,
                             image_scaling.region_x2, image_scaling.region_y2);

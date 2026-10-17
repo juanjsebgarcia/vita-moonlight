@@ -119,6 +119,8 @@ static volatile int phase = PHASE_IDLE;
 // Written by the decode thread under bench_mutex
 static struct {
   series decode_ms, network_ms, queue_ms, render_ms, pipeline_ms, input_lag_ms;
+  // decode_ms split into assembling the frame and the hardware decoder itself
+  series assemble_ms, hw_decode_ms;
   uint32_t frames_received, frames_rendered, frames_lost, idr_frames;
   uint64_t bytes;
   uint32_t ticks_read, ticks_unreadable, ticks_repeated, ticks_skipped, ticks_backwards;
@@ -301,7 +303,7 @@ static int probe_box_max(const uint8_t *pixels, int stride_bytes, float x1, floa
   return max;
 }
 
-void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t decoded_us,
+void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t hw_start_us, uint64_t decoded_us,
                              const uint8_t *pixels, int stride_bytes,
                              float region_x1, float region_y1, float region_x2, float region_y2) {
   if (phase == PHASE_IDLE || pixels == NULL) {
@@ -362,6 +364,10 @@ void vitabench_frame_decoded(const DECODE_UNIT *du, uint64_t submit_us, uint64_t
     series_add(&state.network_ms, network_us / 1000.0f);
     series_add(&state.queue_ms, queue_us / 1000.0f);
     series_add(&state.decode_ms, decode_us / 1000.0f);
+    if (hw_start_us >= submit_us && decoded_us >= hw_start_us) {
+      series_add(&state.assemble_ms, (hw_start_us - submit_us) / 1000.0f);
+      series_add(&state.hw_decode_ms, (decoded_us - hw_start_us) / 1000.0f);
+    }
     state.frame_partial_us = host_us + network_us + queue_us + decode_us;
     state.frame_decoded_us = decoded_us;
     state.frame_pending = true;
@@ -447,6 +453,7 @@ void vitabench_frame_rendered(uint64_t rendered_us) {
 static void reset_measurements(void) {
   pthread_mutex_lock(&bench_mutex);
   state.decode_ms.count = state.network_ms.count = state.queue_ms.count = 0;
+  state.assemble_ms.count = state.hw_decode_ms.count = 0;
   state.render_ms.count = state.pipeline_ms.count = state.input_lag_ms.count = 0;
   state.frames_received = state.frames_rendered = state.frames_lost = state.idr_frames = 0;
   state.bytes = 0;
@@ -692,6 +699,8 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   write_timing(f, "network_ms", &state.network_ms, false);
   write_timing(f, "queue_ms", &state.queue_ms, false);
   write_timing(f, "decode_ms", &state.decode_ms, false);
+  write_timing(f, "assemble_ms", &state.assemble_ms, false);
+  write_timing(f, "hw_decode_ms", &state.hw_decode_ms, false);
   write_timing(f, "render_ms", &state.render_ms, false);
   fprintf(f, "  \"rtt_ms\": {\"avg\": %.2f, \"max\": %u},\n",
           link->rtt_samples ? link->rtt_sum / link->rtt_samples : 0.0, link->rtt_max);
@@ -755,6 +764,8 @@ int vitabench_run(bool automated) {
 
   int capacity = (config.bench_seconds + 5) * MAX_FPS_RECORDED;
   series_init(&state.decode_ms, capacity);
+  series_init(&state.assemble_ms, capacity);
+  series_init(&state.hw_decode_ms, capacity);
   series_init(&state.network_ms, capacity);
   series_init(&state.queue_ms, capacity);
   series_init(&state.render_ms, capacity);
@@ -919,6 +930,8 @@ done:
   }
 
   series_free(&state.decode_ms);
+  series_free(&state.assemble_ms);
+  series_free(&state.hw_decode_ms);
   series_free(&state.network_ms);
   series_free(&state.queue_ms);
   series_free(&state.render_ms);
