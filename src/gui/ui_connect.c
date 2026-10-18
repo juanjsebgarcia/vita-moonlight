@@ -351,6 +351,9 @@ int ui_connected_menu() {
          server.gpuType ? server.gpuType : "", server.serverInfo.serverInfoGfeVersion ? server.serverInfo.serverInfoGfeVersion : "");
 
   MENU_MESSAGE(server_info);
+  // The menu keeps a pointer to each row's text until it's drawn, so this
+  // lives as long as the menu, not just the block that fills it
+  char current_status[256];
 
   // Covers need the room under the menu, so the menu is kept short
   bool boxart = config.app_list_style == APP_LIST_BOXART && server.paired && server_applist != NULL;
@@ -368,7 +371,6 @@ int ui_connected_menu() {
     // current stream
     if (server.currentGame != 0) {
       char current_appname[256];
-      char current_status[256];
 
       if (!get_app_name(server_applist, server.currentGame, current_appname)) {
         snprintf(current_appname, sizeof(current_appname), "%s", tr(STR_CONNECTED_UNKNOWN_APP));
