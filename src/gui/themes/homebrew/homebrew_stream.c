@@ -45,7 +45,20 @@ void hb_draw_stats(const stats_view *view) {
 }
 
 void hb_draw_stream_overlay(const stream_overlay_view *view) {
-  if (view->hint != NULL) {
+  bool hint = view->hint != NULL;
+  if (view->battery != NULL) {
+    // Above the hint while that shows, in the weak Wi-Fi's yellow
+    float opacity = view->battery_opacity;
+    int box_width = hb_rich_text_width_aside(HINT_FONT_SIZE, view->battery) + 32;
+    int box_height = 36;
+    int box_x = (WIDTH - box_width) / 2;
+    int box_y = HEIGHT - box_height - 24 - (hint ? box_height + 8 : 0);
+    vita2d_draw_rectangle(box_x, box_y, box_width, box_height, RGBA8(0, 0, 0, (uint8_t)(0xB0 * opacity)));
+    hb_draw_rich_text_aside(box_x + 16, box_y + 25, RGBA8(0xFF, 0xD0, 0x00, (uint8_t)(0xFF * opacity)),
+                            HINT_FONT_SIZE, view->battery);
+  }
+
+  if (hint) {
     float opacity = view->hint_opacity;
     int text_width = hb_rich_text_width(HINT_FONT_SIZE, view->hint);
     int box_width = text_width + 32;

@@ -19,9 +19,11 @@
 #include <stdbool.h>
 
 #include <psp2/kernel/processmgr.h>
+#include <psp2/kernel/sysmem.h>
 #include <psp2/power.h>
 #include "../config.h"
 #include "../debug.h"
+#include "vita.h"
 
 enum {
   ENABLE_ALL = 0,
@@ -46,6 +48,13 @@ static int powermode = ENABLE_ALL;
 static bool active_power_thread = false;
 static bool clocks_boosted = false;
 static clock_state saved_clocks = {0};
+
+// The battery levels that warn while streaming, highest first. Each warns
+// once, then again only after the battery has risen above it (charging).
+static const int battery_thresholds[] = {15, 5};
+#define BATTERY_THRESHOLD_COUNT (sizeof(battery_thresholds) / sizeof(battery_thresholds[0]))
+static bool battery_warned[BATTERY_THRESHOLD_COUNT] = {false};
+static volatile vitapower_battery_warning battery_warning = {0};
 
 static void boost_clocks() {
   if (clocks_boosted) {
@@ -79,6 +88,50 @@ static void restore_clocks() {
   clocks_boosted = false;
 }
 
+// The system status bar is hidden while streaming, so say when the battery
+// runs low. Called every 10 s during a stream.
+static void check_battery() {
+  // A PS TV has no battery
+  if (config.model == SCE_KERNEL_MODEL_VITATV) {
+    return;
+  }
+  int percent = scePowerGetBatteryLifePercent();
+  if (percent < 0 || percent > 100) {
+    return;
+  }
+  bool charging = scePowerIsBatteryCharging() || scePowerIsPowerOnline();
+  int crossed = -1;
+  for (int i = 0; i < BATTERY_THRESHOLD_COUNT; i++) {
+    if (percent > battery_thresholds[i]) {
+      battery_warned[i] = false;
+    } else if (!battery_warned[i] && !charging) {
+      // Below several at once (a stream started at 4%): one warning, for the lowest
+      battery_warned[i] = true;
+      crossed = i;
+    }
+  }
+  if (crossed < 0) {
+    return;
+  }
+  // Minutes left, when the system has an estimate
+  int minutes = scePowerGetBatteryLifeTime();
+  battery_warning.percent = percent;
+  battery_warning.minutes = minutes > 0 && minutes < 24 * 60 ? minutes : -1;
+  __sync_synchronize();
+  battery_warning.count++;
+  vita_debug_log("Battery low: %d%% (%d min left), warned at %d%%", percent, minutes,
+                 battery_thresholds[crossed]);
+}
+
+vitapower_battery_warning vitapower_battery_warning_latest() {
+  vitapower_battery_warning latest;
+  latest.count = battery_warning.count;
+  __sync_synchronize();
+  latest.percent = battery_warning.percent;
+  latest.minutes = battery_warning.minutes;
+  return latest;
+}
+
 int vitapower_thread(SceSize args, void *argp) {
   while (1) {
     if (!active_power_thread) {
@@ -89,9 +142,7 @@ int vitapower_thread(SceSize args, void *argp) {
       sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DISABLE_AUTO_SUSPEND);
       sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DISABLE_OLED_OFF);
     }
-    if (!scePowerIsBatteryCharging() && scePowerIsLowBattery()) {
-      // TODO print warning message
-    }
+    check_battery();
     sceKernelDelayThread(10 * 1000 * 1000);
   }
 

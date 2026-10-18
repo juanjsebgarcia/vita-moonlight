@@ -17,8 +17,20 @@
  * along with Moonlight; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#pragma once
+
 bool vitapower_init();
 void vitapower_config(CONFIGURATION config);
 
 void vitapower_start();
 void vitapower_stop();
+
+// The latest low battery warning while streaming. count goes up by one for
+// each warning, so a change means a new one to show.
+typedef struct {
+  unsigned int count;
+  int percent;
+  int minutes;  // the system's estimate of the time left, or -1 when it has none
+} vitapower_battery_warning;
+
+vitapower_battery_warning vitapower_battery_warning_latest();
