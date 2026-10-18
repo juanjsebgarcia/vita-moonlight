@@ -306,8 +306,9 @@ void mph_screen_main_draw(const menu_view *view, const mph_enter *enter) {
       switch (it->kind) {
         case IT_CATEGORY:
           if (pass == 2) {
-            // 26 px here: the label's baseline 18 px down
-            mph_category(r.x, r.y - 6, r.w, mph_upper(e->name), MPH_C_FAINT);
+            // 26 px here: the label's baseline 14 px down, clear of the
+            // focus ring around the card below it
+            mph_category(r.x, r.y - 10, r.w, mph_upper(e->name), MPH_C_FAINT);
           }
           break;
         case IT_SEPARATOR:
