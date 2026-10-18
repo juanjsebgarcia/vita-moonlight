@@ -190,7 +190,8 @@ int text_wrap(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int 
     } else {
       while (*end && *end != ' ' && *end != '\n') {
         const char *next = end;
-        if (end != p && breaks_anywhere(text_utf8_next(&next))) {
+        unsigned int c = text_utf8_next(&next);
+        if (end != p && breaks_anywhere(c)) {
           break;
         }
         end = next;
