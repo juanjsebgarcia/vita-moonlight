@@ -447,7 +447,7 @@ static bool ask_number(const char *title, int current, int *result) {
 static void run_network_test(void) {
   unsigned int result;
   if (!nettest_start()) {
-    display_error("%s", tr(STR_NETTEST_INCONCLUSIVE));
+    display_error("%s", tr(STR_NETTEST_NOT_STARTED));
     return;
   }
   while (!nettest_poll(&result)) {

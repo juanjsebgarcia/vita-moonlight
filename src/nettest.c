@@ -16,8 +16,10 @@
 #define PORT_INDEX_COUNT 32
 
 static SceUID test_thread = -1;
-static volatile bool test_done = false;
-static volatile unsigned int test_result = 0;
+// Set by the test thread once test_result is written, with release and
+// acquire ordering so the UI thread never sees it before the result
+static bool test_done = false;
+static unsigned int test_result = 0;
 
 static int nettest_main(SceSize args, void *argp) {
   unsigned int result = LiTestClientConnectivity(NETTEST_SERVER, NETTEST_REFERENCE_PORT, ML_PORT_FLAG_ALL);
@@ -31,7 +33,7 @@ static int nettest_main(SceSize args, void *argp) {
     vita_debug_log("nettest: blocked %s\n", ports);
   }
   test_result = result;
-  test_done = true;
+  __atomic_store_n(&test_done, true, __ATOMIC_RELEASE);
   return sceKernelExitDeleteThread(0);
 }
 
@@ -39,7 +41,7 @@ bool nettest_start(void) {
   if (test_thread >= 0) {
     return false;
   }
-  test_done = false;
+  __atomic_store_n(&test_done, false, __ATOMIC_RELAXED);
   // Self-deleting, so nothing needs cleaning up if nobody polls it
   test_thread = sceKernelCreateThread("nettest", nettest_main, 0x10000100, 0x10000, 0, 0, NULL);
   if (test_thread < 0) {
@@ -56,7 +58,7 @@ bool nettest_start(void) {
 }
 
 bool nettest_poll(unsigned int *result) {
-  if (test_thread < 0 || !test_done) {
+  if (test_thread < 0 || !__atomic_load_n(&test_done, __ATOMIC_ACQUIRE)) {
     return false;
   }
   test_thread = -1;

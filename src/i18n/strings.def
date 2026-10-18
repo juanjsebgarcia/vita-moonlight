@@ -73,6 +73,7 @@ S(NETTEST_RUNNING, "Checking whether this network blocks the ports Moonlight str
 S(NETTEST_OK, "This network lets streaming through: every port Moonlight uses reached the test server.\n\nIf your PC still doesn't answer, check its firewall and that it's awake.", "Network test result")
 S(NETTEST_BLOCKED, "This network blocks:\n{0}\n\nA PC on this same network can still stream. To reach a PC elsewhere, try another network or a VPN.", "Network test result; {0} = lines such as UDP 47998–48000")
 S(NETTEST_INCONCLUSIVE, "Couldn't reach Moonlight's test server, so the ports couldn't be tested. Check that the Vita is connected to the internet, then try again.", "Network test result")
+S(NETTEST_NOT_STARTED, "Couldn't start the network test. Close Moonlight, open it again and try once more.", "Network test result, when the test couldn't begin at all")
 S(SET_INPUT_SYNC, "Sync input to controller sampling", "Settings row")
 S(SET_INPUT_SYNC_HELP, "Reads your buttons in step with the Vita's controls, which saves battery without adding lag. If touch controls feel slower than before, turn it off.", "Help for the row above")
 S(SET_ENABLE_MOTION_CONTROLS, "Enable Gyroscope reporting", "Settings row")
