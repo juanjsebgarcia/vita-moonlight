@@ -152,6 +152,9 @@ static bool ask_pc_to_unpair(device_info_t *info, bool *told) {
   struct host_status st = check_host_status(info);
   if (st.status != HOST_OFFLINE) {
     snprintf(address, sizeof(address), "%s", st.current_ip[0] ? st.current_ip : info->internal);
+  } else if (info->internal[0] && strspn(info->internal, "0123456789.") != strlen(info->internal)) {
+    // A host name, which the scan's IPv4 check can't reach but connecting can
+    snprintf(address, sizeof(address), "%s", info->internal);
   } else if (info->external[0] && strcmp(info->external, info->internal) != 0) {
     // The scan only looks nearby; connecting also tries the external address
     snprintf(address, sizeof(address), "%s", info->external);
