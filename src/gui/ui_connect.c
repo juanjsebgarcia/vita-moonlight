@@ -214,10 +214,12 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
           }
           // TODO: stop previous stream
         case LI_PAIRED:
-          flash_message("%s", tr(STR_CONNECT_STREAM_STARTING_CANCEL));
+          flash_message("%s", tr(STR_CONNECT_STREAM_STARTING));
           // That frame has finished drawing, so the covers can go now: the
           // stream needs the memory and the network more
           ui_boxart_close();
+          // Closing them can wait for a download; only now can a press cancel
+          flash_message("%s", tr(STR_CONNECT_STREAM_STARTING_CANCEL));
           ui_connect_stream(id);
           break;
       }

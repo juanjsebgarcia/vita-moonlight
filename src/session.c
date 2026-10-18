@@ -64,23 +64,32 @@ static bool start_launched_app = false;
 // While a stream starts, a thread watches for the player's cancel button.
 // The start itself blocks the UI thread, in the host's launch request and
 // then in LiStartConnection, so nothing else would see it.
-static volatile bool cancel_watching = false;
-static volatile bool cancel_requested = false;
+// Shared with the watcher thread, so read and written atomically
+static bool cancel_watching = false;
+static bool cancel_requested = false;
+
+static bool flag_get(bool *flag) {
+  return __atomic_load_n(flag, __ATOMIC_SEQ_CST);
+}
+
+static void flag_set(bool *flag, bool value) {
+  __atomic_store_n(flag, value, __ATOMIC_SEQ_CST);
+}
 
 static int cancel_watch_main(SceSize args, void *argp) {
   // Only a new press counts: the button can still be down from leaving a
   // menu (Settings restarts the stream as it closes)
   bool was_down = ui_cancel_requested();
-  while (cancel_watching) {
+  while (flag_get(&cancel_watching)) {
     bool down = ui_cancel_requested();
-    if (!cancel_requested && down && !was_down) {
+    if (!flag_get(&cancel_requested) && down && !was_down) {
       vita_debug_log("Stream start cancelled by the player");
-      cancel_requested = true;
+      flag_set(&cancel_requested, true);
     }
     was_down = down;
     // Again on every pass: LiStartConnection clears the flag as it begins,
     // so a press just before it would otherwise be lost
-    if (cancel_requested) {
+    if (flag_get(&cancel_requested)) {
       LiInterruptConnection();
     }
     sceKernelDelayThread(50 * 1000);
@@ -89,12 +98,12 @@ static int cancel_watch_main(SceSize args, void *argp) {
 }
 
 static SceUID cancel_watch_start(void) {
-  cancel_requested = false;
-  cancel_watching = true;
+  flag_set(&cancel_requested, false);
+  flag_set(&cancel_watching, true);
   SceUID thread = sceKernelCreateThread("cancel_watch", cancel_watch_main, 0x10000100, 0x4000, 0, 0, NULL);
   if (thread < 0) {
     vita_debug_log("Can't watch for cancel while the stream starts: 0x%08X", thread);
-    cancel_watching = false;
+    flag_set(&cancel_watching, false);
     return thread;
   }
   sceKernelStartThread(thread, 0, NULL);
@@ -102,7 +111,7 @@ static SceUID cancel_watch_start(void) {
 }
 
 static void cancel_watch_stop(SceUID thread) {
-  cancel_watching = false;
+  flag_set(&cancel_watching, false);
   if (thread >= 0) {
     sceKernelWaitThreadEnd(thread, NULL, NULL);
     sceKernelDeleteThread(thread);
@@ -118,7 +127,7 @@ int session_start_stream(int appId, char *err, size_t err_len) {
   SceUID watcher = cancel_watch_start();
   int ret = start_stream(appId, err, err_len);
   cancel_watch_stop(watcher);
-  if (!cancel_requested) {
+  if (!flag_get(&cancel_requested)) {
     return ret;
   }
   if (ret == 0) {
@@ -156,7 +165,7 @@ static int start_stream(int appId, char *err, size_t err_len) {
   }
   vita_debug_log("App started.");
   start_launched_app = true;
-  if (cancel_requested) {
+  if (flag_get(&cancel_requested)) {
     // The launch request can't be interrupted, but the stream needn't start.
     // The host's menu then lists the app as running, to resume or quit.
     return SESSION_START_CANCELLED;
