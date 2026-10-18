@@ -242,5 +242,7 @@ CONNECTION_LISTENER_CALLBACKS connection_callbacks = {
   .connectionTerminated = connection_connection_terminated,
   .connectionStatusUpdate = connection_status_update,
   .logMessage = vita_debug_log,
-  .setMotionEventState = connection_set_motion_state
+  .setMotionEventState = connection_set_motion_state,
+  .rumble = vitainput_rumble,
+  .setControllerLED = vitainput_set_led
 };

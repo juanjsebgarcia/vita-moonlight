@@ -118,6 +118,11 @@ void vitainput_stop(void);
 // when it changed since the last one sent. Does nothing on a PS TV.
 void vitainput_report_battery(bool force);
 
+// The host's rumble and light bar requests, for a DualShock in PS TV mode.
+// Ignored for the handheld's own controls, which have neither.
+void vitainput_rumble(unsigned short controller, unsigned short low_freq, unsigned short high_freq);
+void vitainput_set_led(uint16_t controller, uint8_t r, uint8_t g, uint8_t b);
+
 uint8_t read_backscreen();
 uint8_t read_frontscreen();
 uint32_t is_pressed(uint32_t defined);

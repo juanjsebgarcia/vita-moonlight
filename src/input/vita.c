@@ -1061,12 +1061,62 @@ void vitainput_report_battery(bool force) {
   LiSendControllerBatteryEvent(0, state, percent);
 }
 
+// What backs controller 0 for this stream: a DualShock in PS TV mode has motors
+// (and a DS4 a light bar), the handheld's own controls have neither
+static uint8_t pad_type = SCE_CTRL_TYPE_UNPAIRED;
+
+static bool pad_has_motors(void) {
+  return pad_type == SCE_CTRL_TYPE_DS3 || pad_type == SCE_CTRL_TYPE_DS4;
+}
+
+static void stop_pad_motors(void) {
+  if (pad_has_motors()) {
+    SceCtrlActuator off = {0};
+    sceCtrlSetActuator(controller_port, &off);
+  }
+}
+
+void vitainput_rumble(unsigned short controller, unsigned short low_freq, unsigned short high_freq) {
+  // Rumble sent while paused would keep buzzing until the stream resumes
+  if (controller != 0 || !pad_has_motors() || !active_input_thread) {
+    return;
+  }
+
+  // The large motor is the low frequency one; scaled from 16 to 8 bits
+  SceCtrlActuator state = {
+    .small = high_freq >> 8,
+    .large = low_freq >> 8,
+  };
+  sceCtrlSetActuator(controller_port, &state);
+}
+
+void vitainput_set_led(uint16_t controller, uint8_t r, uint8_t g, uint8_t b) {
+  if (controller != 0 || pad_type != SCE_CTRL_TYPE_DS4) {
+    return;
+  }
+  vita_debug_log("[PAD] light bar %u,%u,%u\n", r, g, b);
+  sceCtrlSetLightBar(controller_port, r, g, b);
+}
+
 void vitainput_start(void) {
   uint16_t gamepadMask = 1;
   uint32_t gamepadCapabilites = LI_CCAP_GYRO | LI_CCAP_ACCEL | LI_CCAP_TOUCHPAD;
   if (vita_has_battery()) {
     gamepadCapabilites |= LI_CCAP_BATTERY_STATE;
   }
+
+  SceCtrlPortInfo ports;
+  pad_type = SCE_CTRL_TYPE_UNPAIRED;
+  if (sceCtrlGetControllerPortInfo(&ports) >= 0 && controller_port < 5) {
+    pad_type = ports.port[controller_port];
+  }
+  if (pad_has_motors()) {
+    gamepadCapabilites |= LI_CCAP_RUMBLE;
+  }
+  if (pad_type == SCE_CTRL_TYPE_DS4) {
+    gamepadCapabilites |= LI_CCAP_RGB_LED;
+  }
+  vita_debug_log("[PAD] port %d type %u, capabilities 0x%x\n", controller_port, pad_type, gamepadCapabilites);
 
   uint32_t gamepadSupportedButtonFlags = 0xffff;
   gamepadSupportedButtonFlags |= TOUCHPAD_FLAG;
@@ -1098,4 +1148,5 @@ void vitainput_stop(void) {
   unlock_psbutton();
   active_input_thread = false;
   active_motion_threads = false;
+  stop_pad_motors();
 }
