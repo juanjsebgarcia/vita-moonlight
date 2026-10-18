@@ -40,6 +40,7 @@ typedef enum {
   SETTING_ACTION_SPECIAL_KEYS,    // the touch corner buttons screen
   SETTING_ACTION_KEYBOARD_LAYOUT, // the keyboard layout screen
   SETTING_ACTION_RUN_BENCHMARK,
+  SETTING_ACTION_NETWORK_TEST,    // test whether this network blocks the streaming ports
   SETTING_ACTION_HIDE_DEVELOPER,
   SETTING_ACTION_SHOW_HELP,       // nothing to change: confirm explains it
 } setting_action;

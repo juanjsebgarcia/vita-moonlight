@@ -70,6 +70,7 @@ add_executable(${PROJECT_NAME}.elf
 	src/stats.c
 	src/bench.c
 	src/netcount.c
+	src/nettest.c
 	src/settings.c
 	src/i18n/i18n.c
 	src/session.c

@@ -459,6 +459,10 @@ static bool language_change(int step) {
   return true;
 }
 
+static bool not_streaming(void) {
+  return !settings_streaming();
+}
+
 static void version_value(char *out, size_t size) {
   snprintf(out, size, "v%d.%d.%d", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
 }
@@ -545,6 +549,10 @@ const setting_def SETTINGS[] = {
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_CHOICE, .flags = SETTING_CONFIRM_STEPS,
    .label = STR_SET_APP_LIST_STYLE, .value = app_list_value, .change = app_list_change,
    .help = STR_SET_APP_LIST_STYLE_HELP},
+  // Not mid-stream: the test would share the network with the stream
+  {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_ACTION,
+   .label = STR_SET_NETWORK_TEST, .listed = not_streaming, .action = SETTING_ACTION_NETWORK_TEST,
+   .help = STR_SET_NETWORK_TEST_HELP},
 
   // Controls
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,

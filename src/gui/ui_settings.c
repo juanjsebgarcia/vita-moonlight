@@ -12,6 +12,7 @@
 #include "../stats.h"
 #include "../connection.h"
 #include "../bench.h"
+#include "../nettest.h"
 #include "ui_connect.h"
 #include "../input/touchabsolute.h"
 
@@ -441,6 +442,30 @@ static bool ask_number(const char *title, int current, int *result) {
   return true;
 }
 
+// Tests whether this network lets the streaming ports out, showing progress
+// until Moonlight's test server has answered on each one
+static void run_network_test(void) {
+  unsigned int result;
+  if (!nettest_start()) {
+    display_error("%s", tr(STR_NETTEST_INCONCLUSIVE));
+    return;
+  }
+  while (!nettest_poll(&result)) {
+    flash_message("%s", tr(STR_NETTEST_RUNNING));
+  }
+
+  if (result == 0) {
+    display_alert((char *)tr(STR_NETTEST_OK), NULL, 1, NULL, NULL);
+  } else if (result == ML_TEST_RESULT_INCONCLUSIVE) {
+    display_error("%s", tr(STR_NETTEST_INCONCLUSIVE));
+  } else {
+    char ports[128], message[512];
+    nettest_describe_ports(result, ports, sizeof(ports));
+    TR_FMT(message, sizeof(message), STR_NETTEST_BLOCKED, ports);
+    display_error("%s", message);
+  }
+}
+
 // Carries out an action row. Returns 0, SETTINGS_REBUILD, or
 // SETTINGS_RESTART_STREAM.
 static int run_action(const setting_def *setting) {
@@ -502,6 +527,9 @@ static int run_action(const setting_def *setting) {
       ui_settings_save_config();
       vitabench_run(false);
       return SETTINGS_REBUILD;
+    case SETTING_ACTION_NETWORK_TEST:
+      run_network_test();
+      return 0;
     case SETTING_ACTION_HIDE_DEVELOPER:
       config.developer_mode = false;
       ui_settings_save_config();
