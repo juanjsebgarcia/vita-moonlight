@@ -23,6 +23,7 @@
 #include "psp2/net/netctl.h"
 #include "video.h"
 #include "config.h"
+#include "hardware.h"
 #include "platform.h"
 
 #include "input/vita.h"
@@ -206,12 +207,15 @@ int main(int argc, char* argv[]) {
   // Aplicar el layout guardado después de cargar la config
   keyboardsystem_set_layout((KeyboardLayout)config.keyboard_layout);
 
-  vitapower_config(config);
-  vitainput_config(config);
-
   char log_path[MOONLIGHT_PATH_MAX] = {0};
   snprintf(log_path, sizeof(log_path), "%s/moonlight.log", config.key_dir);
   config.log_file = fopen(log_path, "w");
+  // After the log opens, so the reading is recorded, and before the input
+  // config, which maps the controls by it
+  vita_hardware_init();
+
+  vitapower_config(config);
+  vitainput_config(config);
   // After the log opens, so a failure to read the nickname is recorded
   set_pairing_device_name();
 

@@ -48,7 +48,6 @@ typedef struct _CONFIGURATION {
   char* address;
   char* mapping;
   char* platform;
-  uint32_t model;
   char* config_file;
   char key_dir[4096];
   bool sops;
@@ -65,6 +64,8 @@ typedef struct _CONFIGURATION {
   bool input_sync_to_controller; // pace input reads to controller samples instead of 2 ms polling
   // Developer options, shown in Settings after L + R + triangle
   bool developer_mode;
+  // Act as a PS TV on a handheld, to test the PS TV interface (src/hardware.h)
+  bool force_ps_tv;
   // Benchmark against tools/bench/bench.html streamed from the host
   int bench_seconds;
   char *bench_app;    // Sunshine app that shows the benchmark page

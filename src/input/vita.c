@@ -33,6 +33,7 @@
 #include "../connection.h"
 #include "../config.h"
 #include "../debug.h"
+#include "../hardware.h"
 #include "psp2/kernel/threadmgr/thread.h"
 #include "psp2common/types.h"
 #include "vita.h"
@@ -952,7 +953,7 @@ void vitainput_config(CONFIGURATION config) {
   map.btn_thumbl      = SCE_CTRL_L1         | INPUT_TYPE_GAMEPAD;
   map.btn_thumbr      = SCE_CTRL_R1         | INPUT_TYPE_GAMEPAD;
 
-  if (config.model == SCE_KERNEL_MODEL_VITATV) {
+  if (vita_ps_tv_mode()) {
     map.btn_tl        = LEFT_TRIGGER        | INPUT_TYPE_ANALOG;
     map.btn_tr        = RIGHT_TRIGGER       | INPUT_TYPE_ANALOG;
     map.btn_tl2       = SCE_CTRL_L3         | INPUT_TYPE_GAMEPAD;
@@ -971,7 +972,7 @@ void vitainput_config(CONFIGURATION config) {
         mapping_load(mapping_file_path, &map);
     }
 
-  controller_port = config.model == SCE_KERNEL_MODEL_VITATV ? 1 : 0;
+  controller_port = vita_ps_tv_mode() ? 1 : 0;
 
   VERTICAL   = (WIDTH - config.back_deadzone.left - config.back_deadzone.right) / 2
              + config.back_deadzone.left;

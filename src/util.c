@@ -1,11 +1,11 @@
 #include "util.h"
 #include "debug.h"
+#include "hardware.h"
 
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <psp2/kernel/sysmem.h>
 #include <psp2/net/netctl.h>
 #include <psp2/registrymgr.h>
 
@@ -89,5 +89,5 @@ int vita_network_type(void) {
   if (info.device == NETCTL_DEVICE_WIFI) {
     return VITA_NETWORK_WIFI;
   }
-  return sceKernelGetModelForCDialog() == SCE_KERNEL_MODEL_VITATV ? VITA_NETWORK_WIRED : VITA_NETWORK_MOBILE;
+  return vita_is_ps_tv() ? VITA_NETWORK_WIRED : VITA_NETWORK_MOBILE;
 }
