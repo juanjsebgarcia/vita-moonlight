@@ -9,7 +9,7 @@
 //  - as text: one list holding the categories, the actions and the apps.
 // The order of the rows, and so the cursor's, is the menu's.
 
-#include "mph_screen_connected.h"
+#include "mph_screens.h"
 
 #include "../../text.h"
 
@@ -76,8 +76,9 @@ static struct {
   unsigned int generation;
   bool carousel_known;
   float last_drawn;
+  float seen;
   bool started;
-} st;
+} st = {.seen = -1};
 
 static bool selectable(const menu_entry *e) {
   return !e->disabled && !e->separator;
@@ -150,22 +151,10 @@ static mph_rect list_view(const menu_view *view) {
 // The scroll that keeps the selected row in view (text mode; the box art
 // column always fits)
 static float scroll_target(mph_rect v, int focused, float current) {
-  float max = content_h - v.h;
-  if (max <= 0) {
-    return 0;
-  }
-  float target = current;
-  if (focused >= 0 && focused < item_count && items[focused].kind != ITEM_HIDDEN && items[focused].kind != ITEM_SHELF) {
-    float top = items[focused].top, bottom = top + items[focused].h;
-    float margin = MPH_ROW_H;
-    if (top - target < margin) {
-      target = top - margin;
-    }
-    if (bottom - target > v.h - margin) {
-      target = bottom - v.h + margin;
-    }
-  }
-  return target < 0 ? 0 : target > max ? max : target;
+  bool shown = focused >= 0 && focused < item_count && items[focused].kind != ITEM_HIDDEN &&
+               items[focused].kind != ITEM_SHELF;
+  float top = shown ? items[focused].top : -1, bottom = shown ? top + items[focused].h : 0;
+  return mph_scroll_keep(top, bottom, content_h, v.h, MPH_ROW_H, current);
 }
 
 void mph_screen_connected_follow(menu_view *view) {
@@ -399,15 +388,17 @@ static void draw_shelf(const menu_view *view, bool focused) {
  * The screen
  */
 
-void mph_screen_connected_draw(const menu_view *view, float enter) {
+void mph_screen_connected_draw(const menu_view *view, const mph_enter *enter) {
   build(view);
   const boxart_view *b = view->decorated ? view->boxart : NULL;
   mph_rect v = list_view(view);
   float target = scroll_target(v, view->cursor_row, view->scroll);
 
-  // A new menu (or one back from Settings, a stream or a dialog) starts afresh
+  // A new screen, or this one back from a stream or a dialog (a pause in
+  // drawing it), starts afresh
   float now = mph_time();
-  if (!st.started || now - st.last_drawn > 0.2f) {
+  bool fresh = mph_enter_is_new(enter, &st.seen);
+  if (!st.started || fresh || now - st.last_drawn > 0.2f) {
     mph_focus_hide(&st.focus);
     mph_tween_snap(&st.scroll, target);
     st.carousel_known = false;
@@ -432,8 +423,9 @@ void mph_screen_connected_draw(const menu_view *view, float enter) {
   mph_bg_draw();
   mph_statusbar(view->screen->title);
 
-  enter_alpha = enter;
-  enter_dx = 18.0f * (1.0f - enter);
+  float k = mph_enter_k(enter);
+  enter_alpha = k;
+  enter_dx = 18.0f * (1.0f - k);
   set_alpha(1.0f);
 
   // The highlight: the pill on a row, or the ring on the selected cover
@@ -471,8 +463,5 @@ void mph_screen_connected_draw(const menu_view *view, float enter) {
   }
 
   mph_transform_reset();
-  if (view->decorated && view->hint.text != NULL) {
-    mph_hint hint = {view->hint.glyph, view->hint.text};
-    mph_legend(&hint, 1);
-  }
+  mph_menu_legend(view);
 }

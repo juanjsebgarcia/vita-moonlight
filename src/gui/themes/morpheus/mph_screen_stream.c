@@ -5,8 +5,7 @@
 // they stay as cheap as Homebrew's: flat shapes with a 1 px fringe at most,
 // no shadows, the same text, and nothing measured unless it changed.
 
-#include "mph.h"
-#include "mph_screen_stream.h"
+#include "mph_screens.h"
 
 #include <math.h>
 #include <stdio.h>

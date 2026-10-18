@@ -3,8 +3,7 @@
 // (S13). Every dialog draws alone over the background and the scrim, as the
 // app's dialogs clear the screen behind them.
 
-#include "mph.h"
-#include "mph_screen_dialogs.h"
+#include "mph_screens.h"
 
 #include "../../../config.h"
 

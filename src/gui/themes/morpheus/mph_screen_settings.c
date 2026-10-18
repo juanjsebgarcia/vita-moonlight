@@ -10,9 +10,8 @@
 // from the shared screen code (ui_settings.c, ui_recommended.c,
 // ui_keyboard.c), and every word from the view or an existing string.
 
-#include "mph_screen_settings.h"
+#include "mph_screens.h"
 
-#include "../../../config.h"
 #include "../../../i18n/i18n.h"
 #include "../../text.h"
 
@@ -26,10 +25,6 @@
 #define CARD_W 256
 #define CARD_PAD 18
 
-static void frame_end(void) {
-  mph_frame_end(config.developer_mode);
-}
-
 /*
  * What the screens share: their list, a copy of what update gave (so the tab
  * bar and the help card stay up while a rebuilt menu waits for update), and
@@ -38,34 +33,28 @@ static void frame_end(void) {
 
 static mph_list_state list;
 static mph_row rows[MPH_LIST_MAX];
-static float shown_since = -1;
+static float seen = -1;
 // A summary of the rows, so a new tab starts its list afresh (switches don't
 // slide from the last tab's states) but a value change doesn't
 static unsigned int rows_key;
 
-// Follows the screen and its rows; the list starts afresh when either changes
-static void track(const menu_view *view) {
-  // Only the time is wanted here: the slide applies to the content, later
-  float since = mph_screen_enter();
-  mph_transform_reset();
+// Follows the screen and its rows; the list starts afresh when either
+// changes. Returns whether the screen is new.
+static bool track(const menu_view *view, const mph_enter *enter) {
+  bool fresh = mph_enter_is_new(enter, &seen);
   unsigned int key = 2166136261u ^ (unsigned int)view->row_count;
   for (int i = 0; i < view->row_count; i++) {
     key = (key ^ (unsigned int)view->rows[i].id ^ (unsigned int)view->rows[i].kind << 16) * 16777619u;
   }
-  if (since != shown_since || key != rows_key) {
+  if (fresh || key != rows_key) {
     mph_list_reset(&list);
   }
-  shown_since = since;
   rows_key = key;
+  return fresh;
 }
 
 static int build_rows(const menu_view *view, int first) {
-  int n = view->row_count - first;
-  n = n < 0 ? 0 : n > MPH_LIST_MAX ? MPH_LIST_MAX : n;
-  for (int i = 0; i < n; i++) {
-    rows[i] = mph_row_from_entry(&view->rows[first + i]);
-  }
-  return n;
+  return first < view->row_count ? mph_rows_from_entries(rows, view->rows + first, view->row_count - first) : 0;
 }
 
 #define HELP_TITLE_MAX 256
@@ -135,13 +124,6 @@ static void help_card_text(mph_rect r) {
   }
 }
 
-static void legend(const menu_view *view) {
-  if (view->decorated && view->hint.text != NULL) {
-    mph_hint hint = {view->hint.glyph, view->hint.text};
-    mph_legend(&hint, 1);
-  }
-}
-
 /*
  * Settings (S5)
  */
@@ -206,10 +188,8 @@ static mph_rect settings_rect(void) {
   return mph_rect_make(ROWS_X, SETTINGS_TOP, ROWS_W, MPH_CONTENT_BOTTOM - SETTINGS_TOP);
 }
 
-void mph_screen_settings_draw(const menu_view *view) {
-  float before = shown_since;
-  track(view);
-  if (shown_since != before) {
+void mph_screen_settings_draw(const menu_view *view, const mph_enter *enter) {
+  if (track(view, enter)) {
     // Another screen opened since: start the tab bar and the card afresh
     tab_bar.count = 0;
     mph_focus_hide(&tab_focus);
@@ -223,14 +203,14 @@ void mph_screen_settings_draw(const menu_view *view) {
 
   mph_bg_draw();
   mph_statusbar(tr(STR_MAIN_SETTINGS));
-  mph_screen_enter();
+  mph_enter_apply(enter);
   mph_rect card = mph_rect_make(CARD_X, SETTINGS_TOP, CARD_W, MPH_CONTENT_BOTTOM - SETTINGS_TOP);
   help_card_shape(card);
   draw_tabs();
   mph_list(rect, rows, n, view->cursor_row, target, &list, TRACK_X);
   help_card_text(card);
-  legend(view);
-  frame_end();
+  mph_transform_reset();
+  mph_menu_legend(view);
 }
 
 void mph_screen_settings_follow(menu_view *view) {
@@ -274,10 +254,8 @@ static void draw_reading(const menu_view *view) {
   mph_text_fit(MPH_T_BTN, text_x, 90, text_right - text_x, MPH_C_FG, reading);
 }
 
-void mph_screen_recommended_draw(const menu_view *view) {
-  float before = shown_since;
-  track(view);
-  if (shown_since != before) {
+void mph_screen_recommended_draw(const menu_view *view, const mph_enter *enter) {
+  if (track(view, enter)) {
     clear_help();
   }
   int n = build_rows(view, 1);
@@ -294,14 +272,14 @@ void mph_screen_recommended_draw(const menu_view *view) {
 
   mph_bg_draw();
   mph_statusbar(view->screen->title);
-  mph_screen_enter();
+  mph_enter_apply(enter);
   mph_rect card = mph_rect_make(CARD_X, READING_Y, CARD_W, MPH_CONTENT_BOTTOM - READING_Y);
   help_card_shape(card);
   draw_reading(view);
   mph_list(rect, rows, n, focused, target, &list, TRACK_X);
   help_card_text(card);
-  legend(view);
-  frame_end();
+  mph_transform_reset();
+  mph_menu_legend(view);
 }
 
 void mph_screen_recommended_follow(menu_view *view) {
@@ -333,8 +311,8 @@ static mph_rect keyboard_rect(mph_rect card) {
   return mph_rect_make(card.x + KB_PAD, card.y + KB_PAD, card.w - 2 * KB_PAD, card.h - 2 * KB_PAD);
 }
 
-void mph_screen_keyboard_draw(const menu_view *view) {
-  track(view);
+void mph_screen_keyboard_draw(const menu_view *view, const mph_enter *enter) {
+  track(view, enter);
   int n = build_rows(view, 0);
   mph_rect card = keyboard_card(n);
   mph_rect rect = keyboard_rect(card);
@@ -342,10 +320,10 @@ void mph_screen_keyboard_draw(const menu_view *view) {
 
   mph_bg_draw();
   mph_statusbar(view->screen->title);
-  mph_screen_enter();
+  mph_enter_apply(enter);
   mph_rrect_fill(card, MPH_R_CARD, MPH_C_SOLID2);
   mph_list(rect, rows, n, view->cursor_row, target, &list, card.x + card.w + 8);
-  frame_end();
+  mph_transform_reset();
 }
 
 void mph_screen_keyboard_follow(menu_view *view) {

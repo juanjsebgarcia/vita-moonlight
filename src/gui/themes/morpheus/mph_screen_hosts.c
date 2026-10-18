@@ -11,7 +11,7 @@
 // added. The cursor moves over the rows in list order, as display_menu()
 // decides; these layouts only place them.
 
-#include "mph_screen_hosts.h"
+#include "mph_screens.h"
 
 #include "../../text.h"
 
@@ -21,23 +21,22 @@
 
 /*
  * State shared by the three screens. Only one is on show at a time, and a
- * new screen (a new entered_at) starts it afresh.
+ * new screen starts it afresh.
  */
 
 static struct {
   bool started;
-  float token;
+  float seen;
   mph_tween scroll;
   mph_focus ring, pill;
   mph_list_state sheet;
-} st;
+} st = {.seen = -1};
 
-static void begin(float entered_at) {
-  if (st.started && entered_at == st.token) {
+static void begin(const mph_enter *enter) {
+  if (!mph_enter_is_new(enter, &st.seen)) {
     return;
   }
   st.started = false;
-  st.token = entered_at;
   mph_focus_hide(&st.ring);
   mph_focus_hide(&st.pill);
   mph_list_reset(&st.sheet);
@@ -51,24 +50,6 @@ static float scroll_to(float target) {
   }
   mph_tween_to(&st.scroll, target, MPH_M_SCROLL, MPH_EASE_OUT);
   return roundf(mph_tween_value(&st.scroll));
-}
-
-// The enter transition (fade and an 18 px slide) for what's drawn next
-static void enter(float entered_at, bool animate) {
-  if (!animate) {
-    return;
-  }
-  float k = mph_ease_eval(MPH_EASE_OUT, (mph_time() - entered_at) / MPH_M_ENTER);
-  if (k < 1.0f) {
-    mph_transform(k, 1.0f, 0, 0, 18.0f * (1.0f - k), 0);
-  }
-}
-
-static void legend(const menu_view *view) {
-  if (view->decorated && view->hint.text != NULL) {
-    mph_hint hint = {view->hint.glyph, view->hint.text};
-    mph_legend(&hint, 1);
-  }
 }
 
 // A status mark centred on (cx, cy): online a dot, offline a ring, a new
@@ -112,20 +93,9 @@ static float content_height(int n) {
 
 // The scroll that keeps the focused item in view, a margin from the edges
 static float scroll_target(int n, int focused, float view_h, float margin, float current) {
-  float content = content_height(n);
-  float target = current;
-  if (focused >= 0 && focused < n && items[focused].kind != IT_SKIP) {
-    float top = items[focused].y, bottom = top + items[focused].h;
-    if (top - target < margin) {
-      target = top - margin;
-    }
-    if (bottom - target > view_h - margin) {
-      target = bottom - view_h + margin;
-    }
-  }
-  float max = content - view_h;
-  max = max < 0 ? 0 : max;
-  return target < 0 ? 0 : target > max ? max : target;
+  bool shown = focused >= 0 && focused < n && items[focused].kind != IT_SKIP;
+  float top = shown ? items[focused].y : -1, bottom = shown ? top + items[focused].h : 0;
+  return mph_scroll_keep(top, bottom, content_height(n), view_h, margin, current);
 }
 
 /*
@@ -265,7 +235,8 @@ static mph_rect draw_connection(const menu_view *view, int resume) {
   return button;
 }
 
-static void draw_main(const menu_view *view, float entered_at, bool animate) {
+void mph_screen_main_draw(const menu_view *view, const mph_enter *enter) {
+  begin(enter);
   int n = main_layout(view);
   mph_rect vr = main_view_rect(view);
   float offset = scroll_to(main_target(view, n));
@@ -275,7 +246,7 @@ static void draw_main(const menu_view *view, float entered_at, bool animate) {
 
   mph_bg_draw();
   mph_statusbar(view->screen->title);
-  enter(entered_at, animate);
+  mph_enter_apply(enter);
 
   // Left: the brand, or the current connection
   mph_rect button = {0};
@@ -380,7 +351,7 @@ static void draw_main(const menu_view *view, float entered_at, bool animate) {
   }
   mph_scrollbar(mph_rect_make(vr.x + vr.w + 10, vr.y, 3, vr.h), content, vr.h, offset);
   mph_transform_reset();
-  legend(view);
+  mph_menu_legend(view);
 }
 
 /*
@@ -427,7 +398,8 @@ static const char *host_address_line(const menu_view *view, int first) {
   return NULL;
 }
 
-static void draw_host(const menu_view *view, float entered_at, bool animate) {
+void mph_screen_host_draw(const menu_view *view, const mph_enter *enter) {
+  begin(enter);
   const host_view *host = view->screen->host;
   int first;
   int n = host_actions(view, &first);
@@ -436,7 +408,7 @@ static void draw_host(const menu_view *view, float entered_at, bool animate) {
   float target = mph_list_target(sr, sheet_rows, n, focused, view->scroll);
 
   mph_bg_draw();
-  enter(entered_at, animate);
+  mph_enter_apply(enter);
   mph_sheet_frame(SHEET_X);
 
   // The spotlight: shapes, then the icon, then text
@@ -462,7 +434,7 @@ static void draw_host(const menu_view *view, float entered_at, bool animate) {
   mph_transform_reset();
 
   mph_statusbar(view->screen->title);
-  legend(view);
+  mph_menu_legend(view);
 }
 
 /*
@@ -509,7 +481,8 @@ static void draw_radar(bool searching) {
   mph_circle_fill(RADAR_CX, RADAR_CY, 32, RGBA8(0xA9, 0xC8, 0xFF, 0x24));
 }
 
-static void draw_search(const menu_view *view, float entered_at, bool animate) {
+void mph_screen_search_draw(const menu_view *view, const mph_enter *enter) {
+  begin(enter);
   int n = search_layout(view);
   mph_rect vr = search_view_rect();
   float offset = scroll_to(scroll_target(n, view->cursor_row, vr.h, MPH_ROW_H, view->scroll));
@@ -529,7 +502,7 @@ static void draw_search(const menu_view *view, float entered_at, bool animate) {
 
   mph_bg_draw();
   mph_statusbar(view->screen->title);
-  enter(entered_at, animate);
+  mph_enter_apply(enter);
 
   // Left: radar, title, the hint
   draw_radar(searching);
@@ -597,51 +570,25 @@ static void draw_search(const menu_view *view, float entered_at, bool animate) {
   }
   mph_scrollbar(mph_rect_make(vr.x + vr.w + 10, vr.y, 3, vr.h), content, vr.h, offset);
   mph_transform_reset();
-  legend(view);
+  mph_menu_legend(view);
 }
 
 /*
- * Entry points
+ * menu_follow for the three screens
  */
 
-bool mph_hosts_draw(const menu_view *view, float entered_at, bool animate) {
-  switch (view->screen->id) {
-    case UI_SCREEN_MAIN:
-      begin(entered_at);
-      draw_main(view, entered_at, animate);
-      return true;
-    case UI_SCREEN_HOST:
-      begin(entered_at);
-      draw_host(view, entered_at, animate);
-      return true;
-    case UI_SCREEN_SEARCH:
-      begin(entered_at);
-      draw_search(view, entered_at, animate);
-      return true;
-    default:
-      return false;
-  }
+void mph_screen_main_follow(menu_view *view) {
+  int n = main_layout(view);
+  view->scroll = (int)roundf(main_target(view, n));
 }
 
-bool mph_hosts_follow(menu_view *view) {
-  switch (view->screen->id) {
-    case UI_SCREEN_MAIN: {
-      int n = main_layout(view);
-      view->scroll = (int)roundf(main_target(view, n));
-      return true;
-    }
-    case UI_SCREEN_HOST: {
-      int first;
-      int n = host_actions(view, &first);
-      view->scroll = (int)roundf(mph_list_target(sheet_rect(), sheet_rows, n, view->cursor_row - first, view->scroll));
-      return true;
-    }
-    case UI_SCREEN_SEARCH: {
-      int n = search_layout(view);
-      view->scroll = (int)roundf(scroll_target(n, view->cursor_row, search_view_rect().h, MPH_ROW_H, view->scroll));
-      return true;
-    }
-    default:
-      return false;
-  }
+void mph_screen_host_follow(menu_view *view) {
+  int first;
+  int n = host_actions(view, &first);
+  view->scroll = (int)roundf(mph_list_target(sheet_rect(), sheet_rows, n, view->cursor_row - first, view->scroll));
+}
+
+void mph_screen_search_follow(menu_view *view) {
+  int n = search_layout(view);
+  view->scroll = (int)roundf(scroll_target(n, view->cursor_row, search_view_rect().h, MPH_ROW_H, view->scroll));
 }

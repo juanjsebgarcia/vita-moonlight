@@ -110,6 +110,14 @@ mph_row mph_row_from_entry(const menu_entry *e) {
   return r;
 }
 
+int mph_rows_from_entries(mph_row *rows, const menu_entry *entries, int n) {
+  n = n < 0 ? 0 : n > MPH_LIST_MAX ? MPH_LIST_MAX : n;
+  for (int i = 0; i < n; i++) {
+    rows[i] = mph_row_from_entry(&entries[i]);
+  }
+  return n;
+}
+
 bool mph_row_selectable(const mph_row *r) {
   return !r->disabled && r->kind != MPH_ROW_CATEGORY && r->kind != MPH_ROW_SEPARATOR && r->kind != MPH_ROW_NOTE;
 }
@@ -220,18 +228,23 @@ static void row_draw(mph_rect r, const mph_row *row, bool focused, float switch_
   }
   // The value (and suffix) take what the label leaves: when both don't fit,
   // the value is cut first, down to 64 px (a few letters and the ellipsis),
-  // then the label
+  // then the label. A value and a suffix share the room: the shorter keeps
+  // its width, or each gets half.
   float left_edge = r.x + (row->icon >= 0 ? 44 : 16);
   float label_w = row->label != NULL ? mph_text_w(MPH_T_ROW, row->label) : 0;
-  float value_max = 64;
   float spare = right - left_edge - label_w - 14;
   if (row->kind == MPH_ROW_CHOICE && row->value != NULL) {
     spare -= mph_text_w(MPH_T_ROW, "\xe2\x80\xb9") + mph_text_w(MPH_T_ROW, "\xe2\x80\xba") + 20;
   }
+  float value_max = spare, suffix_max = spare;
   if (row->value != NULL && row->suffix != NULL && row->kind != MPH_ROW_TOGGLE) {
-    spare = (spare - 10) / 2;
+    float half = (spare - 10) / 2;
+    float value_w = mph_text_w(MPH_T_ROW, row->value), suffix_w = mph_text_w(MPH_T_ROW, row->suffix);
+    value_max = suffix_w < half ? spare - 10 - suffix_w : half;
+    suffix_max = value_w < half ? spare - 10 - value_w : half;
   }
-  value_max = spare > value_max ? spare : value_max;
+  value_max = value_max > 64 ? value_max : 64;
+  suffix_max = suffix_max > 64 ? suffix_max : 64;
   if (row->value != NULL && row->kind != MPH_ROW_TOGGLE) {
     bool arrows = row->kind == MPH_ROW_CHOICE;
     uint32_t arrow_c = focused ? MPH_C_HL_FG : MPH_C_FAINT;
@@ -256,7 +269,7 @@ static void row_draw(mph_rect r, const mph_row *row, bool focused, float switch_
   }
   if (row->suffix != NULL) {
     float sw = mph_text_w(MPH_T_ROW, row->suffix);
-    sw = sw > value_max ? value_max : sw;
+    sw = sw > suffix_max ? suffix_max : sw;
     if (text) {
       mph_text_fit(MPH_T_ROW, right - sw, base, sw, focused ? MPH_C_HL_FG : MPH_C_DIM, row->suffix);
     }
@@ -299,17 +312,20 @@ float mph_list_target(mph_rect view, const mph_row *rows, int n, int focused, fl
     y += h + MPH_ROW_GAP;
   }
   float content = n > 0 ? y - MPH_ROW_GAP : 0;
+  return mph_scroll_keep(top, bottom, content, view.h, MPH_ROW_H, current);
+}
+
+float mph_scroll_keep(float top, float bottom, float content_h, float view_h, float margin, float current) {
   float target = current;
   if (top >= 0) {
-    float margin = MPH_ROW_H;
     if (top - target < margin) {
       target = top - margin;
     }
-    if (bottom - target > view.h - margin) {
-      target = bottom - view.h + margin;
+    if (bottom - target > view_h - margin) {
+      target = bottom - view_h + margin;
     }
   }
-  float max = content - view.h;
+  float max = content_h - view_h;
   max = max < 0 ? 0 : max;
   return target < 0 ? 0 : target > max ? max : target;
 }

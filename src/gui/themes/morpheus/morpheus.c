@@ -1,25 +1,18 @@
 // Morpheus: the new theme, opted into with L and R on the host list.
 //
 // Drawn with the primitives in mph.h (see README.md here). This file holds
-// the theme's entry points: a generic list screen that every screen uses
-// until it gets its own layout (DESIGN.md §4), and the dispatch to the
-// screens in mph_screen_*.c. It shares no code with Homebrew.
+// the theme's entry points and dispatches them to the screens in
+// mph_screen_*.c (mph_screens.h), plus a plain list for any screen without
+// a layout of its own, and the developer gallery. It shares no code with
+// Homebrew.
 
 #include "mph.h"
-#include "mph_screen_dialogs.h"
-#include "mph_screen_stream.h"
-#include "mph_screen_settings.h"
-#include "mph_screen_hosts.h"
-#include "mph_screen_connected.h"
-#include "mph_screen_touch.h"
+#include "mph_screens.h"
 
-#include "../../guilib.h"
-#include "../../text.h"
 #include "../../theme.h"
 #include "../../../config.h"
 
 #include <math.h>
-#include <stdio.h>
 #include <string.h>
 
 static void morpheus_init(void) {
@@ -43,188 +36,93 @@ static void frame_end(void) {
 }
 
 /*
- * List screens
+ * Menu screens
  */
 
-// The screen on show, so a new one plays the enter transition and starts
-// its list afresh. Going back to the screen before the last one doesn't
-// replay it: the parent's loop just carries on.
+// The screen on show. A new one plays the enter transition, except going
+// back to the screen before the last one: the parent's loop just carries on.
 static struct {
   ui_screen_id id, previous;
   bool shown;
-  float t0;
-  bool animate;
+  mph_enter enter;
 } screen;
-
-static mph_list_state list;
-static mph_row rows[MPH_LIST_MAX];
-static mph_focus tab_focus;
 
 static void track_screen(ui_screen_id id) {
   if (screen.shown && id == screen.id) {
     return;
   }
-  screen.animate = !screen.shown || id != screen.previous;
+  screen.enter.animate = !screen.shown || id != screen.previous;
+  screen.enter.t0 = mph_time();
   screen.previous = screen.shown ? screen.id : id;
   screen.id = id;
   screen.shown = true;
-  screen.t0 = mph_time();
-  mph_list_reset(&list);
-  mph_focus_hide(&tab_focus);
 }
 
-// Where the rows go: beside the help card when there's help, centred otherwise
-static mph_rect list_rect(const menu_view *view) {
-  float top = view->decorated && view->tabs != NULL ? 96 : 56;
-  float x = view->decorated && view->help != NULL ? MPH_GUTTER : 180;
-  return mph_rect_make(x, top, 600, MPH_CONTENT_BOTTOM - top);
+// A plain list, for a screen without a layout of its own (every screen has
+// one today)
+static mph_list_state list;
+static float list_seen = -1;
+static mph_row rows[MPH_LIST_MAX];
+
+static mph_rect list_rect(void) {
+  return mph_rect_make(180, 56, 600, MPH_CONTENT_BOTTOM - 56);
 }
 
-// The menu's rows as Morpheus rows. In box art mode the apps row shows the
-// selected app, since the covers themselves aren't drawn yet.
-static int build_rows(const menu_view *view) {
-  int n = view->row_count < MPH_LIST_MAX ? view->row_count : MPH_LIST_MAX;
-  const boxart_view *boxart = view->decorated ? view->boxart : NULL;
-  for (int i = 0; i < n; i++) {
-    rows[i] = mph_row_from_entry(&view->rows[i]);
-    if (boxart != NULL && boxart->count > 0 && boxart->counter != NULL && rows[i].suffix != NULL &&
-        strcmp(rows[i].suffix, boxart->counter) == 0) {
-      const boxart_cover *cover = boxart->cover(boxart->selected);
-      if (cover != NULL && cover->name != NULL) {
-        rows[i].kind = MPH_ROW_CHOICE;
-        rows[i].value = cover->name;
-      }
-    }
+static void list_draw(const menu_view *view, const mph_enter *enter) {
+  if (mph_enter_is_new(enter, &list_seen)) {
+    mph_list_reset(&list);
   }
-  return n;
+  int n = mph_rows_from_entries(rows, view->rows, view->row_count);
+  mph_rect rect = list_rect();
+  float target = mph_list_target(rect, rows, n, view->cursor_row, view->scroll);
+  mph_bg_draw();
+  mph_statusbar(view->screen->title != NULL ? view->screen->title : "Moonlight");
+  mph_enter_apply(enter);
+  mph_list(rect, rows, n, view->cursor_row, target, &list, rect.x + rect.w + 8);
+  mph_transform_reset();
+  mph_menu_legend(view);
 }
 
-static void draw_tabs(const tabs_view *tabs) {
-  float x = MPH_GUTTER;
-  x += mph_keycap(x, 53, "L") + 4;
-  float xs[16], ws[16];
-  int n = tabs->count < 16 ? tabs->count : 16;
-  int current = -1;
-  for (int i = 0; i < n; i++) {
-    xs[i] = x;
-    ws[i] = mph_text_w(MPH_T_BTN, tabs->tabs[i].name) + 24;
-    x += ws[i] + 4;
-    if (tabs->tabs[i].current) {
-      current = i;
-    }
-  }
-  mph_keycap(x, 53, "R");
-  if (current >= 0) {
-    mph_focus_set(&tab_focus, mph_rect_make(xs[current], 46, ws[current], 37), MPH_R_TAB, MPH_FOCUS_PILL, current);
-    mph_rrect_fill(mph_focus_rect(&tab_focus), MPH_R_TAB, MPH_C_HL_BG);
-  }
-  for (int i = 0; i < n; i++) {
-    mph_text(MPH_T_BTN, xs[i] + 12, 71, i == current ? MPH_C_HL_FG : MPH_C_FAINT, tabs->tabs[i].name);
-  }
-}
-
-static void draw_help_card(mph_rect r, const char *title, const char *help) {
-  mph_card(r);
-  float x = r.x + 18, w = r.w - 36;
-  float base = r.y + 36;
-  if (title != NULL && title[0]) {
-    mph_lines lines;
-    int n = mph_wrap(MPH_T_ROW_L, title, w, &lines);
-    n = n > 2 ? 2 : n;
-    mph_draw_lines(MPH_T_ROW_L, &lines, x, base, 24, 0, n, MPH_C_FG, MPH_ALIGN_LEFT);
-    base += (n - 1) * 24 + 12 + 22;
-  }
-  mph_lines body;
-  int count = mph_wrap(MPH_T_SMALL, help, w, &body);
-  int fit = (int)((r.y + r.h - 18 - base) / 22) + 1;
-  if (count <= fit) {
-    mph_draw_lines(MPH_T_SMALL, &body, x, base, 22, 0, count, MPH_C_DIM, MPH_ALIGN_LEFT);
-  } else if (fit > 0) {
-    mph_draw_lines(MPH_T_SMALL, &body, x, base, 22, 0, fit - 1, MPH_C_DIM, MPH_ALIGN_LEFT);
-    char last[WRAP_LINE_MAX + 4];
-    snprintf(last, sizeof(last), "%s %s", body.line[fit - 1], body.line[fit]);
-    mph_text_fit(MPH_T_SMALL, x, base + (fit - 1) * 22, w, MPH_C_DIM, last);
-  }
-}
-
-static const char *screen_title(const menu_view *view) {
-  static char title[64];
-  if (view->screen->title != NULL) {
-    return view->screen->title;
-  }
-  if (view->screen->main != NULL && view->screen->main->version != NULL) {
-    snprintf(title, sizeof(title), "Moonlight %s", view->screen->main->version);
-    return title;
-  }
-  return "Moonlight";
-}
-
-float mph_screen_enter(void) {
-  if (screen.animate) {
-    float k = mph_ease_eval(MPH_EASE_OUT, (mph_time() - screen.t0) / MPH_M_ENTER);
-    mph_transform(k, 1.0f, 0, 0, 18.0f * (1.0f - k), 0);
-  }
-  return screen.t0;
+static void list_follow(menu_view *view) {
+  int n = mph_rows_from_entries(rows, view->rows, view->row_count);
+  view->scroll = (int)roundf(mph_list_target(list_rect(), rows, n, view->cursor_row, view->scroll));
 }
 
 static void mph_draw_menu(const menu_view *view) {
   mph_frame_begin();
   track_screen(view->screen->id);
+  const mph_enter *enter = &screen.enter;
   switch (view->screen->id) {
-    case UI_SCREEN_SETTINGS: mph_screen_settings_draw(view); return;
-    case UI_SCREEN_RECOMMENDED: mph_screen_recommended_draw(view); return;
-    case UI_SCREEN_KEYBOARD_LAYOUT: mph_screen_keyboard_draw(view); return;
-    default: break;
-  if (mph_hosts_draw(view, screen.t0, screen.animate)) {
-    frame_end();
-    return;
-  float enter = screen.animate ? mph_ease_eval(MPH_EASE_OUT, (mph_time() - screen.t0) / MPH_M_ENTER) : 1.0f;
-  switch (view->screen->id) {
-    case UI_SCREEN_CONNECTED: mph_screen_connected_draw(view, enter); frame_end(); return;
-    default: break;
-  if (mph_screen_touch_draw(view, screen.t0, screen.animate)) {
-    frame_end();
-    return;
+    case UI_SCREEN_MAIN: mph_screen_main_draw(view, enter); break;
+    case UI_SCREEN_HOST: mph_screen_host_draw(view, enter); break;
+    case UI_SCREEN_SEARCH: mph_screen_search_draw(view, enter); break;
+    case UI_SCREEN_CONNECTED: mph_screen_connected_draw(view, enter); break;
+    case UI_SCREEN_SETTINGS: mph_screen_settings_draw(view, enter); break;
+    case UI_SCREEN_RECOMMENDED: mph_screen_recommended_draw(view, enter); break;
+    case UI_SCREEN_KEYBOARD_LAYOUT: mph_screen_keyboard_draw(view, enter); break;
+    case UI_SCREEN_SPECIAL_KEYS: mph_screen_special_keys_draw(view, enter); break;
+    case UI_SCREEN_SPECIAL_KEY_LIST: mph_screen_key_list_draw(view, enter); break;
+    case UI_SCREEN_DEADZONE: mph_screen_deadzone_draw(view, enter); break;
+    default: list_draw(view, enter); break;
   }
-  int n = build_rows(view);
-  mph_rect rect = list_rect(view);
-  float target = mph_list_target(rect, rows, n, view->cursor_row, view->scroll);
-
-  mph_bg_draw();
-  mph_statusbar(screen_title(view));
-
-  if (screen.animate) {
-    float k = mph_ease_eval(MPH_EASE_OUT, (mph_time() - screen.t0) / MPH_M_ENTER);
-    mph_transform(k, 1.0f, 0, 0, 18.0f * (1.0f - k), 0);
-  }
-  if (view->decorated && view->tabs != NULL) {
-    draw_tabs(view->tabs);
-  }
-  mph_list(rect, rows, n, view->cursor_row, target, &list, rect.x + rect.w + 8);
-  if (view->decorated && view->help != NULL) {
-    const char *title = view->cursor_row < n ? rows[view->cursor_row].label : NULL;
-    draw_help_card(mph_rect_make(664, rect.y, 256, MPH_CONTENT_BOTTOM - rect.y), title, view->help);
-  }
-  if (view->decorated && view->hint.text != NULL) {
-    mph_hint hint = {view->hint.glyph, view->hint.text};
-    mph_legend(&hint, 1);
-  }
+  mph_transform_reset();
   frame_end();
 }
 
 static void mph_menu_follow(menu_view *view) {
   switch (view->screen->id) {
-    case UI_SCREEN_SETTINGS: mph_screen_settings_follow(view); return;
-    case UI_SCREEN_RECOMMENDED: mph_screen_recommended_follow(view); return;
-    case UI_SCREEN_KEYBOARD_LAYOUT: mph_screen_keyboard_follow(view); return;
-    default: break;
-  if (mph_hosts_follow(view)) {
-    return;
-    case UI_SCREEN_CONNECTED: mph_screen_connected_follow(view); return;
-    default: break;
+    case UI_SCREEN_MAIN: mph_screen_main_follow(view); break;
+    case UI_SCREEN_HOST: mph_screen_host_follow(view); break;
+    case UI_SCREEN_SEARCH: mph_screen_search_follow(view); break;
+    case UI_SCREEN_CONNECTED: mph_screen_connected_follow(view); break;
+    case UI_SCREEN_SETTINGS: mph_screen_settings_follow(view); break;
+    case UI_SCREEN_RECOMMENDED: mph_screen_recommended_follow(view); break;
+    case UI_SCREEN_KEYBOARD_LAYOUT: mph_screen_keyboard_follow(view); break;
+    case UI_SCREEN_SPECIAL_KEYS:
+    case UI_SCREEN_SPECIAL_KEY_LIST:
+    case UI_SCREEN_DEADZONE: mph_screen_touch_follow(view); break;
+    default: list_follow(view); break;
   }
-  int n = build_rows(view);
-  view->scroll = (int)roundf(mph_list_target(list_rect(view), rows, n, view->cursor_row, view->scroll));
 }
 
 /*

@@ -4,9 +4,7 @@
 // the screen, as the app always has: that shows exactly where to touch. The
 // rows sit on a card above them.
 
-#include "mph_screen_touch.h"
-
-#include "mph.h"
+#include "mph_screens.h"
 
 #include "../../../i18n/i18n.h"
 
@@ -14,14 +12,14 @@
 
 static mph_list_state list;
 static mph_row rows[MPH_LIST_MAX];
-static float list_t0 = -1.0f;
+static float list_seen = -1.0f;
 
-static int build_rows(const menu_view *view) {
-  int n = view->row_count < MPH_LIST_MAX ? view->row_count : MPH_LIST_MAX;
-  for (int i = 0; i < n; i++) {
-    rows[i] = mph_row_from_entry(&view->rows[i]);
+// The rows, and the list started afresh on a new screen
+static int begin(const menu_view *view, const mph_enter *enter) {
+  if (mph_enter_is_new(enter, &list_seen)) {
+    mph_list_reset(&list);
   }
-  return n;
+  return mph_rows_from_entries(rows, view->rows, view->row_count);
 }
 
 // The rows' height as a list w wide, without the padding
@@ -33,12 +31,37 @@ static float rows_height(int n, float w) {
   return h;
 }
 
-// Rows on a card: SOLID2 at `alpha`, r16, 8 px of padding
-static void rows_card(const menu_view *view, int n, float x, float y, float w, float alpha) {
-  float inner = w - 16;
-  mph_rect card = mph_rect_make(x, y, w, rows_height(n, inner) + 16);
-  mph_rrect_fill(card, MPH_R_CARD, mph_alpha(MPH_C_SOLID2, alpha));
-  mph_rect rect = mph_rect_make(x + 8, y + 8, inner, card.h - 16);
+// Where each screen's rows go: on a card (S7, S9) as tall as they are, 8 px
+// inside it, or a full height list (S8)
+#define KEYS_CARD_X 290
+#define KEYS_CARD_Y 104
+#define KEYS_CARD_W 380
+#define DEADZONE_CARD_Y 56
+#define DEADZONE_CARD_W 300
+#define CARD_PAD 8
+
+static mph_rect card_rows_rect(int n, float x, float y, float w) {
+  return mph_rect_make(x + CARD_PAD, y + CARD_PAD, w - 2 * CARD_PAD, rows_height(n, w - 2 * CARD_PAD));
+}
+
+static mph_rect rows_rect(ui_screen_id id, int n) {
+  switch (id) {
+    case UI_SCREEN_SPECIAL_KEYS: return card_rows_rect(n, KEYS_CARD_X, KEYS_CARD_Y, KEYS_CARD_W);
+    case UI_SCREEN_DEADZONE: return card_rows_rect(n, MPH_GUTTER, DEADZONE_CARD_Y, DEADZONE_CARD_W);
+    default: return mph_rect_make(220, 56, 520, MPH_CONTENT_BOTTOM - 56);
+  }
+}
+
+void mph_screen_touch_follow(menu_view *view) {
+  int n = mph_rows_from_entries(rows, view->rows, view->row_count);
+  mph_rect rect = rows_rect(view->screen->id, n);
+  view->scroll = (int)roundf(mph_list_target(rect, rows, n, view->cursor_row, view->scroll));
+}
+
+// The rows on their card: SOLID2 at `alpha`, r16
+static void rows_card(const menu_view *view, int n, float alpha) {
+  mph_rect rect = rows_rect(view->screen->id, n);
+  mph_rrect_fill(mph_rect_grow(rect, CARD_PAD), MPH_R_CARD, mph_alpha(MPH_C_SOLID2, alpha));
   mph_list(rect, rows, n, view->cursor_row, mph_list_target(rect, rows, n, view->cursor_row, view->scroll), &list, -1);
 }
 
@@ -83,33 +106,31 @@ static void draw_corners(const menu_view *view, int n) {
   }
 }
 
-static void draw_special_keys(const menu_view *view, float enter) {
-  int n = build_rows(view);
+void mph_screen_special_keys_draw(const menu_view *view, const mph_enter *enter) {
+  int n = begin(view, enter);
   mph_bg_draw();
   if (view->decorated && view->special_keys != NULL) {
     draw_corners(view, n);
   }
   mph_statusbar(tr(STR_SET_SPECIAL_KEYS));
-  if (enter < 1.0f) {
-    mph_transform(enter, 1.0f, 0, 0, 18.0f * (1.0f - enter), 0);
-  }
-  rows_card(view, n, 290, 104, 380, 0.92f);
+  mph_enter_apply(enter);
+  rows_card(view, n, 0.92f);
+  mph_transform_reset();
 }
 
 /*
  * S8 Select special key: a list of keys, grouped
  */
 
-static void draw_key_list(const menu_view *view, float enter) {
-  int n = build_rows(view);
-  mph_rect rect = mph_rect_make(220, 56, 520, MPH_CONTENT_BOTTOM - 56);
+void mph_screen_key_list_draw(const menu_view *view, const mph_enter *enter) {
+  int n = begin(view, enter);
+  mph_rect rect = rows_rect(view->screen->id, n);
   mph_bg_draw();
   mph_statusbar(view->screen->title != NULL ? view->screen->title : tr(STR_SET_SPECIAL_KEYS));
-  if (enter < 1.0f) {
-    mph_transform(enter, 1.0f, 0, 0, 18.0f * (1.0f - enter), 0);
-  }
+  mph_enter_apply(enter);
   mph_list(rect, rows, n, view->cursor_row, mph_list_target(rect, rows, n, view->cursor_row, view->scroll), &list,
-           744);
+           rect.x + rect.w + 4);
+  mph_transform_reset();
 }
 
 /*
@@ -147,34 +168,14 @@ static void draw_zones(const deadzone_view *zone) {
   }
 }
 
-static void draw_deadzone(const menu_view *view, float enter) {
-  int n = build_rows(view);
+void mph_screen_deadzone_draw(const menu_view *view, const mph_enter *enter) {
+  int n = begin(view, enter);
   mph_bg_draw();
   if (view->decorated && view->deadzone != NULL) {
     draw_zones(view->deadzone);
   }
   mph_statusbar(tr(STR_SET_BACK_DEADZONE));
-  if (enter < 1.0f) {
-    mph_transform(enter, 1.0f, 0, 0, 18.0f * (1.0f - enter), 0);
-  }
-  rows_card(view, n, MPH_GUTTER, 56, 300, 0.94f);
-}
-
-bool mph_screen_touch_draw(const menu_view *view, float enter_t0, bool animate) {
-  ui_screen_id id = view->screen->id;
-  if (id != UI_SCREEN_SPECIAL_KEYS && id != UI_SCREEN_SPECIAL_KEY_LIST && id != UI_SCREEN_DEADZONE) {
-    return false;
-  }
-  if (enter_t0 != list_t0) {
-    list_t0 = enter_t0;
-    mph_list_reset(&list);
-  }
-  float enter = animate ? mph_ease_eval(MPH_EASE_OUT, (mph_time() - enter_t0) / MPH_M_ENTER) : 1.0f;
-  switch (id) {
-    case UI_SCREEN_SPECIAL_KEYS: draw_special_keys(view, enter); break;
-    case UI_SCREEN_SPECIAL_KEY_LIST: draw_key_list(view, enter); break;
-    default: draw_deadzone(view, enter); break;
-  }
+  mph_enter_apply(enter);
+  rows_card(view, n, 0.94f);
   mph_transform_reset();
-  return true;
 }

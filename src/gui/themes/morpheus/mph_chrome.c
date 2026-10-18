@@ -66,6 +66,13 @@ void mph_legend(const mph_hint *hints, int n) {
   }
 }
 
+void mph_menu_legend(const menu_view *view) {
+  if (view->decorated && view->hint.text != NULL) {
+    mph_hint hint = {view->hint.glyph, view->hint.text};
+    mph_legend(&hint, 1);
+  }
+}
+
 void mph_category(float x, float y, float w, const char *upper_text, uint32_t c) {
   // .cat: padding 12px 16px 6px, so the text sits low in its 32 px
   float tracking = 1.68f;

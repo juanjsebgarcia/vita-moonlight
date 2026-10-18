@@ -100,3 +100,20 @@ void mph_spring_step(mph_spring *s, float target, float omega) {
     s->x += s->v * h;
   }
 }
+
+float mph_enter_k(const mph_enter *e) {
+  return e->animate ? mph_ease_eval(MPH_EASE_OUT, (mph_time() - e->t0) / MPH_M_ENTER) : 1.0f;
+}
+
+void mph_enter_apply(const mph_enter *e) {
+  float k = mph_enter_k(e);
+  if (k < 1.0f) {
+    mph_transform(k, 1.0f, 0, 0, 18.0f * (1.0f - k), 0);
+  }
+}
+
+bool mph_enter_is_new(const mph_enter *e, float *seen) {
+  bool fresh = *seen != e->t0;
+  *seen = e->t0;
+  return fresh;
+}

@@ -290,6 +290,20 @@ typedef struct {
 } mph_spring;
 void mph_spring_step(mph_spring *s, float target, float omega);  // critically damped
 
+// A screen's enter transition: a fade and an 18 px slide over MPH_M_ENTER.
+// morpheus.c fills it for the menu screen on show and hands it to the screen.
+typedef struct {
+  float t0;      // when the screen came on: a new value means a new screen
+  bool animate;  // whether it plays (not on a return to the screen before)
+} mph_enter;
+// Its progress, 0 to 1 (1 when it doesn't play or has finished)
+float mph_enter_k(const mph_enter *e);
+// Applies it to what's drawn next while it plays, until mph_transform_reset()
+void mph_enter_apply(const mph_enter *e);
+// Whether this is a new screen for state that last saw *seen (start it
+// afresh); stores the screen in *seen. Start *seen at -1.
+bool mph_enter_is_new(const mph_enter *e, float *seen);
+
 /*
  * Chrome (mph_chrome.c)
  */
@@ -302,6 +316,8 @@ typedef struct {
 } mph_hint;
 // Right-aligned, ending at x 936 on the legend baseline
 void mph_legend(const mph_hint *hints, int n);
+// The menu's button hint as the legend, when update has given one
+void mph_menu_legend(const menu_view *view);
 // A category label, 32 px tall: pass mph_upper() text
 void mph_category(float x, float y, float w, const char *upper_text, uint32_t c);
 void mph_separator(float x, float y, float w);  // 13 px tall
@@ -338,6 +354,8 @@ typedef struct {
 // The row for a menu entry (DESIGN.md §3.6). The label of a category is
 // upper-cased here (cached).
 mph_row mph_row_from_entry(const menu_entry *e);
+// rows[i] for entries[0..n), n capped at MPH_LIST_MAX; returns the count
+int mph_rows_from_entries(mph_row *rows, const menu_entry *entries, int n);
 bool mph_row_selectable(const mph_row *r);
 // w is the row's width (a note wraps to a second line when it must)
 float mph_row_height(const mph_row *r, float w);
@@ -373,6 +391,10 @@ typedef struct {
 } mph_list_state;
 // Forget everything: the next mph_list() snaps to its targets
 void mph_list_reset(mph_list_state *s);
+// The scroll that keeps top..bottom (content coordinates) margin px inside a
+// view view_h tall, moving as little as it can from current, clamped to the
+// content. top < 0: nothing to keep in view, only the clamp.
+float mph_scroll_keep(float top, float bottom, float content_h, float view_h, float margin, float current);
 // The scroll offset that keeps the focused row in view, from the current one
 float mph_list_target(mph_rect view, const mph_row *rows, int n, int focused, float current);
 // Draws the rows in view (clipped), the focus pill under the focused one,
