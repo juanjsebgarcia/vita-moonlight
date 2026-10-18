@@ -7,6 +7,8 @@
 // mph_draw.c
 uint32_t mph_tint(uint32_t c);  // c with the transform's opacity
 float mph_transform_scale(void);
+// A point through the transform's scale and offset
+void mph_transform_point(float *x, float *y);
 // One textured quad into the batch, run by (texture, tint)
 void mph_quad_textured(const vita2d_texture *t, uint32_t tint, float x0, float y0, float x1, float y1, float u0,
                        float v0, float u1, float v1);

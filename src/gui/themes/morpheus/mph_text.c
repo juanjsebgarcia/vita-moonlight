@@ -443,8 +443,12 @@ static float layout(mph_type t, const char *s, int len, float tracking, bool pla
           int n = (int)(next - p) < 7 ? (int)(next - p) : 7;
           memcpy(one, p, n);
           one[n] = '\0';
+          // Through the transform like the atlas glyphs: they slide and scale together
+          float px = roundf(x + pen), py = base;
+          mph_transform_point(&px, &py);
           mph_flush();
-          vita2d_pgf_draw_text(pgf, (int)roundf(x + pen), (int)base, mph_tint(tint), system_scale(t), one);
+          vita2d_pgf_draw_text(pgf, (int)roundf(px), (int)roundf(py), mph_tint(tint),
+                               system_scale(t) * mph_transform_scale(), one);
           mph_perf.draws++;
           mph_perf.glyphs++;
         }

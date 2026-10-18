@@ -203,6 +203,11 @@ float mph_transform_scale(void) {
   return tf_scale;
 }
 
+void mph_transform_point(float *x, float *y) {
+  *x = tx(*x);
+  *y = ty(*y);
+}
+
 static inline void cv(vita2d_color_vertex *v, float x, float y, uint32_t c) {
   v->x = tx(x);
   v->y = ty(y);
