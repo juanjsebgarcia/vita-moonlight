@@ -52,12 +52,23 @@ bool ui_connect_stream(int appId) {
   return true;
 }
 
+// The connected host's name for app id, or NULL. Not copied: get_app_name()
+// copies without a bound, and the host decides how long names are.
+static const char *app_name_of(int id) {
+  for (PAPP_LIST app = server_applist; app != NULL; app = app->next) {
+    if (app->id == id) {
+      return app->name;
+    }
+  }
+  return NULL;
+}
+
 // Remembers the app for the host list's Continue row, once its stream has
 // started from the PC's menu
 static void remember_app(int app_id) {
   device_info_t *dev = find_device(session_server_name());
-  char name[256];
-  if (dev == NULL || !get_app_name(server_applist, app_id, name)) {
+  const char *name = app_name_of(app_id);
+  if (dev == NULL || name == NULL) {
     return;
   }
   host_remember_app(dev, app_id, name);
@@ -687,8 +698,7 @@ void ui_connect_paired_device(device_info_t *info) {
 // The id of the app the host remembers, looked up in the connected host's
 // list: by id, or by name if the PC has given it a new id. 0 if it's gone.
 static int remembered_app_id(const device_info_t *info) {
-  char name[256];
-  if (get_app_name(server_applist, info->last_app_id, name)) {
+  if (app_name_of(info->last_app_id) != NULL) {
     return info->last_app_id;
   }
   int id = get_app_id(server_applist, (char *)info->last_app_name);
@@ -716,9 +726,9 @@ void ui_connect_continue(device_info_t *info) {
       display_error("%s", message);
     } else if (server.currentGame != 0 && server.currentGame != id) {
       // Starting over another app would resume that one instead
-      char running[256];
-      if (!get_app_name(server_applist, server.currentGame, running)) {
-        snprintf(running, sizeof(running), "%s", tr(STR_CONNECTED_UNKNOWN_APP));
+      const char *running = app_name_of(server.currentGame);
+      if (running == NULL) {
+        running = tr(STR_CONNECTED_UNKNOWN_APP);
       }
       TR_FMT(message, sizeof(message), STR_CONTINUE_OTHER_APP, running, device_label(info));
       display_error("%s", message);
