@@ -26,6 +26,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <math.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <openssl/rand.h>
 #include <openssl/evp.h>
@@ -898,6 +899,9 @@ inline void vitainput_process(void) {
 }
 
 static uint8_t active_input_thread = 0;
+// Covers reading, comparing and sending the battery state, so the power thread
+// and a resume can't interleave and leave the host with the older reading
+static pthread_mutex_t battery_mutex;
 static bool input_thread_logged = false;
 
 int vitainput_thread(SceSize args, void *argp) {
@@ -918,6 +922,9 @@ int vitainput_thread(SceSize args, void *argp) {
 }
 
 bool vitainput_init() {
+  if (pthread_mutex_init(&battery_mutex, NULL) != 0) {
+    return false;
+  }
   sceCtrlSetSamplingModeExt(SCE_CTRL_MODE_ANALOG_WIDE);
   sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START);
   sceTouchSetSamplingState(SCE_TOUCH_PORT_BACK, SCE_TOUCH_SAMPLING_STATE_START);
@@ -1035,6 +1042,7 @@ void vitainput_report_battery(bool force) {
     return;
   }
 
+  pthread_mutex_lock(&battery_mutex);
   int percent = scePowerGetBatteryLifePercent();
   if (percent < 0 || percent > 100) {
     percent = LI_BATTERY_PERCENTAGE_UNKNOWN;
@@ -1051,14 +1059,14 @@ void vitainput_report_battery(bool force) {
     state = LI_BATTERY_STATE_NOT_CHARGING;
   }
 
-  if (!force && state == sent_battery_state && percent == sent_battery_percent) {
-    return;
-  }
-  sent_battery_state = state;
-  sent_battery_percent = percent;
+  if (force || state != sent_battery_state || percent != sent_battery_percent) {
+    sent_battery_state = state;
+    sent_battery_percent = percent;
 
-  vita_debug_log("[BATTERY] state %d, %d%%\n", state, percent);
-  LiSendControllerBatteryEvent(0, state, percent);
+    vita_debug_log("[BATTERY] state %d, %d%%\n", state, percent);
+    LiSendControllerBatteryEvent(0, state, percent);
+  }
+  pthread_mutex_unlock(&battery_mutex);
 }
 
 void vitainput_start(void) {
