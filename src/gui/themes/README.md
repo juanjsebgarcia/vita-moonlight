@@ -9,7 +9,7 @@ setting, a row or a menu in one place changes it in every theme.
 | Theme | Folder | State |
 |---|---|---|
 | Homebrew | `homebrew/` | The original look, pixel for pixel. The default on every launch. |
-| Morpheus | `morpheus/` | The new look, from `claude_bundle/demo/index.html`. A plain placeholder until it's built. |
+| Morpheus | `morpheus/` | The new look, from `claude_bundle/demo/index.html`. Its primitives and a generic list screen; screens get their own layouts next. See `morpheus/README.md`. |
 
 On the host list, Homebrew shows "Press R and L to use new theme"
 (`STR_THEME_TRY_NEW`). Pressing L and R together there switches to Morpheus
@@ -150,7 +150,8 @@ reach only with a PC or a stream, upload `ux0:data/moonlight/screen.req`
 holding one line before launching (`devshot_open_requested_screen()`):
 `flash <text>`, `error <text>`, `confirm <text>`, `help <title>|<text>`
 (`\n` for a line break), or `overlay` (the stream overlays over black for
-10 s). Every Homebrew screen must stay identical to the screenshots taken
+10 s). Put `morpheus` before any of them (or alone) to switch to
+Morpheus first. Every Homebrew screen must stay identical to the screenshots taken
 before a change.
 
 Comparing screenshots between launches needs care: vita2d packs each
