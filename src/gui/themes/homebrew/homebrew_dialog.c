@@ -44,7 +44,7 @@ void hb_draw_alert(const alert_view *view) {
   height = height > HEIGHT - 40 ? HEIGHT - 40 : height;
   hb_geom geom = hb_geom_centered(ALERT_WIDTH, height);
 
-  vita2d_draw_rectangle(geom.x, geom.y, geom.width, geom.height, 0x18fffff);
+  vita2d_draw_rectangle(geom.x, geom.y, geom.width, geom.height, HB_C_PANEL);
 
   long border_color = 0xff006000;
   hb_draw_border(geom, border_color);
@@ -100,7 +100,7 @@ void hb_draw_help(const help_view *view) {
   int body_bottom = help_body_bottom(geom);
   int offset = view->offset;
 
-  vita2d_draw_rectangle(geom.x, geom.y, geom.width, geom.height, 0x18fffff);
+  vita2d_draw_rectangle(geom.x, geom.y, geom.width, geom.height, HB_C_PANEL);
   hb_draw_border(geom, 0xff006000);
   hb_draw_text_hcentered(geom.x + geom.width / 2, title_y, 0xffffffff, view->title);
 

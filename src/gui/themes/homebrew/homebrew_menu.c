@@ -114,7 +114,7 @@ static void draw_statusbar(hb_geom geom) {
 }
 
 static void draw_rows(const menu_entry menu[], int total_elements, hb_geom geom, int cursor, int offset) {
-  vita2d_draw_rectangle(geom.x, geom.y, geom.width, geom.height, 0x18fffff);
+  vita2d_draw_rectangle(geom.x, geom.y, geom.width, geom.height, HB_C_PANEL);
 
   long border_color = 0xff006000;
   hb_draw_border(geom, border_color);
