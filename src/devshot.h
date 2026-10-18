@@ -20,6 +20,7 @@ void devshot_after_swap(void);
 //   help <title>|<text>   the help dialog
 //   overlay               the stream's overlays (stats in fps mode, the start
 //                         hint, the sprint icon) over black, for 10 s
+// "morpheus" before any of them (or alone) switches to the new theme first.
 // A script uploads the file over FTP, then launches the app.
 // Call after the UI is set up, before the main menu.
 void devshot_open_requested_screen(void);

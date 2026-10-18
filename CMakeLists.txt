@@ -98,6 +98,18 @@ add_executable(${PROJECT_NAME}.elf
 	src/gui/themes/homebrew/homebrew_stream.c
 	src/gui/themes/homebrew/homebrew_text.c
 	src/gui/themes/morpheus/morpheus.c
+	src/gui/themes/morpheus/mph_anim.c
+	src/gui/themes/morpheus/mph_chrome.c
+	src/gui/themes/morpheus/mph_draw.c
+	src/gui/themes/morpheus/mph_perf.c
+	src/gui/themes/morpheus/mph_screen_connected.c
+	src/gui/themes/morpheus/mph_screen_dialogs.c
+	src/gui/themes/morpheus/mph_screen_hosts.c
+	src/gui/themes/morpheus/mph_screen_settings.c
+	src/gui/themes/morpheus/mph_screen_stream.c
+	src/gui/themes/morpheus/mph_screen_touch.c
+	src/gui/themes/morpheus/mph_text.c
+	src/gui/themes/morpheus/mph_widgets.c
 	src/gui/ime.c
 	src/gui/ui.c
 	src/gui/ui_settings.c
@@ -120,6 +132,11 @@ add_executable(${PROJECT_NAME}.elf
 	src/check_host.c
 )
 
+
+# Morpheus draws text with FreeType directly, whose headers expect their own
+# folder on the include path
+set_source_files_properties(src/gui/themes/morpheus/mph_text.c PROPERTIES
+	INCLUDE_DIRECTORIES $ENV{VITASDK}/arm-vita-eabi/include/freetype2)
 
 # Por defecto, solo enlazamos curl y el resto de libs estándar:
 target_link_libraries(${PROJECT_NAME}.elf
@@ -199,6 +216,17 @@ foreach(LANG_FILE ${LANG_FILES})
 	list(APPEND LANG_VPK_ARGS --add ../lang/${LANG_FILE}=lang/${LANG_FILE})
 endforeach()
 
+# The Morpheus theme's fonts, their licences and its icon atlas, packed as
+# app0:assets/morpheus/<file>
+file(GLOB MORPHEUS_ASSETS CONFIGURE_DEPENDS RELATIVE ${CMAKE_SOURCE_DIR}/assets/morpheus
+	${CMAKE_SOURCE_DIR}/assets/morpheus/*.ttf
+	${CMAKE_SOURCE_DIR}/assets/morpheus/*.png
+	${CMAKE_SOURCE_DIR}/assets/morpheus/*.txt)
+set(MORPHEUS_VPK_ARGS "")
+foreach(ASSET ${MORPHEUS_ASSETS})
+	list(APPEND MORPHEUS_VPK_ARGS --add ../assets/morpheus/${ASSET}=assets/morpheus/${ASSET})
+endforeach()
+
 add_custom_target(${PROJECT_NAME}.vpk ALL
 	COMMAND vita-make-fself -a 0x2800000000000001 -at 0x0E -c ${PROJECT_NAME}.velf eboot.bin
 	COMMAND vita-pack-vpk -s param.sfo -b eboot.bin
@@ -207,6 +235,7 @@ add_custom_target(${PROJECT_NAME}.vpk ALL
 			--add ../sce_sys/livearea/contents/startup.png=sce_sys/livearea/contents/startup.png
 			--add ../sce_sys/livearea/contents/template.xml=sce_sys/livearea/contents/template.xml
 			--add ../assets/nerdfont.ttf=assets/nerdfont.ttf
+			${MORPHEUS_VPK_ARGS}
 			${LANG_VPK_ARGS}
 			${PROJECT_NAME}.vpk
 )

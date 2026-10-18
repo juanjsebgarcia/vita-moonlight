@@ -18,6 +18,16 @@ bar, the alert buttons, the host list's new theme hint, and the rows of the dead
 keys menu and a PC's menus. Values that depend on the player (a PC or app
 name, a typed or stepped number) are checked at their realistic widest.
 Exits 1 if anything doesn't fit.
+
+    tools/i18n_widths.py --theme morpheus [--all]
+
+checks the Morpheus theme's Settings screens instead (DESIGN.md S5, S6 and
+S10): its fonts (assets/morpheus, M PLUS 1p at the theme's type ramp, with
+unhinted advances as src/gui/themes/morpheus/mph_text.c lays them out) and
+its row widths. Morpheus cuts what doesn't fit with an ellipsis rather than
+letting it overlap, so a line reported there shows cut, not broken: the tool
+says which part is cut. Characters the subset lacks (CJK) are drawn with the
+system font, estimated at full width for CJK and 0.6 em otherwise.
 """
 
 import argparse
@@ -280,10 +290,240 @@ def checks(t, language_names):
     return out
 
 
+# Morpheus (--theme morpheus)
+
+MORPHEUS_FONTS = ROOT / "assets" / "morpheus"
+# The type ramp's styles used here: (face, size in px, tracking)
+MPH_ROW = ("Medium", 17, 0.0)
+MPH_ROW_L = ("Bold", 18, 0.0)
+MPH_BTN = ("Bold", 16, 0.0)
+MPH_BODY_B = ("Bold", 15, 0.0)
+MPH_SMALL = ("Medium", 14, 0.0)
+MPH_TAG = ("ExtraBold", 12, 0.22)
+MPH_LABEL = ("ExtraBold", 12, 1.68)
+# Face buttons, the D-pad and sticks are icons: 18 px in text up to 15 px,
+# 22 up to 21 px; the touch pads are wider
+MPH_ICON_W = {"front_touch": (27, 33), "rear_touch": (27, 33)}
+MPH_KEYCAPS = {"l": "L", "r": "R", "l2": "L2", "r2": "R2", "start": "START", "select": "SELECT", "ps": "PS",
+               "l3": "L3", "r3": "R3"}
+ELLIPSIS = "\u2026"
+
+
+class MorpheusFont:
+    """M PLUS 1p's unhinted advances (FreeType's linearHoriAdvance), in px at any size."""
+
+    def __init__(self, path):
+        data = path.read_bytes()
+        tables = font_tables(data)
+        self.units_per_em = struct.unpack(">H", data[tables[b"head"] + 18:tables[b"head"] + 20])[0]
+        metrics = struct.unpack(">H", data[tables[b"hhea"] + 34:tables[b"hhea"] + 36])[0]
+        hmtx = tables[b"hmtx"]
+        self.advances = [struct.unpack(">H", data[hmtx + 4 * i:hmtx + 4 * i + 2])[0] for i in range(metrics)]
+        self.glyphs = cmap_glyphs(data, tables[b"cmap"])
+
+    def advance(self, c, size):
+        glyph = self.glyphs.get(ord(c))
+        if glyph is None:
+            return None
+        return self.advances[min(glyph, len(self.advances) - 1)] * size / self.units_per_em
+
+
+class Morpheus:
+    """Widths as mph_text.c measures them: float pens, markers as symbols or keycaps."""
+
+    def __init__(self):
+        self.faces = {w: MorpheusFont(MORPHEUS_FONTS / f"MPLUS1p-{w}-latin.ttf") for w in ("Medium", "Bold", "ExtraBold")}
+
+    def plain(self, style, text):
+        face, size, tracking = style
+        pen = 0.0
+        for c in text:
+            if c in "\n\r":
+                continue
+            advance = self.faces[face].advance(c, size)
+            if advance is None:
+                advance = size if is_cjk(c) else 0.6 * size
+            pen += advance + tracking
+        return pen - tracking if pen > 0 and tracking else pen
+
+    def keycap(self, label):
+        return self.plain(MPH_TAG, label) + 12
+
+    def symbol(self, name, style):
+        if name in MPH_KEYCAPS:
+            return self.keycap(MPH_KEYCAPS[name])
+        step = 0 if style[1] <= 15 else 1
+        return MPH_ICON_W.get(name, (18, 22))[step]
+
+    def width(self, style, text):
+        pen = 0.0
+        pos = 0
+        for m in re.finditer(r"\{([a-z0-9_]+)\}", text):
+            pen += self.plain(style, text[pos:m.start()])
+            name = m.group(1)
+            pen += self.symbol(name, style) if name in MARKERS | {"ps", "l3", "r3"} else self.plain(style, m.group(0))
+            pos = m.end()
+        return pen + self.plain(style, text[pos:])
+
+    def wrap(self, style, text, max_w):
+        """Lines as text_wrap() breaks them: at spaces and newlines, CJK anywhere."""
+        lines = []
+        for paragraph in text.split("\n"):
+            line = ""
+            for word in re.findall(r"[\u1100-\u11ff\u2e80-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]|[^ \u1100-\u11ff\u2e80-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]+", paragraph):
+                joiner = "" if not line or is_cjk(word[0]) or is_cjk(line[-1]) else " "
+                if line and self.width(style, line + joiner + word) > max_w:
+                    lines.append(line)
+                    line = word
+                else:
+                    line += joiner + word
+            lines.append(line)
+        return lines
+
+
+# Geometry (DESIGN.md S5, S6, S10; src/gui/themes/morpheus/mph_widgets.c row_draw)
+MPH_SETTINGS_ROW_W = 600
+MPH_KEYBOARD_ROW_W = 360 - 16
+MPH_ROW_PAD = 16
+MPH_LABEL_GAP = 14      # the least space between the label and what's right of it
+MPH_VALUE_GAP = 10      # between the value and the arrows, chevron or tick
+MPH_VALUE_MIN = 64     # a value is cut no shorter than this before the label is
+MPH_SWITCH = 40 + 14
+MPH_CHEVRON = 14 + 10
+MPH_CHECK = 18 + 10
+MPH_TAB_RIGHT = 960 - 40
+MPH_HELP_W = 256 - 36
+MPH_HELP_TITLE_LINES = 3
+MPH_READING_ROOM_METER = 470 - 14 - 92
+MPH_READING_ROOM = 600 - 36
+MPH_TITLE_ROOM = 600 - 22
+
+
+def morpheus_row(m, row_w, label, value, kind):
+    """(width needed, room, what gets cut) for one row. kind: toggle, choice,
+    action, check or plain. The value takes what the label leaves, and is cut
+    first, down to 64 px; past that the label is cut too."""
+    room = row_w - 2 * MPH_ROW_PAD
+    trailing = {"toggle": MPH_SWITCH, "action": MPH_CHEVRON, "check": MPH_CHECK}.get(kind, 0)
+    label_w = m.width(MPH_ROW, label)
+    value_w = m.width(MPH_ROW, value) if value else 0
+    arrows = m.plain(MPH_ROW, "\u2039") + m.plain(MPH_ROW, "\u203a") + 2 * MPH_VALUE_GAP if kind == "choice" and value else 0
+    gaps = MPH_VALUE_GAP + 4 if value else 4
+    need = label_w + gaps + value_w + arrows + trailing
+    if need <= room:
+        return need, room, None
+    spare = room - trailing - arrows - gaps - label_w
+    value_room = max(MPH_VALUE_MIN, spare)
+    if value_w > value_room:
+        return need, room, "value" if label_w + gaps + value_room + arrows + trailing <= room else "value and label"
+    return need, room, "label"
+
+
+def morpheus_checks(m, t, language_names):
+    """(where, width, room, what's cut or None) for every line of the Settings screens."""
+    out = []
+    for label, kind, fn, fixed, toggle in settings_rows():
+        if kind == "HEADER":
+            w = m.plain(MPH_LABEL, t(label).upper())
+            out.append((f"Settings header {label}", w, MPH_SETTINGS_ROW_W - 32, "label" if w > MPH_SETTINGS_ROW_W - 32 else None))
+            continue
+        if kind == "NOTE":
+            lines = m.wrap(MPH_SMALL, t(label), MPH_SETTINGS_ROW_W - 32 - 16)
+            widest = max(m.width(MPH_SMALL, line) for line in lines)
+            out.append((f"Settings note {label} ({len(lines)} lines)", widest, MPH_SETTINGS_ROW_W - 48,
+                        "third line" if len(lines) > 2 else None))
+            continue
+        values = [fixed] if fixed else value_candidates(fn, t, language_names)
+        row_kind = "toggle" if toggle else {"CHOICE": "choice", "ACTION": "action"}.get(kind, "plain")
+        worst = max((morpheus_row(m, MPH_SETTINGS_ROW_W, t(label), v, row_kind) for v in values or [None]),
+                    key=lambda r: r[0] - r[1])
+        out.append((f"Settings {label}", *worst))
+        # The help card's title is the row's label: two lines at most
+        lines = m.wrap(MPH_ROW_L, t(label), MPH_HELP_W)
+        out.append((f"Help card title {label} ({len(lines)} lines)", max(m.width(MPH_ROW_L, x) for x in lines),
+                    MPH_HELP_W, "fourth line" if len(lines) > MPH_HELP_TITLE_LINES else None))
+    tabs = [t(k) for k in ("TAB_STREAM", "TAB_SYSTEM", "TAB_CONTROLS", "TAB_DEVELOPER", "TAB_ABOUT")]
+    right = 40 + m.keycap("L") + 4 + sum(m.width(MPH_BTN, x) + 24 + 4 for x in tabs) + m.keycap("R")
+    out.append(("Settings tab bar (right edge)", right, MPH_TAB_RIGHT, "tabs" if right > MPH_TAB_RIGHT else None))
+
+    # Apply recommended settings
+    for label, values, kind in (("REC_ROW_PRIORITY", ["REC_BALANCED", "REC_LOWEST_DELAY", "REC_BATTERY"], "choice"),
+                                ("REC_ROW_AUTO", ["REC_QUIT_GAME_FIRST"], "action"),
+                                ("REC_ROW_GOOD", ["REC_FITS_NOW"], "action"),
+                                ("REC_ROW_WEAK", ["REC_FITS_NOW"], "action")):
+        worst = max((morpheus_row(m, MPH_SETTINGS_ROW_W, t(label), t(v), kind) for v in values),
+                    key=lambda r: r[0] - r[1])
+        out.append((f"Recommended {label}", *worst))
+        lines = m.wrap(MPH_ROW_L, t(label), MPH_HELP_W)
+        out.append((f"Help card title {label} ({len(lines)} lines)", max(m.width(MPH_ROW_L, x) for x in lines),
+                    MPH_HELP_W, "fourth line" if len(lines) > MPH_HELP_TITLE_LINES else None))
+    w = m.width(MPH_BTN, fill(t("REC_WIFI_NOW"), "100"))
+    out.append(("Recommended reading REC_WIFI_NOW", w, MPH_READING_ROOM_METER,
+                "reading" if w > MPH_READING_ROOM_METER else None))
+    for key in ("REC_WIRED", "REC_MOBILE", "REC_NO_WIFI"):
+        w = m.width(MPH_BTN, t(key))
+        out.append((f"Recommended reading {key}", w, MPH_READING_ROOM, "reading" if w > MPH_READING_ROOM else None))
+
+    # Keyboard layout
+    for key in ("KEYBOARD_EN_US", "KEYBOARD_ES_ES", "KEYBOARD_ES_LATAM"):
+        out.append((f"Keyboard layout {key}", *morpheus_row(m, MPH_KEYBOARD_ROW_W, t(key), None, "check")))
+
+    # Status bar titles and the legend
+    for key in ("MAIN_SETTINGS", "SET_RECOMMENDED", "SET_KEYBOARD_LAYOUT"):
+        w = m.width(MPH_BODY_B, t(key))
+        out.append((f"Status bar title {key}", w, MPH_TITLE_ROOM, "title" if w > MPH_TITLE_ROOM else None))
+    w = m.symbol("triangle", MPH_ROW) + 7 + m.width(MPH_SMALL, t("HINT_HELP"))
+    out.append(("Legend HINT_HELP", w, 960 - 40 - 40, "legend" if w > 880 else None))
+    return out
+
+
+def languages_and_names():
+    english = {key: text for key, text, _ in i18n_check.read_english()}
+    languages = [("en", {})]
+    for path in sorted(i18n_check.LANG_DIR.glob("*.ini")):
+        if path.name in ("template.ini", "source.ini"):
+            continue
+        for kind, value in i18n_check.read_ini(path):
+            if kind == "sections":
+                strings = {k: i18n_check.unescape_c(v.replace("\\n", "\n")) for k, (v, _) in
+                           value.get("strings", {}).items() if v}
+                name = value.get("meta", {}).get("name", (path.stem, 0))[0]
+                languages.append((path.stem, strings, name))
+    names = ["English"] + [entry[2] for entry in languages[1:]]
+    return english, languages, names
+
+
+def main_morpheus(show_all):
+    m = Morpheus()
+    english, languages, names = languages_and_names()
+    wide = cut = 0
+    for entry in languages:
+        tag, strings = entry[0], entry[1]
+
+        def t(key, strings=strings):
+            return strings.get(key, english.get(key, key))
+
+        for where, width, room, what in morpheus_checks(m, t, names):
+            # A value ending in an ellipsis is the layout working as meant (the
+            # label keeps its words); anything else loses translated text
+            value_only = what == "value"
+            cut += value_only
+            wide += what is not None and not value_only
+            if show_all or what is not None:
+                mark = "ok  " if what is None else "cut " if value_only else "WIDE"
+                print(f"{mark} {tag:8} {where:58} {width:6.1f} of {room:5.1f} px" + (f"  ({what} cut)" if what else ""))
+    print(f"{len(languages)} languages: {wide} line(s) too wide, {cut} value(s) shortened with an ellipsis")
+    return 1 if wide else 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--all", action="store_true", help="list every row checked, not only those too wide")
+    parser.add_argument("--theme", choices=("homebrew", "morpheus"), default="homebrew",
+                        help="the theme whose layout to check (default: homebrew)")
     args = parser.parse_args()
+    if args.theme == "morpheus":
+        return main_morpheus(args.all)
 
     font = Font(FONT)
     english = {key: text for key, text, _ in i18n_check.read_english()}
