@@ -9,6 +9,10 @@ bool ui_connect_connected();
 void ui_connect_resume();
 void ui_connect_manual();
 void ui_connect_paired_device(device_info_t *info);
+// Unpairs the host and forgets it (host_unpair in src/hosts.h), then says
+// how it went, and whether the PC still lists this Vita. Ask first. Returns
+// false if it couldn't be forgotten. info is gone afterwards.
+bool ui_connect_forget_host(device_info_t *info);
 
 // Ends the paused stream and resumes the same app with the current stream
 // settings, which the host applies on resume, then waits while it streams.

@@ -3,8 +3,12 @@
 
 #include "check_host.h"
 #include "config.h"
+#include "connection.h"
 #include "debug.h"
+#include "session.h"
 #include "ui_ops.h"
+
+#include "errors.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -109,6 +113,68 @@ host_wait_result host_wake_and_wait(device_info_t *info, char *new_address, size
 bool host_forget(device_info_t *info) {
   vita_debug_log("[HOSTS] forgetting %s", info->name);
   return remove_device(info->name);
+}
+
+// Asks the PC to forget this Vita. Returns whether it answered at all, and
+// sets told when it agreed (or had already forgotten it).
+static bool ask_pc_to_unpair(device_info_t *info, bool *told) {
+  *told = false;
+  int status = connection_get_status();
+  if (status != LI_DISCONNECTED) {
+    if (strcmp(session_server_name(), info->name) != 0) {
+      // Connected to another PC: opening this one would replace that
+      // connection's keys under it, so this PC isn't asked
+      vita_debug_log("[HOSTS] not asking %s to unpair: connected to %s", info->name, session_server_name());
+      return false;
+    }
+    // Already connected to it, so ask over that connection, then end it
+    int ret = gs_unpair(&server);
+    vita_debug_log("[HOSTS] unpair request to %s: %d", info->name, ret);
+    *told = ret == GS_OK;
+    if (status == LI_READY) {
+      connection_paired();
+    }
+    connection_terminate();
+    return true;
+  }
+
+  struct host_status st = check_host_status(info);
+  if (st.status == HOST_OFFLINE) {
+    vita_debug_log("[HOSTS] %s is offline: not asked to unpair", info->name);
+    return false;
+  }
+  // gs_init keeps a pointer to the address, so it can't be on the stack
+  static char address[sizeof(info->internal)];
+  snprintf(address, sizeof(address), "%s", st.current_ip[0] ? st.current_ip : info->internal);
+  char key_dir[4096];
+  snprintf(key_dir, sizeof(key_dir), "%s/%s", config.key_dir, info->name);
+  int ret = gs_init(&server, address, info->port, key_dir, 0, true);
+  if (ret != GS_OK) {
+    vita_debug_log("[HOSTS] %s didn't answer at %s: %d", info->name, address, ret);
+    return false;
+  }
+  if (!server.paired) {
+    // It no longer trusts this Vita's certificate
+    vita_debug_log("[HOSTS] %s had already unpaired this Vita", info->name);
+    *told = true;
+    return true;
+  }
+  ret = gs_unpair(&server);
+  vita_debug_log("[HOSTS] unpair request to %s: %d", info->name, ret);
+  *told = ret == GS_OK;
+  return true;
+}
+
+host_unpair_result host_unpair(device_info_t *info) {
+  bool told = false;
+  bool answered = ask_pc_to_unpair(info, &told);
+  if (!host_forget(info)) {
+    return HOST_UNPAIR_FORGET_FAILED;
+  }
+  if (told) {
+    return HOST_UNPAIR_DONE;
+  }
+  return answered ? HOST_UNPAIR_PC_REFUSED : HOST_UNPAIR_PC_UNREACHABLE;
 }
 
 void host_set_address(device_info_t *info, const char *address) {
