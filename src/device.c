@@ -23,7 +23,12 @@
 #define write_string(fd, key, value) fprintf(fd, "%s = %s\n", key, value)
 
 // Elimina la carpeta y el archivo del dispositivo
-bool remove_device(const char *name) {
+bool remove_device(const char *device_name) {
+  // The list is shifted over the removed entry before its files are deleted
+  // by name, so keep a copy: the caller's name may point into the list, and
+  // would then name the next host (whose keys would be deleted instead)
+  char name[sizeof(known_devices.devices[0].name)];
+  snprintf(name, sizeof(name), "%s", device_name);
   int idx = -1;
   for (int i = 0; i < known_devices.count; i++) {
     if (!strcmp(known_devices.devices[i].name, name)) {
