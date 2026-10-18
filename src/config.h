@@ -63,6 +63,9 @@ typedef struct _CONFIGURATION {
   bool boost_clocks;
   bool direct_decode; // decode on common-c's receive thread, as before the decode thread
   bool input_sync_to_controller; // pace input reads to controller samples instead of 2 ms polling
+  // Ask the host to encrypt the audio and video streams (input always is)
+  bool encrypt_audio;
+  bool encrypt_video;
   // Developer options, shown in Settings after L + R + triangle
   bool developer_mode;
   // Benchmark against tools/bench/bench.html streamed from the host

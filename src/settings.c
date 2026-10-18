@@ -61,6 +61,8 @@ TOGGLE(sprint, config.enable_double_tap_sprint)
 TOGGLE(psbutton, config.enable_psbutton_capture)
 TOGGLE(touch_keys, config.enable_front_touchzones)
 TOGGLE(direct_decode, config.direct_decode)
+TOGGLE(encrypt_audio, config.encrypt_audio)
+TOGGLE(encrypt_video, config.encrypt_video)
 
 /*
  * Resolution and frame rate
@@ -521,6 +523,12 @@ const setting_def SETTINGS[] = {
   {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_TOGGLE, .flags = SETTING_NEEDS_NEW_STREAM,
    .label = STR_SET_LOCAL_AUDIO, .is_on = local_audio_on, .change = local_audio_flip,
    .help = STR_SET_LOCAL_AUDIO_HELP},
+  {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_TOGGLE, .flags = SETTING_NEEDS_NEW_STREAM,
+   .label = STR_SET_ENCRYPT_AUDIO, .is_on = encrypt_audio_on, .change = encrypt_audio_flip,
+   .help = STR_SET_ENCRYPT_AUDIO_HELP},
+  {.tab = SETTINGS_TAB_STREAM, .kind = SETTING_TOGGLE, .flags = SETTING_NEEDS_NEW_STREAM,
+   .label = STR_SET_ENCRYPT_VIDEO, .is_on = encrypt_video_on, .change = encrypt_video_flip,
+   .help = STR_SET_ENCRYPT_VIDEO_HELP},
 
   // System
   // First on its tab: changing it rebuilds the rows, which puts the cursor on
