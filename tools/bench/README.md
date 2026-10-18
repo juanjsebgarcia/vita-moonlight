@@ -157,6 +157,8 @@ Variants run in turn, round after round, so changing Wi-Fi conditions affect the
 
 It needs `tools/vita.sh` and the Vita setup in `docs/DEVELOPMENT.md`, with the computer awake and Sunshine running.
 
+The whole run holds the Vita lock, so other sessions sharing the Vita wait until it's done, and a run never starts in the middle of someone else's (see "Sharing a Vita between sessions" in `docs/DEVELOPMENT.md`). `tools/vita-lock.sh --status` shows who holds it; `VITA_LOCK=off` skips it.
+
 #### Settings worth comparing
 
 | Key | Values | What it changes |

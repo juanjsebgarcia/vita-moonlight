@@ -12,6 +12,8 @@ export VITA_IP=192.168.1.50      # your Vita's address (Settings > Network on th
 nc -z $VITA_IP 1337 && nc -z $VITA_IP 1338 && echo ready
 ```
 
+**If others share your Vita,** `tools/vita.sh`, `run.sh` and `shot.sh` queue for a lock by themselves. Wrap a sequence of your own commands, such as the presses and screenshots in section 7, in `tools/vita-lock.sh`, so nobody gets in between. See "Sharing a Vita between sessions" in `DEVELOPMENT.md`.
+
 ## 1. Build and deploy
 
 ```sh
@@ -126,5 +128,7 @@ tools/bench/shot.sh stream.png    # the Stream tab
 tap r1; tools/bench/shot.sh system.png
 tap circle                        # back out
 ```
+
+Each screenshot is a few short FTP sessions: one to ask for it, a directory listing a second until it's there, then one download. vitacompanion's FTP server stops transferring under heavier polling, so keep batches small.
 
 If a screenshot times out, the app is probably stuck in something that doesn't redraw (a connection attempt, say), or the screen went off. Relaunch it and send the sequence again.
