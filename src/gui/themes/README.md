@@ -9,7 +9,7 @@ setting, a row or a menu in one place changes it in every theme.
 | Theme | Folder | State |
 |---|---|---|
 | Homebrew | `homebrew/` | The original look, pixel for pixel. The default on every launch. |
-| Morpheus | `morpheus/` | The new look, from `claude_bundle/demo/index.html`. Its primitives and a generic list screen; screens get their own layouts next. See `morpheus/README.md`. |
+| Morpheus | `morpheus/` | The new look, from `claude_bundle/demo/index.html`. Every screen, dialog and stream overlay has its own layout. Opt-in only. See `morpheus/README.md`. |
 
 On the host list, Homebrew shows "Press R and L to use new theme"
 (`STR_THEME_TRY_NEW`). Pressing L and R together there switches to Morpheus
