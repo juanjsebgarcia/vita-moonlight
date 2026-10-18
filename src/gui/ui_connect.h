@@ -9,6 +9,10 @@ bool ui_connect_connected();
 void ui_connect_resume();
 void ui_connect_manual();
 void ui_connect_paired_device(device_info_t *info);
+// Connects to a paired host and starts the app it last streamed, or resumes
+// it if it's still running there, then shows the PC's menu as streaming from
+// it would
+void ui_connect_continue(device_info_t *info);
 
 // Ends the paused stream and resumes the same app with the current stream
 // settings, which the host applies on resume, then waits while it streams.

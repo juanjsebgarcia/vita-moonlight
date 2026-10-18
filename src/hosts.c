@@ -126,3 +126,32 @@ void host_set_label(device_info_t *info, const char *label) {
   }
   save_device_info(info);
 }
+
+void host_remember_app(device_info_t *info, int app_id, const char *app_name) {
+  // After every other PC's, so this one is the latest
+  unsigned int latest = 0;
+  for (int i = 0; i < known_devices.count; i++) {
+    if (known_devices.devices[i].last_played > latest) {
+      latest = known_devices.devices[i].last_played;
+    }
+  }
+  if (info->last_played != latest || latest == 0) {
+    info->last_played = latest + 1;
+  }
+  info->last_app_id = app_id;
+  snprintf(info->last_app_name, sizeof(info->last_app_name), "%s", app_name);
+  vita_debug_log("[HOSTS] last app on %s: %s (%d)", info->name, app_name, app_id);
+  save_device_info(info);
+}
+
+device_info_t *host_last_played(void) {
+  device_info_t *last = NULL;
+  for (int i = 0; i < known_devices.count; i++) {
+    device_info_t *d = &known_devices.devices[i];
+    if (d->paired && d->last_played != 0 && d->last_app_name[0] != '\0' &&
+        (last == NULL || d->last_played > last->last_played)) {
+      last = d;
+    }
+  }
+  return last;
+}

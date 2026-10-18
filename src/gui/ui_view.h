@@ -114,6 +114,7 @@ enum {
   MAIN_MENU_CONNECT_RESUME,
   MAIN_MENU_SETTINGS,
   MAIN_MENU_CONNECT,
+  MAIN_MENU_CONTINUE,  // starts the app last streamed, on its PC
   MAIN_MENU_CONNECT_PAIRED,
   MAIN_MENU_QUIT = 999,
 };
@@ -123,6 +124,11 @@ typedef struct main_view {
   bool connected;                  // a PC is connected: the rows offer to resume it
   const char *connection_label;    // that PC's name, when connected
   const char *connection_address;  // and its address
+  // The MAIN_MENU_CONTINUE row, when there is one: its name says it all in
+  // one line ("Continue: Desktop on Gaming PC"); these are its parts, for
+  // themes that show it in two
+  const char *continue_title;      // "Continue: Desktop", or NULL
+  const char *continue_host;       // the PC's name
 } main_view;
 
 // UI_SCREEN_HOST

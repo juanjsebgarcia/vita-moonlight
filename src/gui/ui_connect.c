@@ -16,6 +16,7 @@
 #include "../device.h"
 #include "../debug.h"
 #include "../netcount.h"
+#include "../hosts.h"
 
 #include "client.h"
 #include "errors.h"
@@ -42,11 +43,24 @@
 
 int pos[2];
 
-void ui_connect_stream(int appId) {
+bool ui_connect_stream(int appId) {
   char err[512];
   if (session_start_stream(appId, err, sizeof(err)) != 0) {
     display_error("%s", err);
+    return false;
   }
+  return true;
+}
+
+// Remembers the app for the host list's Continue row, once its stream has
+// started from the PC's menu
+static void remember_app(int app_id) {
+  device_info_t *dev = find_device(session_server_name());
+  char name[256];
+  if (dev == NULL || !get_app_name(server_applist, app_id, name)) {
+    return;
+  }
+  host_remember_app(dev, app_id, name);
 }
 
 
@@ -60,6 +74,53 @@ enum {
 };
 
 #define QUIT_RELOAD 2
+
+static int disconnect(void) {
+  flash_message("%s", tr(STR_CONNECT_DISCONNECTING));
+  connection_terminate();
+  sceKernelDelayThread(1000 * 1000);
+  return 1;
+}
+
+// Starts app id, or resumes it when it's the paused stream, then waits while
+// it streams. Returns QUIT_RELOAD to show the PC's menu again, or 1 once the
+// connection has ended.
+static int stream_app(int id, int status) {
+  vitapower_config(config);
+  vitainput_config(config);
+
+  switch (status) {
+    case LI_MINIMIZED:
+      if (server.currentGame == id) {
+        // The covers drawn this frame stay in memory until the menu closes
+        ui_boxart_stop_loading();
+        sceKernelDelayThread(500 * 1000);
+        connection_resume();
+        break;
+      }
+      // TODO: stop previous stream
+    case LI_PAIRED:
+      flash_message("%s", tr(STR_CONNECT_STREAM_STARTING));
+      // That frame has finished drawing, so the covers can go now: the
+      // stream needs the memory and the network more
+      ui_boxart_close();
+      if (ui_connect_stream(id)) {
+        remember_app(id);
+      }
+      break;
+  }
+
+//mainloop:
+  while (connection_is_connected()) {
+    sceKernelDelayThread(500 * 1000);
+  }
+
+  if (connection_get_status() == LI_DISCONNECTED) {
+    return disconnect();
+  }
+
+  return QUIT_RELOAD;
+}
 
 int ui_connect_loop(int id, void *context, const input_data *input) {
   int status = connection_get_status();
@@ -190,47 +251,11 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
 
     // application launcher / resume
     default:
-      vitapower_config(config);
-      vitainput_config(config);
-
-      switch (status) {
-        case LI_MINIMIZED:
-          if (server.currentGame == id) {
-            // The covers drawn this frame stay in memory until the menu closes
-            ui_boxart_stop_loading();
-            sceKernelDelayThread(500 * 1000);
-            connection_resume();
-            break;
-          }
-          // TODO: stop previous stream
-        case LI_PAIRED:
-          flash_message("%s", tr(STR_CONNECT_STREAM_STARTING));
-          // That frame has finished drawing, so the covers can go now: the
-          // stream needs the memory and the network more
-          ui_boxart_close();
-          ui_connect_stream(id);
-          break;
-      }
-
-//mainloop:
-      while (connection_is_connected()) {
-        sceKernelDelayThread(500 * 1000);
-      }
-
-      int status = connection_get_status();
-
-      if (status == LI_DISCONNECTED) {
-          goto disconnect;
-      }
-
-      return QUIT_RELOAD;
+      return stream_app(id, status);
   }
 
 disconnect:
-  flash_message("%s", tr(STR_CONNECT_DISCONNECTING));
-  connection_terminate();
-  sceKernelDelayThread(1000 * 1000);
-  return 1;
+  return disconnect();
 }
 
 int ui_connect(char *name, char *address, uint16_t port) {
@@ -620,12 +645,14 @@ bool check_connection(const char *name, char *addr, uint16_t port) {
   return true;
 }
 
-void ui_connect_paired_device(device_info_t *info) {
+// Connects to a paired host, trying the address that worked last first.
+// Returns false, after saying why, if it couldn't.
+static bool open_paired_device(device_info_t *info) {
   if (!info->paired) {
     char message[512];
     TR_FMT(message, sizeof(message), STR_CONNECT_UNPAIRED_DEVICE, device_label(info));
     display_error("%s", message);
-    return;
+    return false;
   }
 
   char *addr = NULL;
@@ -643,13 +670,67 @@ void ui_connect_paired_device(device_info_t *info) {
     char message[512];
     TR_FMT(message, sizeof(message), STR_CONNECT_CANT_CONNECT_SERVER, device_label(info));
     display_error("%s", message);
+    return false;
+  }
+
+  return ui_connect(info->name, addr, info->port) != 0;
+}
+
+void ui_connect_paired_device(device_info_t *info) {
+  if (!open_paired_device(info)) {
     return;
   }
 
-  if (!ui_connect(info->name, addr, info->port)) {
+  while (ui_connected_menu() == QUIT_RELOAD);
+}
+
+// The id of the app the host remembers, looked up in the connected host's
+// list: by id, or by name if the PC has given it a new id. 0 if it's gone.
+static int remembered_app_id(const device_info_t *info) {
+  char name[256];
+  if (get_app_name(server_applist, info->last_app_id, name)) {
+    return info->last_app_id;
+  }
+  int id = get_app_id(server_applist, (char *)info->last_app_name);
+  return id > 0 ? id : 0;
+}
+
+void ui_connect_continue(device_info_t *info) {
+  vita_debug_log("[CONNECT] Continue %s on %s", info->last_app_name, info->name);
+  if (!open_paired_device(info)) {
     return;
   }
-
+  // Pairing can have been undone on the PC: then its menu offers to pair again
+  if (server.paired) {
+    server_applist = NULL;
+    int ret = gs_applist(&server, &server_applist);
+    int id = ret == GS_OK ? remembered_app_id(info) : 0;
+    char message[512];
+    if (ret != GS_OK) {
+      char code[16];
+      snprintf(code, sizeof(code), "%d", ret);
+      TR_FMT(message, sizeof(message), STR_CONNECT_NO_APPS, code, gs_error ? gs_error : "");
+      display_error("%s", message);
+    } else if (id == 0) {
+      TR_FMT(message, sizeof(message), STR_CONTINUE_APP_GONE, info->last_app_name, device_label(info));
+      display_error("%s", message);
+    } else if (server.currentGame != 0 && server.currentGame != id) {
+      // Starting over another app would resume that one instead
+      char running[256];
+      if (!get_app_name(server_applist, server.currentGame, running)) {
+        snprintf(running, sizeof(running), "%s", tr(STR_CONNECTED_UNKNOWN_APP));
+      }
+      TR_FMT(message, sizeof(message), STR_CONTINUE_OTHER_APP, running, device_label(info));
+      display_error("%s", message);
+    } else {
+      connection_paired();
+      if (stream_app(id, LI_PAIRED) != QUIT_RELOAD) {
+        return;
+      }
+    }
+  }
+  // Afterwards, or if it couldn't start, the PC's menu, as after streaming
+  // from it
   while (ui_connected_menu() == QUIT_RELOAD);
 }
 

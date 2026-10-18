@@ -128,7 +128,7 @@ language's rules and asks your measure function for widths.
 | Row kind, toggle bool, status, danger | `menu_entry.kind`, `.on`, `.status`, `.danger` |
 | Settings tabs and the current tab | `view->tabs` (`ui_tab` name and `current`, shown tabs only) |
 | Focused row's help (Settings, Recommended) | `view->help` |
-| S1 host list: connected, label, address, version | `view->screen->main` (`connected`, `connection_label`, `connection_address`, `version`); row ids `MAIN_MENU_*` in `ui_view.h` tell Search, Add, Settings, Quit and PCs (`MAIN_MENU_CONNECT_PAIRED + i`) apart |
+| S1 host list: connected, label, address, version, Continue | `view->screen->main` (`connected`, `connection_label`, `connection_address`, `version`, and `continue_title`/`continue_host` for the Continue row's two lines); row ids `MAIN_MENU_*` in `ui_view.h` tell Continue, Search, Add, Settings, Quit and PCs (`MAIN_MENU_CONNECT_PAIRED + i`) apart |
 | S2 PC menu: label, status enum and text, address | `view->screen->host` |
 | S3 search running | `view->screen->search->searching` (as the list was built; the list rebuilds as devices are found) |
 | S4 host name, address, port, GPU, GFE version, running app, paired, list style | `view->screen->connected` (`covers` is the box art style) |
