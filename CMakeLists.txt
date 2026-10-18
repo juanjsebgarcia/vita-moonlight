@@ -98,6 +98,12 @@ add_executable(${PROJECT_NAME}.elf
 	src/gui/themes/homebrew/homebrew_stream.c
 	src/gui/themes/homebrew/homebrew_text.c
 	src/gui/themes/morpheus/morpheus.c
+	src/gui/themes/morpheus/mph_anim.c
+	src/gui/themes/morpheus/mph_chrome.c
+	src/gui/themes/morpheus/mph_draw.c
+	src/gui/themes/morpheus/mph_perf.c
+	src/gui/themes/morpheus/mph_text.c
+	src/gui/themes/morpheus/mph_widgets.c
 	src/gui/ime.c
 	src/gui/ui.c
 	src/gui/ui_settings.c
@@ -120,6 +126,11 @@ add_executable(${PROJECT_NAME}.elf
 	src/check_host.c
 )
 
+
+# Morpheus draws text with FreeType directly, whose headers expect their own
+# folder on the include path
+set_source_files_properties(src/gui/themes/morpheus/mph_text.c PROPERTIES
+	INCLUDE_DIRECTORIES $ENV{VITASDK}/arm-vita-eabi/include/freetype2)
 
 # Por defecto, solo enlazamos curl y el resto de libs estándar:
 target_link_libraries(${PROJECT_NAME}.elf
