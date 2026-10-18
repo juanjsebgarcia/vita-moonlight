@@ -39,12 +39,22 @@
 
 
 #include "../session.h"
+#include "../ui_ops.h"
 
 int pos[2];
 
 void ui_connect_stream(int appId) {
   char err[512];
-  if (session_start_stream(appId, err, sizeof(err)) != 0) {
+  int ret = session_start_stream(appId, err, sizeof(err));
+  if (ret == SESSION_START_CANCELLED) {
+    flash_message("%s", err);
+    // Let go of the button first, so the menu doesn't take the same press
+    // as going back (for at most a second)
+    for (int i = 0; i < 50 && ui_cancel_requested(); i++) {
+      sceKernelDelayThread(20 * 1000);
+    }
+    sceKernelDelayThread(600 * 1000);
+  } else if (ret != 0) {
     display_error("%s", err);
   }
 }
@@ -204,7 +214,7 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
           }
           // TODO: stop previous stream
         case LI_PAIRED:
-          flash_message("%s", tr(STR_CONNECT_STREAM_STARTING));
+          flash_message("%s", tr(STR_CONNECT_STREAM_STARTING_CANCEL));
           // That frame has finished drawing, so the covers can go now: the
           // stream needs the memory and the network more
           ui_boxart_close();
@@ -560,7 +570,7 @@ void ui_connect_restart_stream(void) {
   if (app_id == 0 || connection_get_status() != LI_MINIMIZED) {
     return;
   }
-  flash_message("%s", tr(STR_CONNECT_RESTARTING));
+  flash_message("%s", tr(STR_CONNECT_RESTARTING_CANCEL));
   // The app keeps running on the host; only our stream ends
   connection_terminate();
   sceKernelDelayThread(500 * 1000);
