@@ -21,7 +21,10 @@ static void morpheus_init(void) {
   mph_init();
 }
 
+static void gallery_fini(void);
+
 static void morpheus_fini(void) {
+  gallery_fini();
   mph_fini();
 }
 
@@ -423,6 +426,32 @@ static void mph_draw_stream_overlay(const stream_overlay_view *view) {
  * Vita. Opened with the developer screen request "help mph:gallery|".
  */
 
+// A stand-in cover for the gallery's textured tile, made the first time
+static vita2d_texture *gallery_cover;
+
+static void gallery_fini(void) {
+  if (gallery_cover != NULL) {
+    vita2d_free_texture(gallery_cover);
+    gallery_cover = NULL;
+  }
+}
+
+static const vita2d_texture *gallery_texture(void) {
+  if (gallery_cover == NULL) {
+    gallery_cover = vita2d_create_empty_texture(64, 64);
+    if (gallery_cover != NULL) {
+      uint32_t *data = vita2d_texture_get_datap(gallery_cover);
+      unsigned int stride = vita2d_texture_get_stride(gallery_cover) / 4;
+      for (int y = 0; y < 64; y++) {
+        for (int x = 0; x < 64; x++) {
+          data[y * stride + x] = RGBA8(40 + x * 3, 30 + y, 120 - y, 0xFF) | (((x ^ y) & 8) ? 0x00202020 : 0);
+        }
+      }
+    }
+  }
+  return gallery_cover;
+}
+
 static void draw_gallery(void) {
   static mph_list_state gallery_list;
   static const mph_row demo[] = {
@@ -471,6 +500,8 @@ static void draw_gallery(void) {
   mph_circle_fill(740, 330, 32, RGBA8(0xA9, 0xC8, 0xFF, 0x24));
   mph_sector_gradient(740, 330, 74, sweep - (float)M_PI_2, sweep, RGBA8(0xA9, 0xC8, 0xFF, 0), RGBA8(0xA9, 0xC8, 0xFF, 0x59));
   mph_tile(NULL, "Steam Big Picture", mph_rect_make(820, 60, 100, 132), 1.07f, 2, false);
+  mph_tile(gallery_texture(), NULL, mph_rect_make(840, 280, 70, 92), 1.0f, 1, false);
+  mph_tile(gallery_texture(), NULL, mph_rect_make(840, 390, 70, 92), 1.0f, 0, true);
 
   // Controls and icons
   float x = 490;
