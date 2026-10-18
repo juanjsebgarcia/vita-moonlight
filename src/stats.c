@@ -18,6 +18,7 @@
 #include "stats.h"
 #include "config.h"
 #include "debug.h"
+#include "util.h"
 #include "gui/theme.h"
 
 #include <pthread.h>
@@ -72,6 +73,17 @@ static float rendered_fps = 0;
 // signal can be drawn in yellow
 static int wifi_percent = -1;
 static int wifi_line = -1;
+// One of VITA_NETWORK_*, from the last tick
+static int network_type = VITA_NETWORK_WIFI;
+
+static const char *network_name(int network) {
+  switch (network) {
+    case VITA_NETWORK_WIFI: return "Wi-Fi";
+    case VITA_NETWORK_WIRED: return "Ethernet";
+    case VITA_NETWORK_MOBILE: return "Mobile data";
+    default: return "No network";
+  }
+}
 // Bumped whenever lines change, so the draw only re-measures text when needed
 static int lines_version = 0;
 
@@ -214,16 +226,21 @@ void vitastats_tick(void) {
 
   int pending_frames = LiGetPendingVideoFrames();
 
+  // The signal only means something on Wi-Fi: on a PS TV's Ethernet the
+  // queries fail, and the overlay said "Wi-Fi -1%"
+  int network = vita_network_type();
   SceNetCtlInfo info;
   int rssi_percent = -1, rssi_dbm = 0, channel = -1;
-  if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_RSSI_PERCENTAGE, &info) >= 0) {
-    rssi_percent = info.rssi_percentage;
-  }
-  if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_RSSI_DBM, &info) >= 0) {
-    rssi_dbm = (int)info.rssi_dbm;
-  }
-  if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_CHANNEL, &info) >= 0) {
-    channel = info.channel;
+  if (network == VITA_NETWORK_WIFI) {
+    if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_RSSI_PERCENTAGE, &info) >= 0) {
+      rssi_percent = info.rssi_percentage;
+    }
+    if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_RSSI_DBM, &info) >= 0) {
+      rssi_dbm = (int)info.rssi_dbm;
+    }
+    if (sceNetCtlInetGetInfo(SCE_NETCTL_INFO_GET_CHANNEL, &info) >= 0) {
+      channel = info.channel;
+    }
   }
 
   float received_fps = w.frames_received / seconds;
@@ -264,9 +281,15 @@ void vitastats_tick(void) {
   } else {
     snprintf(new_lines[n++], STATS_LINE_LENGTH, "Host %.1f ms  RTT n/a", timing_avg_ms(&w.host));
   }
-  int new_wifi_line = n;
-  snprintf(new_lines[n++], STATS_LINE_LENGTH, "Wi-Fi %d%% (%d dBm) ch %d  packet %d B",
-           rssi_percent, rssi_dbm, channel, config.stream.packetSize);
+  int new_wifi_line = -1;
+  if (network == VITA_NETWORK_WIFI) {
+    new_wifi_line = n;
+    snprintf(new_lines[n++], STATS_LINE_LENGTH, "Wi-Fi %d%% (%d dBm) ch %d  packet %d B",
+             rssi_percent, rssi_dbm, channel, config.stream.packetSize);
+  } else {
+    snprintf(new_lines[n++], STATS_LINE_LENGTH, "%s  packet %d B", network_name(network),
+             config.stream.packetSize);
+  }
   snprintf(new_lines[n++], STATS_LINE_LENGTH, "Clocks cpu %d bus %d gpu %d MHz",
            scePowerGetArmClockFrequency(), scePowerGetBusClockFrequency(),
            scePowerGetGpuClockFrequency());
@@ -280,6 +303,7 @@ void vitastats_tick(void) {
   rendered_fps = drawn_fps;
   wifi_percent = rssi_percent;
   wifi_line = new_wifi_line;
+  network_type = network;
   pthread_mutex_unlock(&stats_mutex);
 
   // One line per second gives comparable numbers between builds or settings
@@ -315,12 +339,14 @@ void vitastats_draw(void) {
   float fps;
   int wifi;
   int wifi_at;
+  int network;
   pthread_mutex_lock(&stats_mutex);
   n = line_count;
   version = lines_version;
   fps = rendered_fps;
   wifi = wifi_percent;
   wifi_at = wifi_line;
+  network = network_type;
   memcpy(local_lines, lines, sizeof(local_lines));
   if (last_draw_us > 0) {
     timing_add(&current.overlay, last_draw_us);
@@ -332,6 +358,8 @@ void vitastats_draw(void) {
     .fps = fps,
     .target_fps = config.stream.fps,
     .wifi_percent = wifi,
+    // A link other than Wi-Fi, by name; Wi-Fi shows its signal instead
+    .link_name = network == VITA_NETWORK_WIRED || network == VITA_NETWORK_MOBILE ? network_name(network) : NULL,
     .wifi_weak = wifi >= 0 && wifi < STATS_WEAK_WIFI_PERCENT,
     .lines = &local_lines[0][0],
     .line_stride = STATS_LINE_LENGTH,

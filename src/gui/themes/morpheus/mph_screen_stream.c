@@ -72,6 +72,9 @@ void mph_screen_stats_draw(const stats_view *view) {
       snprintf(wifi, sizeof(wifi), "Wi-Fi %d%%", view->wifi_percent);
       lines[count] = wifi;
       colours[count++] = view->wifi_weak ? MPH_C_LIVE : MPH_C_OVERLAY_TEXT;
+    } else if (view->link_name != NULL) {
+      lines[count] = view->link_name;
+      colours[count++] = MPH_C_OVERLAY_TEXT;
     }
     for (int i = 0; i < count; i++) {
       float w = mono_w(lines[i]);

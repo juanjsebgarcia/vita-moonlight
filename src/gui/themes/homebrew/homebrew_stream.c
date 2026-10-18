@@ -18,6 +18,9 @@ void hb_draw_stats(const stats_view *view) {
     if (view->wifi_percent >= 0) {
       vita2d_font_draw_textf(hb_font, 40, 20 + STATS_LINE_HEIGHT, wifi_color, STATS_FONT_SIZE, "Wi-Fi %d%%",
                              view->wifi_percent);
+    } else if (view->link_name != NULL) {
+      vita2d_font_draw_text(hb_font, 40, 20 + STATS_LINE_HEIGHT, RGBA8(0xFF, 0xFF, 0xFF, 0xFF), STATS_FONT_SIZE,
+                            view->link_name);
     }
     return;
   }
