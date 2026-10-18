@@ -24,6 +24,11 @@
 #define HB_ROW_HEIGHT 24
 #define HB_MENU_MAX_HEIGHT 400
 
+// The fill behind menus, alerts and help: white at 0x18 alpha, a faint grey
+// over the black screen. It was written 0x18fffff (one f short, alpha 0x01)
+// in 2019, which left the boxes see-through black; before that, 0x10ffffff.
+#define HB_C_PANEL 0x18ffffff
+
 // Where a box sits, and its rows' height
 typedef struct hb_geom {
   int x, y, width, height, el, total_y;
