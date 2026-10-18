@@ -42,9 +42,7 @@
 
 int pos[2];
 
-// After a stream has ended by itself and torn down, says why if it was an
-// error. A normal end, such as quitting the game, shows nothing.
-static void ui_connect_show_end_reason(void) {
+void ui_connect_show_end_reason(void) {
   char reason[1024];
   if (connection_take_end_reason(reason, sizeof(reason))) {
     display_error("%s", reason);

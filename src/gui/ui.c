@@ -630,6 +630,11 @@ int global_loop(int cursor, void *ctx, const input_data *input) {
       }
     }
   }
+  // A stream that ended away from the PC's menu, such as one resumed from
+  // here or one that failed while paused, says why on the next menu frame
+  if (connection_get_status() == LI_DISCONNECTED) {
+    ui_connect_show_end_reason();
+  }
   return 0;
 }
 

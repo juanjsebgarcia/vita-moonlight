@@ -36,9 +36,11 @@ static int connection_status = LI_DISCONNECTED;
 
 // Why the last stream ended, if with an error. The termination callback runs
 // on a moonlight-common-c thread, so it only records the code; the UI thread
-// puts it into words once the stream has torn down.
-static volatile int end_error = ML_ERROR_GRACEFUL_TERMINATION;
-static volatile bool end_error_pending = false;
+// puts it into words once the stream has torn down. end_error_pending is set
+// with release ordering after the teardown and the code, and taken with
+// acquire ordering, so a reader that sees it also sees both.
+static int end_error = ML_ERROR_GRACEFUL_TERMINATION;
+static bool end_error_pending = false;
 
 extern motion_data_state motion_state;
 
@@ -86,12 +88,8 @@ static void connection_connection_terminated(int error_code) {
     vita_debug_log("connection_connection_terminated error: %d\n", connection_status);
   }
 
-  // Recorded before the status changes below, which is what the UI thread
-  // watches for the end of the stream
   if (error_code != ML_ERROR_GRACEFUL_TERMINATION) {
     vita_debug_log("Connection terminated with error: %d\n", error_code);
-    end_error = error_code;
-    end_error_pending = true;
   }
 
   LiStopConnection();
@@ -102,6 +100,11 @@ static void connection_connection_terminated(int error_code) {
     stop_output();
   }
   vita_debug_log("connection terminated\n");
+  // Published once torn down, and before the status the UI thread watches
+  if (error_code != ML_ERROR_GRACEFUL_TERMINATION) {
+    end_error = error_code;
+    __atomic_store_n(&end_error_pending, true, __ATOMIC_RELEASE);
+  }
   connection_status = LI_DISCONNECTED;
 }
 
@@ -187,14 +190,13 @@ static void append_port_advice(char *out, size_t len, unsigned int flags) {
 }
 
 void connection_clear_end_reason(void) {
-  end_error_pending = false;
+  __atomic_store_n(&end_error_pending, false, __ATOMIC_RELEASE);
 }
 
 bool connection_take_end_reason(char *out, size_t len) {
-  if (!end_error_pending) {
+  if (!__atomic_exchange_n(&end_error_pending, false, __ATOMIC_ACQUIRE)) {
     return false;
   }
-  end_error_pending = false;
   int code = end_error;
 
   switch (code) {
