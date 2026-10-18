@@ -19,7 +19,8 @@
  */
 
 #define MPH_C_FG            RGBA8(0xF2, 0xF4, 0xF8, 0xFF)
-#define MPH_C_DIM           RGBA8(0xF2, 0xF4, 0xF8, 0xA3)
+// .75, not the demo's .64, a clear step above FAINT (accessibility)
+#define MPH_C_DIM           RGBA8(0xF2, 0xF4, 0xF8, 0xBF)
 // .55, not the demo's .38: about #8A8F99 on the background, 5.6:1 (accessibility)
 #define MPH_C_FAINT         RGBA8(0xF2, 0xF4, 0xF8, 0x8C)
 #define MPH_C_ACCENT        RGBA8(0xA9, 0xC8, 0xFF, 0xFF)
@@ -51,7 +52,8 @@
 #define MPH_C_ZONE_CUR      RGBA8(0xA9, 0xC8, 0xFF, 0x73)
 #define MPH_C_DEAD_STRIPE   RGBA8(0xFF, 0x8A, 0x80, 0x40)
 #define MPH_C_ACTIVE_AREA   RGBA8(0x7F, 0xE0, 0xA8, 0x1A)
-#define MPH_C_TILE_DIM      RGBA8(0x00, 0x00, 0x00, 0xA0)
+// .56, not .63: a locked tile's name stays above 3:1 (accessibility)
+#define MPH_C_TILE_DIM      RGBA8(0x00, 0x00, 0x00, 0x90)
 // Face button symbols
 #define MPH_C_TRIANGLE      RGBA8(0x40, 0xE0, 0xB0, 0xFF)
 #define MPH_C_CIRCLE        RGBA8(0xFF, 0x70, 0x70, 0xFF)
@@ -221,7 +223,7 @@ typedef enum {
   MPH_T_STRONG_S,  // Bold 13
   MPH_T_LABEL,     // ExtraBold 12, tracked: pass mph_upper() text
   MPH_T_CHIP,      // Bold 12
-  MPH_T_TAG,       // ExtraBold 11 (keycaps)
+  MPH_T_TAG,       // ExtraBold 12 (keycaps; the demo's 11, for legibility)
   MPH_T_MONO,      // IBM Plex Mono Medium 13
   MPH_T_COUNT
 } mph_type;
@@ -416,7 +418,14 @@ float mph_button(float x, float y, int glyph, const char *caption, int style, bo
 float mph_chip(float x, float y, const char *text, uint32_t text_colour);  // h22
 float mph_keycap_w(const char *label);
 float mph_keycap(float x, float y, const char *label);  // h20, top left at (x, y)
-void mph_card(mph_rect r);                              // SURFACE r16
+void mph_card(mph_rect r);                              // SURFACE r16, outlined
+// A SURFACE panel: the fill and a 1 px FAINT outline inside its edge, so it
+// reads on the plain background (the demo had none; accessibility)
+void mph_surface(mph_rect r, float radius);
+// A host's status, centred on (cx, cy), 10 px across: online a dot, offline
+// a ring, a changed address a diamond; in HL_FG on the focus pill
+#define MPH_STATUS_R 5.0f
+void mph_status_mark(menu_status s, float cx, float cy, bool focused);
 // Box art or a name tile; focus 0 none, 1 selected, 2 focused
 void mph_tile(const vita2d_texture *t, const char *name, mph_rect r, float scale, int focus, bool dim);
 // SH_DIALOG + SOLID r20

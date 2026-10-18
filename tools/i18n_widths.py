@@ -299,7 +299,7 @@ MPH_ROW_L = ("Bold", 18, 0.0)
 MPH_BTN = ("Bold", 16, 0.0)
 MPH_BODY_B = ("Bold", 15, 0.0)
 MPH_SMALL = ("Medium", 14, 0.0)
-MPH_TAG = ("ExtraBold", 11, 0.22)
+MPH_TAG = ("ExtraBold", 12, 0.22)
 MPH_LABEL = ("ExtraBold", 12, 1.68)
 # Face buttons, the D-pad and sticks are icons: 18 px in text up to 15 px,
 # 22 up to 21 px; the touch pads are wider

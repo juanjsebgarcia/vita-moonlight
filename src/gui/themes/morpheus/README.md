@@ -86,8 +86,10 @@ in `mph_screens.h` and a case in both switches.
   curves get a 1 px antialiasing fringe.
 - **Colours** are vita2d `RGBA8` (`0xAABBGGRR`). Use the `MPH_C_*` tokens;
   `mph_alpha(c, a)` scales alpha and `mph_mix(a, b, t)` blends.
-  `MPH_C_FAINT` is lighter than the demo's (.55 rather than .38 alpha, about
-  #8A8F99 on the background, 5.6:1) for legibility.
+  Some tokens depart from the demo for legibility (DESIGN.md §0): `FAINT`
+  is .55 (about #8A8F99, 5.6:1) and `DIM` .75; `SURFACE` panels carry a
+  1 px `FAINT` outline (`mph_surface()`); keycaps are 12 px; host status
+  marks are 10 px across (`mph_status_mark()`).
 - **Text** is drawn at a baseline. `mph_baseline(type, top, h)` centres one
   line in a box. Only the 18 styles of `mph_type` exist; each returns its
   advance. Text may hold button markers (`{confirm}`, `{triangle}`, `{l}`,

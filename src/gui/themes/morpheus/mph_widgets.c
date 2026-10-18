@@ -199,28 +199,16 @@ static void row_draw(mph_rect r, const mph_row *row, bool focused, float switch_
     default:
       break;
   }
-  switch (row->status) {
-    case MENU_STATUS_ONLINE:
-      if (shapes) {
-        mph_circle_fill(right - 4, cy, 4, focused ? MPH_C_HL_FG : MPH_C_OK);
-      }
-      right -= 8 + 12;
-      break;
-    case MENU_STATUS_OFFLINE:
-      if (shapes) {
-        mph_circle_stroke(right - 4, cy, 3.25f, 1.5f, focused ? MPH_C_HL_FG : MPH_C_FAINT);
-      }
-      right -= 8 + 12;
-      break;
-    case MENU_STATUS_CHANGED:
-      if (shapes) {
-        mph_diamond(right - 4.5f, cy, 4.5f, focused ? MPH_C_HL_FG : MPH_C_LIVE);
-      }
-      right -= 9 + 12;
+  if (row->status == MENU_STATUS_ONLINE || row->status == MENU_STATUS_OFFLINE ||
+      row->status == MENU_STATUS_CHANGED) {
+    float half = row->status == MENU_STATUS_CHANGED ? MPH_STATUS_R + 0.5f : MPH_STATUS_R;
+    if (shapes) {
+      mph_status_mark(row->status, right - half, cy, focused);
+    }
+    right -= 2 * half + 12;
+    if (row->status == MENU_STATUS_CHANGED) {
       value_c = focused ? MPH_C_HL_FG : MPH_C_LIVE;
-      break;
-    default:
-      break;
+    }
   }
 
   if (row->value_colour != 0 && !focused && !row->disabled) {
@@ -447,8 +435,24 @@ float mph_keycap(float x, float y, const char *label) {
   return w;
 }
 
+void mph_surface(mph_rect r, float radius) {
+  mph_rrect_fill(r, radius, MPH_C_SURFACE);
+  mph_rrect_stroke(mph_rect_grow(r, -0.5f), radius - 0.5f, 1, MPH_C_FAINT);
+}
+
 void mph_card(mph_rect r) {
-  mph_rrect_fill(r, MPH_R_CARD, MPH_C_SURFACE);
+  mph_surface(r, MPH_R_CARD);
+}
+
+void mph_status_mark(menu_status s, float cx, float cy, bool focused) {
+  switch (s) {
+    case MENU_STATUS_ONLINE: mph_circle_fill(cx, cy, MPH_STATUS_R, focused ? MPH_C_HL_FG : MPH_C_OK); break;
+    case MENU_STATUS_OFFLINE:
+      mph_circle_stroke(cx, cy, MPH_STATUS_R - 0.75f, 1.5f, focused ? MPH_C_HL_FG : MPH_C_FAINT);
+      break;
+    case MENU_STATUS_CHANGED: mph_diamond(cx, cy, MPH_STATUS_R + 0.5f, focused ? MPH_C_HL_FG : MPH_C_LIVE); break;
+    default: break;
+  }
 }
 
 void mph_tile(const vita2d_texture *t, const char *name, mph_rect r, float scale, int focus, bool dim) {

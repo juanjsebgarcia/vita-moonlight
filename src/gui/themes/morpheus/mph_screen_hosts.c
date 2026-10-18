@@ -52,17 +52,6 @@ static float scroll_to(float target) {
   return roundf(mph_tween_value(&st.scroll));
 }
 
-// A status mark centred on (cx, cy): online a dot, offline a ring, a new
-// address a diamond
-static void status_mark(menu_status status, float cx, float cy) {
-  switch (status) {
-    case MENU_STATUS_ONLINE: mph_circle_fill(cx, cy, 4, MPH_C_OK); break;
-    case MENU_STATUS_OFFLINE: mph_circle_stroke(cx, cy, 3.25f, 1.5f, MPH_C_FAINT); break;
-    case MENU_STATUS_CHANGED: mph_diamond(cx, cy, 4.5f, MPH_C_LIVE); break;
-    default: break;
-  }
-}
-
 /*
  * Items: the rows of S1's right column and S3's list, placed top to bottom
  */
@@ -319,8 +308,8 @@ void mph_screen_main_draw(const menu_view *view, const mph_enter *enter) {
         case IT_CARD: {
           bool sub = e->subname[0] != '\0';
           if (pass == 0) {
-            mph_rrect_fill(r, MPH_R_CARD, MPH_C_SURFACE);
-            status_mark(e->status, r.x + r.w - 22, r.y + 28);
+            mph_surface(r, MPH_R_CARD);
+            mph_status_mark(e->status, r.x + r.w - 22, r.y + 28, false);
           } else if (pass == 1) {
             mph_icon(it->icon, r.x + 14, r.y + 13, MPH_C_DIM);
           } else {
@@ -415,7 +404,7 @@ void mph_screen_host_draw(const menu_view *view, const mph_enter *enter) {
   // The spotlight: shapes, then the icon, then text
   menu_status status = host != NULL ? host->status : MENU_STATUS_NONE;
   bool mark = status == MENU_STATUS_ONLINE || status == MENU_STATUS_OFFLINE || status == MENU_STATUS_CHANGED;
-  status_mark(status, 44, 209);
+  mph_status_mark(status, 44, 209, false);
   mph_icon(MPH_ICON_PC_64, 40, 70, MPH_C_DIM);
   if (host != NULL) {
     mph_text_fit(MPH_T_TITLE, 40, 182, 480, MPH_C_FG, host->label);
@@ -553,7 +542,7 @@ void mph_screen_search_draw(const menu_view *view, const mph_enter *enter) {
       bool device = e->suffix != NULL && e->suffix[0];
       mph_rect r = mph_rect_make(vr.x, y, vr.w, it->h);
       if (pass == 0) {
-        mph_rrect_fill(r, MPH_R_ROW, MPH_C_SURFACE);
+        mph_surface(r, MPH_R_ROW);
       } else if (pass == 1) {
         if (!device) {
           mph_icon(MPH_ICON_CHEVRON_14, r.x + r.w - 16 - 14, r.y + (r.h - 14) / 2, on ? MPH_C_HL_FG : MPH_C_FAINT);

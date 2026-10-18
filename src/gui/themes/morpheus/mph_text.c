@@ -59,7 +59,7 @@ static const style_def STYLES[MPH_T_COUNT] = {
   [MPH_T_STRONG_S] = {FACE_BOLD, 13, 20, 0},
   [MPH_T_LABEL] = {FACE_EXTRABOLD, 12, 18, 1.68f},
   [MPH_T_CHIP] = {FACE_BOLD, 12, 18, 0},
-  [MPH_T_TAG] = {FACE_EXTRABOLD, 11, 16, 0.22f},
+  [MPH_T_TAG] = {FACE_EXTRABOLD, 12, 16, 0.22f},  // 11 in the demo; 12 for legibility
   [MPH_T_MONO] = {FACE_MONO, 13, 20, 0},
 };
 
