@@ -779,11 +779,23 @@ void mph_text_fini(void) {
   memset(uppers, 0, sizeof(uppers));
 }
 
+// A theme call isn't always a new GPU frame: the video thread draws the
+// stats and then the stream overlay in one vita2d frame, and the GPU reads
+// the atlas only once that frame is submitted. So a full atlas starts over
+// only in a new vita2d frame, which the pool tells: vita2d_start_drawing()
+// empties it, and within a frame it only fills. The app waits for the GPU
+// before starting a frame (ui_end(), and the video thread before drawing),
+// so by then nothing still reads the old glyphs.
+static unsigned int pool_free_at_end;
+
 void mph_text_frame_begin(void) {
-  // A full atlas or cache starts over, now that the GPU is done with the last frame
-  if (atlas_full) {
+  if (atlas_full && vita2d_pool_free_space() > pool_free_at_end) {
     cache_clear();
   }
+}
+
+void mph_text_frame_end(void) {
+  pool_free_at_end = vita2d_pool_free_space();
 }
 
 void mph_text_language_changed(void) {

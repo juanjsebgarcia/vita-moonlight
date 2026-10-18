@@ -793,4 +793,5 @@ void mph_frame_end(bool hud) {
   mph_flush();
   mph_perf_end(hud);
   mph_flush();
+  mph_text_frame_end();
 }

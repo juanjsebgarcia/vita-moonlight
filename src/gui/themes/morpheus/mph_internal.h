@@ -17,6 +17,7 @@ void mph_quad_textured(const vita2d_texture *t, uint32_t tint, float x0, float y
 void mph_text_init(void);
 void mph_text_fini(void);
 void mph_text_frame_begin(void);
+void mph_text_frame_end(void);
 
 // mph_anim.c
 void mph_anim_init(void);
