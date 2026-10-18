@@ -62,9 +62,10 @@ VERSION = re.compile(r"(<str size=\"18\"[^>]*>)v[0-9]+\.[0-9]+\.[0-9]+(</str>)")
 
 def translation(tag, key, english):
     """KEY's text from lang/<tag>.ini, falling back to the English as the app does."""
-    if tag is None:
+    path = LANG_DIR / f"{tag}.ini" if tag else None
+    if path is None or not path.exists():
         return english
-    for kind, value in i18n_check.read_ini(LANG_DIR / f"{tag}.ini"):
+    for kind, value in i18n_check.read_ini(path):
         if kind == "error":
             sys.exit(f"gen_livearea: {value}")
         if kind == "sections":
@@ -115,9 +116,9 @@ def main():
     except ET.ParseError as error:
         sys.exit(f"gen_livearea: the generated template isn't well-formed XML: {error}")
 
+    # Always written, so make sees it newer than its inputs
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    if not args.out.exists() or args.out.read_text(encoding="utf-8") != text:
-        args.out.write_text(text, encoding="utf-8")
+    args.out.write_text(text, encoding="utf-8")
     return 0
 
 
