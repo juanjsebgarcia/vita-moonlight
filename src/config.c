@@ -310,7 +310,8 @@ void update_layout() {
   }
 }
 
-void config_parse(int argc, char* argv[], PCONFIGURATION config) {
+// The value of every setting when moonlight.conf doesn't give one
+static void config_defaults(PCONFIGURATION config) {
   LiInitializeStreamConfiguration(&config->stream);
 
   config->stream.width = 1280;
@@ -391,33 +392,11 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   // Valor por defecto: swap desactivado
   // (si no está presente en config, será false por defecto)
   // No es necesario forzar nada aquí
+}
 
-  char* config_file = config_path;
-  if (config_file) {
-    config_file_parse(config_file, config);
-    vita_debug_log("[DEBUG] Configuración cargada: key_dir = %s, touchscreen_mode = %d, stats_overlay = %d", config->key_dir, config->touchscreen_mode, config->stats_overlay);
-  }
-
-  update_layout();
-
-  if (config->config_file != NULL)
-    config_save(config->config_file, config);
-
-  // Solo asignar valor por defecto si sigue vacío
-  if (config->key_dir[0] == 0x0) {
-    const char *xdg_cache_dir = getenv("XDG_CACHE_DIR");
-    if (xdg_cache_dir && xdg_cache_dir[0] != '\0') {
-      snprintf(config->key_dir, sizeof(config->key_dir), "%s" MOONLIGHT_PATH, xdg_cache_dir);
-    } else {
-      const char *home_dir = getenv("HOME");
-      if (home_dir && home_dir[0] != '\0') {
-        snprintf(config->key_dir, sizeof(config->key_dir), "%s" DEFAULT_CACHE_DIR MOONLIGHT_PATH, home_dir);
-      } else {
-        snprintf(config->key_dir, sizeof(config->key_dir), "%s" DEFAULT_CACHE_DIR MOONLIGHT_PATH, "");
-      }
-    }
-  }
-
+// Works out the automatic values (-1 frame rate and bitrate) and puts values
+// out of range back to their defaults
+static void config_resolve(PCONFIGURATION config) {
   if (config->stream.fps == -1)
     config->stream.fps = config->stream.height >= 1080 ? 30 : 60;
 
@@ -447,6 +426,38 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
     vita_debug_log("packetsize %d out of range, using %d", config->stream.packetSize, DEFAULT_PACKET_SIZE);
     config->stream.packetSize = DEFAULT_PACKET_SIZE;
   }
+}
+
+void config_parse(int argc, char* argv[], PCONFIGURATION config) {
+  config_defaults(config);
+
+  char* config_file = config_path;
+  if (config_file) {
+    config_file_parse(config_file, config);
+    vita_debug_log("[DEBUG] Configuración cargada: key_dir = %s, touchscreen_mode = %d, stats_overlay = %d", config->key_dir, config->touchscreen_mode, config->stats_overlay);
+  }
+
+  update_layout();
+
+  if (config->config_file != NULL)
+    config_save(config->config_file, config);
+
+  // Solo asignar valor por defecto si sigue vacío
+  if (config->key_dir[0] == 0x0) {
+    const char *xdg_cache_dir = getenv("XDG_CACHE_DIR");
+    if (xdg_cache_dir && xdg_cache_dir[0] != '\0') {
+      snprintf(config->key_dir, sizeof(config->key_dir), "%s" MOONLIGHT_PATH, xdg_cache_dir);
+    } else {
+      const char *home_dir = getenv("HOME");
+      if (home_dir && home_dir[0] != '\0') {
+        snprintf(config->key_dir, sizeof(config->key_dir), "%s" DEFAULT_CACHE_DIR MOONLIGHT_PATH, home_dir);
+      } else {
+        snprintf(config->key_dir, sizeof(config->key_dir), "%s" DEFAULT_CACHE_DIR MOONLIGHT_PATH, "");
+      }
+    }
+  }
+
+  config_resolve(config);
 
   if (inputAdded) {
     if (!mapped) {
@@ -457,4 +468,43 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
         exit(-1);
     }
   }
+}
+
+void config_reset_settings(void) {
+  // Static: the struct is over 4 KB, too much for the main thread's stack
+  static CONFIGURATION fresh;
+  memset(&fresh, 0, sizeof(fresh));
+  config_defaults(&fresh);
+  config_resolve(&fresh);
+
+  // Kept: where the files live, what the app was started with, and what
+  // isn't on the Settings screen. Paired PCs and their keys are files in
+  // key_dir, outside moonlight.conf.
+  memcpy(fresh.key_dir, config.key_dir, sizeof(fresh.key_dir));
+  fresh.config_file = config.config_file;
+  fresh.log_file = config.log_file;
+  fresh.app = config.app;
+  fresh.action = config.action;
+  fresh.address = config.address;
+  memcpy(fresh.inputs, config.inputs, sizeof(fresh.inputs));
+  fresh.inputsCount = config.inputsCount;
+  fresh.pin = config.pin;
+  fresh.port = config.port;
+  fresh.forcehw = config.forcehw;
+  fresh.unsupported_version = config.unsupported_version;
+  // Whether the Developer tab is shown, and the benchmark's moonlight.conf-only options
+  fresh.developer_mode = config.developer_mode;
+  fresh.bench_app = config.bench_app;
+  fresh.bench_host = config.bench_host;
+  fresh.bench_label = config.bench_label;
+  fresh.bench_autorun = config.bench_autorun;
+  fresh.bench_quit_app = config.bench_quit_app;
+  fresh.bench_input = config.bench_input;
+  fresh.bench_grab = config.bench_grab;
+  fresh.bench_idr_hz = config.bench_idr_hz;
+
+  // Always allocated (by the file or the Settings toggle); the default is none
+  free(config.mapping);
+  config = fresh;
+  update_layout();
 }

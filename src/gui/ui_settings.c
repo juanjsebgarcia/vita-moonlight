@@ -14,6 +14,8 @@
 #include "../bench.h"
 #include "ui_connect.h"
 #include "../input/touchabsolute.h"
+#include "../input/keyboardkeys.h"
+#include "../power/vita.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -505,6 +507,31 @@ static int run_action(const setting_def *setting) {
     case SETTING_ACTION_HIDE_DEVELOPER:
       config.developer_mode = false;
       ui_settings_save_config();
+      return SETTINGS_REBUILD;
+    case SETTING_ACTION_RESET_ALL:
+      if (!display_confirm(tr(STR_SET_RESET_ALL_CONFIRM))) {
+        return 0;
+      }
+      config_reset_settings();
+      // Applied as at launch, since every setting may have changed
+      const i18n_language *language = i18n_current();
+      i18n_use(config.language);
+      if (i18n_current() != language) {
+        // Before the done message, so it's drawn with the new language's
+        // fonts. The frame in progress is finished first, as the menu loop
+        // below does for a system language change, since it may still use
+        // glyphs that changing the fonts would free.
+        ui_end();
+        guilib_language_changed();
+        ui_start();
+      }
+      settings_sync_bitrate();
+      touchabsolute_enable(config.touchscreen_mode == 2);
+      keyboardsystem_set_layout((KeyboardLayout)config.keyboard_layout);
+      vitapower_config(config);
+      vitainput_config(config);
+      ui_settings_save_config();
+      display_error("%s", tr(STR_SET_RESET_ALL_DONE));
       return SETTINGS_REBUILD;
     case SETTING_ACTION_SHOW_HELP:
       show_settings_help(setting);

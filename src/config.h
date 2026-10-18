@@ -127,3 +127,7 @@ bool config_file_parse(char* filename, PCONFIGURATION config);
 void config_parse(int argc, char* argv[], PCONFIGURATION config);
 void config_save(const char* filename, PCONFIGURATION config);
 void update_layout();
+// Puts every setting on the Settings screen back to the default it has when
+// moonlight.conf doesn't give one, keeping the data folder, the developer
+// tab's visibility and what isn't a setting. Doesn't save or apply anything.
+void config_reset_settings(void);

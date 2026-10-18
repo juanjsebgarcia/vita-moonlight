@@ -41,6 +41,7 @@ typedef enum {
   SETTING_ACTION_KEYBOARD_LAYOUT, // the keyboard layout screen
   SETTING_ACTION_RUN_BENCHMARK,
   SETTING_ACTION_HIDE_DEVELOPER,
+  SETTING_ACTION_RESET_ALL,       // reset every setting, after asking
   SETTING_ACTION_SHOW_HELP,       // nothing to change: confirm explains it
 } setting_action;
 
