@@ -34,4 +34,7 @@ PHTTP_DATA http_create_data();
 int http_request(char* url, PHTTP_DATA data);
 // As http_request, but gives up after timeout_seconds (0 waits for ever)
 int http_request_timeout(char* url, PHTTP_DATA data, long timeout_seconds);
+// As http_request_timeout, and sets *response_code to the HTTP status the
+// server answered with, or 0 if it never answered
+int http_request_code(char* url, PHTTP_DATA data, long timeout_seconds, long *response_code);
 void http_free_data(PHTTP_DATA data);

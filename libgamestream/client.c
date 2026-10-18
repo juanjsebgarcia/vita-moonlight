@@ -477,7 +477,12 @@ int gs_unpair(PSERVER_DATA server) {
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
   snprintf(url, sizeof(url), "http://%s:%u/unpair?uniqueid=%s&uuid=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str);
-  ret = http_request_timeout(url, data, UNPAIR_TIMEOUT_SECONDS);
+  long response_code = 0;
+  ret = http_request_code(url, data, UNPAIR_TIMEOUT_SECONDS, &response_code);
+  if (ret == GS_OK)
+    ret = xml_status(data->memory, data->size);
+  else if (response_code != 0)
+    ret = GS_ERROR;  // it answered, but with an error such as 404
   if (ret == GS_OK)
     server->paired = false;
 

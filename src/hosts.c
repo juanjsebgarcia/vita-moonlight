@@ -112,7 +112,16 @@ host_wait_result host_wake_and_wait(device_info_t *info, char *new_address, size
 
 bool host_forget(device_info_t *info) {
   vita_debug_log("[HOSTS] forgetting %s", info->name);
-  return remove_device(info->name);
+  // remove_device shifts the list over info before it deletes the files by
+  // name, so the name must not point into the list
+  char name[sizeof(info->name)];
+  snprintf(name, sizeof(name), "%s", info->name);
+  return remove_device(name);
+}
+
+// Whether gs_unpair's result came from the PC, rather than from not reaching it
+static bool pc_answered(int ret) {
+  return ret == GS_OK || ret == GS_ERROR || ret == GS_INVALID;
 }
 
 // Asks the PC to forget this Vita. Returns whether it answered at all, and
@@ -135,17 +144,21 @@ static bool ask_pc_to_unpair(device_info_t *info, bool *told) {
       connection_paired();
     }
     connection_terminate();
-    return true;
+    return pc_answered(ret);
   }
 
+  // gs_init keeps a pointer to the address, so it can't be on the stack
+  static char address[sizeof(info->internal)];
   struct host_status st = check_host_status(info);
-  if (st.status == HOST_OFFLINE) {
+  if (st.status != HOST_OFFLINE) {
+    snprintf(address, sizeof(address), "%s", st.current_ip[0] ? st.current_ip : info->internal);
+  } else if (info->external[0] && strcmp(info->external, info->internal) != 0) {
+    // The scan only looks nearby; connecting also tries the external address
+    snprintf(address, sizeof(address), "%s", info->external);
+  } else {
     vita_debug_log("[HOSTS] %s is offline: not asked to unpair", info->name);
     return false;
   }
-  // gs_init keeps a pointer to the address, so it can't be on the stack
-  static char address[sizeof(info->internal)];
-  snprintf(address, sizeof(address), "%s", st.current_ip[0] ? st.current_ip : info->internal);
   char key_dir[4096];
   snprintf(key_dir, sizeof(key_dir), "%s/%s", config.key_dir, info->name);
   int ret = gs_init(&server, address, info->port, key_dir, 0, true);
@@ -162,7 +175,7 @@ static bool ask_pc_to_unpair(device_info_t *info, bool *told) {
   ret = gs_unpair(&server);
   vita_debug_log("[HOSTS] unpair request to %s: %d", info->name, ret);
   *told = ret == GS_OK;
-  return true;
+  return pc_answered(ret);
 }
 
 host_unpair_result host_unpair(device_info_t *info) {
