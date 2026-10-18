@@ -9,6 +9,7 @@
 #include "video.h"
 #include "power/vita.h"
 #include "input/vita.h"
+#include "ui_ops.h"
 
 #include "client.h"
 #include "errors.h"
@@ -18,6 +19,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+
+#include <psp2/kernel/threadmgr.h>
 
 // The connection to a host and its apps, without any menus or dialogs, so
 // any UI (and the benchmark and Auto-detect) can use it
@@ -58,10 +61,86 @@ int get_app_name(PAPP_LIST list, int id, char *name) {
 // then fails to start
 static bool start_launched_app = false;
 
+// While a stream starts, a thread watches for the player's cancel button.
+// The start itself blocks the UI thread, in the host's launch request and
+// then in LiStartConnection, so nothing else would see it.
+// Shared with the watcher thread, so read and written atomically
+static bool cancel_watching = false;
+static bool cancel_requested = false;
+
+static bool flag_get(bool *flag) {
+  return __atomic_load_n(flag, __ATOMIC_SEQ_CST);
+}
+
+static void flag_set(bool *flag, bool value) {
+  __atomic_store_n(flag, value, __ATOMIC_SEQ_CST);
+}
+
+static int cancel_watch_main(SceSize args, void *argp) {
+  // Only a new press counts: the button can still be down from leaving a
+  // menu (Settings restarts the stream as it closes)
+  bool was_down = ui_cancel_requested();
+  while (flag_get(&cancel_watching)) {
+    bool down = ui_cancel_requested();
+    if (!flag_get(&cancel_requested) && down && !was_down) {
+      vita_debug_log("Stream start cancelled by the player");
+      flag_set(&cancel_requested, true);
+    }
+    was_down = down;
+    // Again on every pass: LiStartConnection clears the flag as it begins,
+    // so a press just before it would otherwise be lost
+    if (flag_get(&cancel_requested)) {
+      LiInterruptConnection();
+    }
+    sceKernelDelayThread(50 * 1000);
+  }
+  return 0;
+}
+
+static SceUID cancel_watch_start(void) {
+  flag_set(&cancel_requested, false);
+  flag_set(&cancel_watching, true);
+  SceUID thread = sceKernelCreateThread("cancel_watch", cancel_watch_main, 0x10000100, 0x4000, 0, 0, NULL);
+  if (thread < 0) {
+    vita_debug_log("Can't watch for cancel while the stream starts: 0x%08X", thread);
+    flag_set(&cancel_watching, false);
+    return thread;
+  }
+  sceKernelStartThread(thread, 0, NULL);
+  return thread;
+}
+
+static void cancel_watch_stop(SceUID thread) {
+  flag_set(&cancel_watching, false);
+  if (thread >= 0) {
+    sceKernelWaitThreadEnd(thread, NULL, NULL);
+    sceKernelDeleteThread(thread);
+  }
+}
+
+static int start_stream(int appId, char *err, size_t err_len);
+
 // Starts streaming appId. Returns 0, or a negative code with a message in err,
 // so callers decide whether to show it (the benchmark runs without dialogs).
 int session_start_stream(int appId, char *err, size_t err_len) {
   start_launched_app = false;
+  SceUID watcher = cancel_watch_start();
+  int ret = start_stream(appId, err, err_len);
+  cancel_watch_stop(watcher);
+  if (!flag_get(&cancel_requested)) {
+    return ret;
+  }
+  if (ret == 0) {
+    // Cancelled as the stream came up: end it again, and go back to the
+    // state the host's menu expects. The app stays running on the host.
+    connection_terminate();
+    session_return_to_server();
+  }
+  snprintf(err, err_len, "%s", tr(STR_STREAM_CANCELLED));
+  return SESSION_START_CANCELLED;
+}
+
+static int start_stream(int appId, char *err, size_t err_len) {
   // TODO support force controller id
   vita_debug_log("Running gs_start_app...");
   int ret = gs_start_app(&server, &config.stream, appId, config.sops, config.localaudio, 1);
@@ -86,6 +165,11 @@ int session_start_stream(int appId, char *err, size_t err_len) {
   }
   vita_debug_log("App started.");
   start_launched_app = true;
+  if (flag_get(&cancel_requested)) {
+    // The launch request can't be interrupted, but the stream needn't start.
+    // The host's menu then lists the app as running, to resume or quit.
+    return SESSION_START_CANCELLED;
+  }
 
   enum platform system = VITA;
   int drFlags = 0;

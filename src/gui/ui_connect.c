@@ -39,12 +39,22 @@
 
 
 #include "../session.h"
+#include "../ui_ops.h"
 
 int pos[2];
 
 void ui_connect_stream(int appId) {
   char err[512];
-  if (session_start_stream(appId, err, sizeof(err)) != 0) {
+  int ret = session_start_stream(appId, err, sizeof(err));
+  if (ret == SESSION_START_CANCELLED) {
+    flash_message("%s", err);
+    sceKernelDelayThread(600 * 1000);
+    // Wait for the button to be let go: the menu would take a held press as
+    // going back, and close the app list
+    while (ui_cancel_requested()) {
+      sceKernelDelayThread(20 * 1000);
+    }
+  } else if (ret != 0) {
     display_error("%s", err);
   }
 }
@@ -208,6 +218,8 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
           // That frame has finished drawing, so the covers can go now: the
           // stream needs the memory and the network more
           ui_boxart_close();
+          // Closing them can wait for a download; only now can a press cancel
+          flash_message("%s", tr(STR_CONNECT_STREAM_STARTING_CANCEL));
           ui_connect_stream(id);
           break;
       }
@@ -568,6 +580,8 @@ void ui_connect_restart_stream(void) {
   connection_paired();
   vitapower_config(config);
   vitainput_config(config);
+  // Only now can a press cancel, so only now say so
+  flash_message("%s", tr(STR_CONNECT_RESTARTING_CANCEL));
   // A resume carries the new resolution, frame rate and bitrate
   ui_connect_stream(app_id);
   while (connection_is_connected()) {

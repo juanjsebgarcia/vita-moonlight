@@ -22,8 +22,13 @@ void session_set_host(const char *name);
 int get_app_id(PAPP_LIST list, char *name);
 int get_app_name(PAPP_LIST list, int id, char *name);
 
+// session_start_stream's result when the player cancelled the start
+#define SESSION_START_CANCELLED (-1000)
+
 // Starts streaming appId on the connected host. Returns 0, or a negative
-// code with a message in err.
+// code with a message in err. The player can cancel while it starts (with
+// the button ui_cancel_requested watches), which gives SESSION_START_CANCELLED;
+// if the host had launched the app by then, it stays running there.
 int session_start_stream(int appId, char *err, size_t err_len);
 
 // Connects to a paired host and reads its app list, without any menus or
