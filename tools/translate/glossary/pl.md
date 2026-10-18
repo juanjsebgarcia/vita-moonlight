@@ -40,3 +40,4 @@
 | Units | Mb/s, kb/s, B, s, px, ms; percent with no space ({0}%) | Minutes and seconds written as "min" and "s" to avoid plural forms |
 | Quotes | straight "…" | „…" avoided in case the font lacks U+201E |
 | Ranges | "15 do 20" | No en dash, for the font |
+| LiveArea tagline | OTWARTOŹRÓDŁOWY KLIENT STRUMIENIOWANIA GIER | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

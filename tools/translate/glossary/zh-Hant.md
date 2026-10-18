@@ -40,3 +40,4 @@ Taiwan/Hong Kong usage, following PlayStation's Traditional Chinese system softw
 | Box art | 封面 | |
 | Units | 秒, 毫秒, 位元組, 像素; Mbps/kbps unchanged | |
 | Punctuation | Full-width ，。：（）「」 | Half-width inside IP:port and file paths |
+| LiveArea tagline | 開放原始碼的遊戲串流用戶端 | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

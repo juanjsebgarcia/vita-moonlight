@@ -44,3 +44,4 @@ Address: informal **du** (as PlayStation's Swedish system software does). Impera
 | Developer (options) | Utvecklare (utvecklaralternativ) | |
 | Vita | Vita, inflected as Vitan / Vitans | name itself unchanged |
 | % | space before: "60 %" | Swedish typography |
+| LiveArea tagline | EN STRÖMNINGSKLIENT FÖR SPEL MED ÖPPEN KÄLLKOD | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

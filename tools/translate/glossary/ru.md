@@ -40,3 +40,4 @@
 | Toggle rows | named as a noun without «Включить», except SET_ENABLE_SPECIAL_KEYS (to differ from SET_SPECIAL_KEYS) | |
 | Quotes | «ёлочки» for names of options and menus | |
 | Seconds/minutes after a placeholder | «{1} с», «{1} мин.» | Avoids plural agreement with numbers |
+| LiveArea tagline | КЛИЕНТ ДЛЯ ТРАНСЛЯЦИИ ИГР С ОТКРЫТЫМ ИСХОДНЫМ КОДОМ | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

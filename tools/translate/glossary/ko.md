@@ -50,3 +50,4 @@
 | Back / Return | 뒤로 / 돌아가기 | |
 | Wake on LAN, WoL | kept in English | |
 | Units | {0} Mbps, {0} kbps, {0}초, {0}바이트, {0}px, ms | |
+| LiveArea tagline | 오픈 소스 게임 스트리밍 클라이언트 | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

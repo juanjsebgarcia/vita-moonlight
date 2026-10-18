@@ -36,3 +36,4 @@
 | on / off | attivo / disattivato; values sì / no | |
 | Settings tabs | Streaming, Sistema, Comandi, Sviluppo, Info | 10 characters or fewer |
 | Units | {0} Mbps, {0} kbps, {0} byte, {0} s, {0} px | |
+| LiveArea tagline | UN CLIENT OPEN SOURCE PER LO STREAMING DI GIOCHI | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

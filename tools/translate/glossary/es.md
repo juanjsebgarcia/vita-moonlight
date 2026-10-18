@@ -38,3 +38,4 @@ One Spanish for Spain and Latin America: neutral wording, "PC" for the computer 
 | Wake on LAN | Wake on LAN, WoL; "encender" for wake | |
 | App | aplicación ("app" only in tight spots) | |
 | OK | Aceptar | |
+| LiveArea tagline | UN CLIENTE DE STREAMING DE JUEGOS DE CÓDIGO ABIERTO | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

@@ -40,3 +40,4 @@
 | Box art / text list | 封面 / 文字 | |
 | Units | {0} 秒, {0} 像素, {0} 字节; Mbps, kbps, ms kept | |
 | Punctuation | Full-width ，。：（）“” | No spaces between Chinese and Latin text; ellipsis written ... as in English |
+| LiveArea tagline | 开源游戏串流客户端 | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

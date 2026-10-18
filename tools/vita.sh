@@ -68,9 +68,8 @@ cmd_build() {
     -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
     -e VITA_OPT_LEVEL="${VITA_OPT_LEVEL:-}" \
     "$IMAGE" sh -ec '
-      # Hand the build output back to the host user even when the build fails,
-      # with the LiveArea template the build rewrites
-      trap "chown -R \"\$HOST_UID:\$HOST_GID\" build sce_sys/livearea/contents/template.xml 2>/dev/null || true" EXIT
+      # Hand the build output back to the host user even when the build fails
+      trap "chown -R \"\$HOST_UID:\$HOST_GID\" build 2>/dev/null || true" EXIT
       vdpm pacman -- -Rdd --noconfirm openssl-1.1.1 >/dev/null 2>&1 || true
       vdpm pacman -- -S --noconfirm openssl >/dev/null
       opt=""

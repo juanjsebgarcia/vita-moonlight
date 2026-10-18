@@ -38,3 +38,4 @@
 | Enter (text entry) | Saisis… | |
 | Wake on LAN / WoL | unchanged | « réveiller » for "wake". |
 | Punctuation | space before « : », « ? », « ! », « % » (plain space; the font may lack narrow NBSP); guillemets « » | |
+| LiveArea tagline | UN CLIENT DE STREAMING DE JEUX OPEN SOURCE | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

@@ -56,3 +56,4 @@ Addressing the player: informal **du**, as in Sony's Norwegian system software. 
 | Tabs | Strømming, System, Kontroller, Utvikler, Om | max 10 characters |
 | Vita's X | X på Vita / X i Vita / skjermen til Vita | avoid stacked genitives |
 | quotes | « » | |
+| LiveArea tagline | EN STRØMMEKLIENT FOR SPILL MED ÅPEN KILDEKODE | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

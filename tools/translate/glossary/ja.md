@@ -36,3 +36,4 @@
 | Ellipsis | … | Instead of "..." |
 | Punctuation | Full-width ：（）、。 | ASCII kept inside addresses (`{1}:{2}`) |
 | Buttons | Markers only ({cross}, {circle}, {triangle}…) | Never spelled out |
+| LiveArea tagline | オープンソースのゲームストリーミングクライアント | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

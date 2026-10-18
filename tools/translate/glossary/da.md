@@ -44,3 +44,4 @@
 | Custom | Brugerdefineret | |
 | Percent | "60 %" | Space before %, Danish style. |
 | Decimal | 2,4 GHz | Danish decimal comma. |
+| LiveArea tagline | EN OPEN SOURCE-STREAMINGKLIENT TIL SPIL | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

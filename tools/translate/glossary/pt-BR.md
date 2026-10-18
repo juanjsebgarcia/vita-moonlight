@@ -44,3 +44,4 @@ Brazilian Portuguese, also used for Portugal until pt-PT exists. Where it costs 
 | Debug log | registro de depuração | |
 | App | app (lists), aplicativo (heading) | |
 | Units | {0} Mbps, {0} kbps, {0} s, {0} px | Space before px. Decimal comma (2,4 GHz). |
+| LiveArea tagline | UM CLIENTE DE STREAMING DE JOGOS DE CÓDIGO ABERTO | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |
