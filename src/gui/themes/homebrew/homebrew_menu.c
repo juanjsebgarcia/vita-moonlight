@@ -329,12 +329,25 @@ static void draw_decorations(const menu_view *view, hb_geom geom) {
   }
 }
 
+// After the box: the host list's new theme hint, bottom right under it, in
+// fonts of its own so it changes nothing else on this or any later screen
+static void draw_late_decorations(const menu_view *view, hb_geom geom) {
+  if (view->screen->id == UI_SCREEN_MAIN && view->hint.text != NULL) {
+    int width = hb_rich_text_width_aside(HB_FONT_SIZE, view->hint.text);
+    hb_draw_rich_text_aside(geom.x + geom.width - width, geom.total_y + 26, 0xffffffff, HB_FONT_SIZE,
+                            view->hint.text);
+  }
+}
+
 void hb_draw_menu(const menu_view *view) {
   hb_geom geom = menu_geom(view);
   if (view->decorated) {
     draw_decorations(view, geom);
   }
   draw_rows(view->rows, view->row_count, geom, view->cursor, view->scroll);
+  if (view->decorated) {
+    draw_late_decorations(view, geom);
+  }
 }
 
 void hb_menu_follow(menu_view *view) {

@@ -46,6 +46,10 @@ int hb_button_glyph_width(int glyph, int size);
 // Draws text with its button markers as symbols, and returns its width
 int hb_draw_rich_text(int x, int y, unsigned int color, int size, const char *text);
 int hb_rich_text_width(int size, const char *text);
+// The same in fonts of their own, for text added after the look was fixed
+// (the new theme hint), so it can't change how any other text renders
+int hb_draw_rich_text_aside(int x, int y, unsigned int color, int size, const char *text);
+int hb_rich_text_width_aside(int size, const char *text);
 void hb_draw_text_hcentered(int x, int y, unsigned int color, const char *text);
 // Wraps text at the UI font size
 int hb_wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int max_lines);

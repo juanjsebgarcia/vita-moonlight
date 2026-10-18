@@ -58,3 +58,11 @@ static inline const struct theme *theme_active(void) {
 
 // Starts the default theme (Homebrew). Once, after vita2d_init().
 void theme_init(void);
+
+// Whether the new theme can be switched to from here: only from Homebrew.
+// The choice isn't saved; every launch starts in Homebrew.
+bool theme_offers_new(void);
+// Asks for the new theme. It takes over at the next theme_apply_pending().
+void theme_request_new(void);
+// Between frames only: switches to a requested theme. Returns true if it did.
+bool theme_apply_pending(void);

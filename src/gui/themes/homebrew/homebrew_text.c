@@ -17,6 +17,13 @@ typedef struct {
 } font_pair;
 
 static font_pair ui_fonts;
+// A second pair for the new theme hint on the host list, loaded when first
+// drawn. vita2d packs each character into its font's atlas in the order
+// they're first drawn, and a glyph's edges can pick up its neighbours there,
+// so text added to the shared fonts would shift how later screens' letters
+// come out. With its own fonts, the hint leaves every other screen exactly
+// as it was.
+static font_pair aside_fonts;
 
 static vita2d_font *load_ui_font(void) {
   return vita2d_load_font_file("app0:assets/nerdfont.ttf");
@@ -38,7 +45,17 @@ static void free_font(vita2d_font **font) {
 void hb_text_fini(void) {
   free_font(&hb_font);
   free_font(&glyph_font);
+  free_font(&aside_fonts.text);
+  free_font(&aside_fonts.labels);
   ui_fonts = (font_pair){NULL, NULL};
+}
+
+static const font_pair *get_aside_fonts(void) {
+  if (aside_fonts.text == NULL) {
+    aside_fonts.text = load_ui_font();
+    aside_fonts.labels = load_ui_font();
+  }
+  return &aside_fonts;
 }
 
 #define CIRCLE_SEGMENTS 16
@@ -323,6 +340,13 @@ int hb_rich_text_width(int size, const char *text) {
   return rich_text(&ui_fonts, false, 0, 0, 0, size, text);
 }
 
+int hb_draw_rich_text_aside(int x, int y, unsigned int color, int size, const char *text) {
+  return rich_text(get_aside_fonts(), true, x, y, color, size, text);
+}
+
+int hb_rich_text_width_aside(int size, const char *text) {
+  return rich_text(get_aside_fonts(), false, 0, 0, 0, size, text);
+}
 
 void hb_draw_text_hcentered(int x, int y, unsigned int color, const char *text) {
   int width = hb_rich_text_width(HB_FONT_SIZE, text);

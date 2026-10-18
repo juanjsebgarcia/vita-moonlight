@@ -3,6 +3,7 @@
 
 #include "guilib.h"
 #include "ime.h"
+#include "theme.h"
 
 #include "ui_settings.h"
 #include "ui_connect.h"
@@ -336,6 +337,13 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
   // menu_entry *menu = (menu_entry*)context; // Variable no usada
   extern volatile int g_host_status_changed;
   extern volatile int g_host_scan_thread_status;
+  // L and R together switch to the new theme, until the app is closed. It
+  // takes over between frames, when the menu is rebuilt.
+  if (theme_offers_new() && ui_pressed(input, UI_INTENT_TAB_PREV | UI_INTENT_TAB_NEXT) && ui_shoulders_held()) {
+    vita_debug_log("[UI] Switching to the new theme");
+    theme_request_new();
+    return 2;
+  }
   // Refresco manual con Triángulo
   if (ui_pressed(input, UI_INTENT_HELP)) {
     vita_debug_log("[UI] Refresco manual solicitado (Triángulo): reiniciando escaneo de hosts");
@@ -476,8 +484,15 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
 int ui_main_menu_back(void *context) {
   return 1;
 }
+// Offers the new theme, from Homebrew only
+static void main_menu_update(menu_view *view) {
+  view->hint = theme_offers_new() ? (ui_hint){BUTTON_GLYPH_NONE, tr(STR_THEME_TRY_NEW)}
+                                  : (ui_hint){BUTTON_GLYPH_NONE, NULL};
+}
+
 int ui_main_menu() {
   // Between frames, so the fonts can change with it
+  theme_apply_pending();
   if (i18n_follow_system()) {
     guilib_language_changed();
   }
@@ -595,6 +610,7 @@ int ui_main_menu() {
   menu_screen screen = {
     .id = UI_SCREEN_MAIN,
     .title = program_info,
+    .update = main_menu_update,
     .main = &main,
   };
   return display_menu(menu, idx, &screen, &ui_main_menu_loop, &ui_main_menu_back, NULL);
