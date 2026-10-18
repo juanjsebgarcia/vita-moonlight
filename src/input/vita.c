@@ -43,6 +43,7 @@
 
 #include "touchabsolute.h"
 #include "shortcuts.h"
+#include "stick.h"
 #include "../connection_overlay.h"
 
 #include <Limelight.h>
@@ -877,6 +878,8 @@ inline void vitainput_process(void) {
   curr.ly = read_analog(map.abs_y);
   curr.rx = read_analog(map.abs_rx);
   curr.ry = read_analog(map.abs_ry);
+  stick_shape(&curr.lx, &curr.ly, config.stick_deadzone, config.stick_curve);
+  stick_shape(&curr.rx, &curr.ry, config.stick_deadzone, config.stick_curve);
 
   process_touch();
 
