@@ -102,6 +102,7 @@ add_executable(${PROJECT_NAME}.elf
 	src/gui/themes/morpheus/mph_chrome.c
 	src/gui/themes/morpheus/mph_draw.c
 	src/gui/themes/morpheus/mph_perf.c
+	src/gui/themes/morpheus/mph_screen_hosts.c
 	src/gui/themes/morpheus/mph_text.c
 	src/gui/themes/morpheus/mph_widgets.c
 	src/gui/ime.c
