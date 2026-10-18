@@ -37,3 +37,4 @@
 | Percent | space before %: "60 %" | Keep a letter after "% " out of the pattern s d i f u x X c p, or the check reads it as printf |
 | Decimal | comma: 2,4 GHz | |
 | V-Sync, GPU, CPU, IP, MAC, PIN, Wake on LAN, WoL | unchanged | |
+| LiveArea tagline | AVOIMEN LÄHDEKOODIN PELIEN SUORATOISTOSOVELLUS | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

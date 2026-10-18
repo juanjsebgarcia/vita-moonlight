@@ -43,3 +43,4 @@
 | Desktop (of the PC) | bureaublad | |
 | Units | Mbps, kbps, s, px, bytes kept; decimal comma (2,4 GHz) | |
 | PIN | PIN-code | "PIN" kept. |
+| LiveArea tagline | EEN OPENSOURCE-CLIENT VOOR GAMESTREAMING | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

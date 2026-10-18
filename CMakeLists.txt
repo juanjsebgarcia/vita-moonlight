@@ -175,20 +175,34 @@ add_custom_target(param.sfo ALL
 	COMMAND vita-mksfoex -s TITLE_ID=${TITLE_ID} -s APP_VER=${APP_VER} "${TITLE}" param.sfo
 )
 
-# Actualizar versión en template.xml automáticamente antes de empaquetar el VPK (solo la línea visual)
-add_custom_target(update_template_version ALL
-	COMMAND sed -i '/<str size=\"18.*>v[0-9]*\.[0-9]*\.[0-9]*<\\/str>/s/v[0-9]*\.[0-9]*\.[0-9]*/v${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}/' sce_sys/livearea/contents/template.xml
-	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
-
 # Every translation in lang/, packed as app0:lang/<file>
 file(GLOB LANG_FILES CONFIGURE_DEPENDS RELATIVE ${CMAKE_SOURCE_DIR}/lang ${CMAKE_SOURCE_DIR}/lang/*.ini)
 # The translators' template and the English snapshot aren't languages
 list(REMOVE_ITEM LANG_FILES template.ini source.ini)
 set(LANG_VPK_ARGS "")
+set(LANG_PATHS "")
 foreach(LANG_FILE ${LANG_FILES})
 	list(APPEND LANG_VPK_ARGS --add ../lang/${LANG_FILE}=lang/${LANG_FILE})
+	list(APPEND LANG_PATHS ${CMAKE_SOURCE_DIR}/lang/${LANG_FILE})
 endforeach()
+
+# The LiveArea template, with the version and the tagline in every system
+# language from lang/*.ini (tools/gen_livearea.py). The source template in
+# sce_sys/ is the English design and isn't changed by the build.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(LIVEAREA_TEMPLATE ${CMAKE_BINARY_DIR}/livearea/template.xml)
+add_custom_command(OUTPUT ${LIVEAREA_TEMPLATE}
+	COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_livearea.py
+			--version ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
+			--out ${LIVEAREA_TEMPLATE}
+	DEPENDS ${CMAKE_SOURCE_DIR}/tools/gen_livearea.py
+			${CMAKE_SOURCE_DIR}/tools/i18n_check.py
+			${CMAKE_SOURCE_DIR}/sce_sys/livearea/contents/template.xml
+			${CMAKE_SOURCE_DIR}/src/i18n/strings.def
+			${LANG_PATHS}
+	COMMENT "Writing the LiveArea template in every language"
+)
+add_custom_target(livearea_template ALL DEPENDS ${LIVEAREA_TEMPLATE})
 
 add_custom_target(${PROJECT_NAME}.vpk ALL
 	COMMAND vita-make-fself -a 0x2800000000000001 -at 0x0E -c ${PROJECT_NAME}.velf eboot.bin
@@ -196,14 +210,14 @@ add_custom_target(${PROJECT_NAME}.vpk ALL
 			--add ../sce_sys/icon0.png=sce_sys/icon0.png
 			--add ../sce_sys/livearea/contents/bg.png=sce_sys/livearea/contents/bg.png
 			--add ../sce_sys/livearea/contents/startup.png=sce_sys/livearea/contents/startup.png
-			--add ../sce_sys/livearea/contents/template.xml=sce_sys/livearea/contents/template.xml
+			--add ${LIVEAREA_TEMPLATE}=sce_sys/livearea/contents/template.xml
 			--add ../assets/nerdfont.ttf=assets/nerdfont.ttf
 			${LANG_VPK_ARGS}
 			${PROJECT_NAME}.vpk
 )
 
 add_dependencies(${PROJECT_NAME}.velf ${PROJECT_NAME}.elf)
-add_dependencies(${PROJECT_NAME}.vpk ${PROJECT_NAME}.velf param.sfo update_template_version)
+add_dependencies(${PROJECT_NAME}.vpk ${PROJECT_NAME}.velf param.sfo livearea_template)
 
 add_subdirectory(third_party)
 

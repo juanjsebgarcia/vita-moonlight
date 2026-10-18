@@ -17,10 +17,10 @@
     </frame>
 
     <frame id="frame4">
+        <!-- i18n: LIVEAREA_TAGLINE -->
         <liveitem>
             <text origin="background" line-break="on" pre-br="on" align="center" line-align="center" text-valign="top">
-                <str size="22" bold="off" shadow="on" color="#dddddd">AN OPEN SOURCE
-NVIDIA GAMESTREAM CLIENT</str>
+                <str size="22" bold="off" shadow="on" color="#dddddd">AN OPEN-SOURCE GAME STREAMING CLIENT</str>
             </text>
         </liveitem>
     </frame>

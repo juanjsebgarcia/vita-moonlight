@@ -47,3 +47,4 @@
 | Port | PORT (kept) |
 | Online / Offline | Çevrim içi / Çevrim dışı |
 | Developer tab | Geliştirme (10-char limit) |
+| LiveArea tagline | AÇIK KAYNAKLI OYUN AKIŞI İSTEMCİSİ (first pass, 2026-10-18, not yet reviewed by a native speaker; "akış istemcisi" as in the About text) |

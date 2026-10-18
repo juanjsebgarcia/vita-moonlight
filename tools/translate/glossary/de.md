@@ -37,3 +37,4 @@
 | Benchmark | Benchmark | |
 | Units | Mbit/s, kbit/s, Byte, s, px; "60 %" with a space | |
 | Ellipsis / quotes | "..." and plain ASCII quotes | Avoids „“ in case the font lacks them. |
+| LiveArea tagline | EIN OPEN-SOURCE-CLIENT FÜR SPIELE-STREAMING | First pass (2026-10-18), not yet reviewed by a native speaker. Uses the About text's word for "streaming client". |

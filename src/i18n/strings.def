@@ -362,3 +362,7 @@ S(REC_HELP_WEAK, "For a weaker signal, such as further from your router or throu
 
 /* While streaming */
 S(STREAM_HINT, "Press {start} + {l} + {r} for the menu and to quit", "Shown at the start of a stream; {start}, {l}, {r} are drawn as the buttons")
+
+/* The LiveArea, the app's page on the home screen: tools/gen_livearea.py writes
+ * it into the VPK's template.xml; the app itself doesn't show it */
+S(LIVEAREA_TAGLINE, "AN OPEN-SOURCE GAME STREAMING CLIENT", "LiveArea tagline, under the name MOONLIGHT on the home screen. In capitals, where the language has them; one line, about as long as the English")
