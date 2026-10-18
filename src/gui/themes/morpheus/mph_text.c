@@ -518,8 +518,14 @@ int mph_text_fit(mph_type t, float x, float baseline, float max_w, uint32_t c, c
     return whole(layout(t, s, len, tracking, false, -1, NULL, true, x, baseline, c));
   }
   float dots = layout(t, ELLIPSIS, 3, tracking, true, -1, NULL, false, 0, 0, 0);
+  if (dots > max_w + 0.01f) {
+    // Not even the ellipsis fits
+    return 0;
+  }
+  // A limit below 0 would mean none
+  float room = max_w - dots - tracking;
   int fit = 0;
-  layout(t, s, len, tracking, false, max_w - dots - tracking, &fit, false, 0, 0, 0);
+  layout(t, s, len, tracking, false, room > 0 ? room : 0, &fit, false, 0, 0, 0);
   // Not after a space
   while (fit > 0 && s[fit - 1] == ' ') {
     fit--;
