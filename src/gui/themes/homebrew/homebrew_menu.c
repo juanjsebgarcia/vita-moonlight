@@ -313,7 +313,7 @@ static void draw_decorations(const menu_view *view, hb_geom geom) {
       break;
     case UI_SCREEN_CONNECTED:
       if (view->boxart != NULL) {
-        hb_draw_boxart(view->boxart, view->hint);
+        hb_draw_boxart(view->boxart, view->hint, geom.total_y);
       }
       break;
     case UI_SCREEN_DEADZONE:

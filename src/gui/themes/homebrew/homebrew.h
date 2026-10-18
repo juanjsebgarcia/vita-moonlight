@@ -59,7 +59,8 @@ void hb_draw_menu(const menu_view *view);
 void hb_menu_follow(menu_view *view);
 
 // homebrew_boxart.c
-void hb_draw_boxart(const boxart_view *view, ui_hint hint);
+// menu_bottom: where the menu's box ends; the covers stay below it
+void hb_draw_boxart(const boxart_view *view, ui_hint hint, int menu_bottom);
 void hb_boxart_fini(void);
 
 // homebrew_dialog.c

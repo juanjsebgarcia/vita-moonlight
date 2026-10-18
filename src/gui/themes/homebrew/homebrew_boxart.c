@@ -15,6 +15,9 @@
 // Where the row sits: the bottom of the screen, under the menu
 #define ROW_CENTRE_Y 390
 #define NAME_BASELINE_Y 530
+// Room kept between the menu and the tiles, and above the name
+#define ROW_MARGIN 8
+#define ROW_BOTTOM (ROW_CENTRE_Y + TILE_H * SELECTED_SCALE / 2.0f)
 #define LABEL_LINES 3
 #define LABEL_LINE_HEIGHT 22
 #define LABEL_LINE_MAX 64
@@ -80,20 +83,25 @@ static void draw_outline(float x, float y, float w, float h, int thickness, unsi
   vita2d_draw_rectangle(x + w, y, thickness, h, colour);
 }
 
+// The row's middle and size this frame: smaller and lower than usual when
+// the menu above it is tall, as the pause menu is mid-stream
+static float row_centre = ROW_CENTRE_Y;
+static float row_fit = 1.0f;
+
 static void draw_tile(const boxart_view *view, int index) {
   const boxart_cover *cover = view->cover(index);
   float distance = index - view->position;
-  float cx = WIDTH / 2.0f + distance * TILE_SPACING;
+  float cx = WIDTH / 2.0f + distance * TILE_SPACING * row_fit;
   if (cx < -TILE_W || cx > WIDTH + TILE_W) {
     return;
   }
   // Grows smoothly as it slides into the middle
   float closeness = 1.0f - fminf(fabsf(distance), 1.0f);
-  float scale = 1.0f + (SELECTED_SCALE - 1.0f) * closeness;
+  float scale = (1.0f + (SELECTED_SCALE - 1.0f) * closeness) * row_fit;
   float w = TILE_W * scale;
   float h = TILE_H * scale;
   float x = cx - w / 2.0f;
-  float y = ROW_CENTRE_Y - h / 2.0f;
+  float y = row_centre - h / 2.0f;
 
   vita2d_draw_rectangle(x, y, w, h, COLOUR_CARD);
   if (cover->texture != NULL) {
@@ -105,7 +113,7 @@ static void draw_tile(const boxart_view *view, int index) {
     // The app's name on a plain card, while its cover loads or if it has none
     card_label *label = label_for(view, index, cover->name);
     if (label != NULL) {
-      int top = ROW_CENTRE_Y - label->count * LABEL_LINE_HEIGHT / 2 + 16;
+      int top = (int)row_centre - label->count * LABEL_LINE_HEIGHT / 2 + 16;
       for (int i = 0; i < label->count; i++) {
         hb_draw_rich_text((int)(cx - label->widths[i] / 2.0f), top + i * LABEL_LINE_HEIGHT,
                           COLOUR_LABEL, 18, label->lines[i]);
@@ -122,10 +130,15 @@ static void draw_tile(const boxart_view *view, int index) {
   }
 }
 
-void hb_draw_boxart(const boxart_view *view, ui_hint hint) {
+void hb_draw_boxart(const boxart_view *view, ui_hint hint, int menu_bottom) {
   if (view->count == 0) {
     return;
   }
+  // The selected tile's height, and the room for it under the menu
+  float full = TILE_H * SELECTED_SCALE;
+  float room = ROW_BOTTOM - (menu_bottom + ROW_MARGIN);
+  row_fit = room < full ? fmaxf(room, 0.0f) / full : 1.0f;
+  row_centre = ROW_BOTTOM - full * row_fit / 2.0f;
   for (int i = 0; i < view->count; i++) {
     if (i != view->selected) {
       draw_tile(view, i);
