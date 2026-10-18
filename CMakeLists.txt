@@ -199,6 +199,17 @@ foreach(LANG_FILE ${LANG_FILES})
 	list(APPEND LANG_VPK_ARGS --add ../lang/${LANG_FILE}=lang/${LANG_FILE})
 endforeach()
 
+# The Morpheus theme's fonts, their licences and its icon atlas, packed as
+# app0:assets/morpheus/<file>
+file(GLOB MORPHEUS_ASSETS CONFIGURE_DEPENDS RELATIVE ${CMAKE_SOURCE_DIR}/assets/morpheus
+	${CMAKE_SOURCE_DIR}/assets/morpheus/*.ttf
+	${CMAKE_SOURCE_DIR}/assets/morpheus/*.png
+	${CMAKE_SOURCE_DIR}/assets/morpheus/*.txt)
+set(MORPHEUS_VPK_ARGS "")
+foreach(ASSET ${MORPHEUS_ASSETS})
+	list(APPEND MORPHEUS_VPK_ARGS --add ../assets/morpheus/${ASSET}=assets/morpheus/${ASSET})
+endforeach()
+
 add_custom_target(${PROJECT_NAME}.vpk ALL
 	COMMAND vita-make-fself -a 0x2800000000000001 -at 0x0E -c ${PROJECT_NAME}.velf eboot.bin
 	COMMAND vita-pack-vpk -s param.sfo -b eboot.bin
@@ -207,6 +218,7 @@ add_custom_target(${PROJECT_NAME}.vpk ALL
 			--add ../sce_sys/livearea/contents/startup.png=sce_sys/livearea/contents/startup.png
 			--add ../sce_sys/livearea/contents/template.xml=sce_sys/livearea/contents/template.xml
 			--add ../assets/nerdfont.ttf=assets/nerdfont.ttf
+			${MORPHEUS_VPK_ARGS}
 			${LANG_VPK_ARGS}
 			${PROJECT_NAME}.vpk
 )
