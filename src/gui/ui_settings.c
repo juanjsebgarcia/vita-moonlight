@@ -14,6 +14,8 @@
 #include "../bench.h"
 #include "ui_connect.h"
 #include "../input/touchabsolute.h"
+#include "../input/keyboardkeys.h"
+#include "../power/vita.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -505,6 +507,21 @@ static int run_action(const setting_def *setting) {
     case SETTING_ACTION_HIDE_DEVELOPER:
       config.developer_mode = false;
       ui_settings_save_config();
+      return SETTINGS_REBUILD;
+    case SETTING_ACTION_RESET_ALL:
+      if (!display_confirm(tr(STR_SET_RESET_ALL_CONFIRM))) {
+        return 0;
+      }
+      config_reset_settings();
+      // Applied as at launch, since every setting may have changed
+      i18n_use(config.language);
+      settings_sync_bitrate();
+      touchabsolute_enable(config.touchscreen_mode == 2);
+      keyboardsystem_set_layout((KeyboardLayout)config.keyboard_layout);
+      vitapower_config(config);
+      vitainput_config(config);
+      ui_settings_save_config();
+      display_error("%s", tr(STR_SET_RESET_ALL_DONE));
       return SETTINGS_REBUILD;
     case SETTING_ACTION_SHOW_HELP:
       show_settings_help(setting);

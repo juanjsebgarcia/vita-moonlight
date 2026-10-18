@@ -545,6 +545,10 @@ const setting_def SETTINGS[] = {
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_CHOICE, .flags = SETTING_CONFIRM_STEPS,
    .label = STR_SET_APP_LIST_STYLE, .value = app_list_value, .change = app_list_change,
    .help = STR_SET_APP_LIST_STYLE_HELP},
+  // Hidden mid-stream, as it changes settings agreed at stream start
+  {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_ACTION, .flags = SETTING_NEEDS_NEW_STREAM,
+   .label = STR_SET_RESET_ALL, .action = SETTING_ACTION_RESET_ALL,
+   .help = STR_SET_RESET_ALL_HELP},
 
   // Controls
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,
