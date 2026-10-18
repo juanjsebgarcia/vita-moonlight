@@ -35,6 +35,7 @@
 #include "../debug.h"
 #include "../hardware.h"
 #include "psp2/kernel/threadmgr/thread.h"
+#include "psp2/power.h"
 #include "psp2common/types.h"
 #include "vita.h"
 #include "mapping.h"
@@ -1024,9 +1025,48 @@ void vitainput_config(CONFIGURATION config) {
 
 extern bool active_motion_threads;
 
+// The last battery state sent to the host, so it's only sent again on a change
+static int sent_battery_state = -1;
+static int sent_battery_percent = -1;
+
+void vitainput_report_battery(bool force) {
+  // A PS TV has no battery, so it doesn't advertise one either
+  if (!vita_has_battery() || !active_input_thread) {
+    return;
+  }
+
+  int percent = scePowerGetBatteryLifePercent();
+  if (percent < 0 || percent > 100) {
+    percent = LI_BATTERY_PERCENTAGE_UNKNOWN;
+  }
+
+  uint8_t state;
+  if (scePowerIsBatteryCharging()) {
+    state = LI_BATTERY_STATE_CHARGING;
+  } else if (!scePowerIsPowerOnline()) {
+    state = LI_BATTERY_STATE_DISCHARGING;
+  } else if (percent == 100) {
+    state = LI_BATTERY_STATE_FULL;
+  } else {
+    state = LI_BATTERY_STATE_NOT_CHARGING;
+  }
+
+  if (!force && state == sent_battery_state && percent == sent_battery_percent) {
+    return;
+  }
+  sent_battery_state = state;
+  sent_battery_percent = percent;
+
+  vita_debug_log("[BATTERY] state %d, %d%%\n", state, percent);
+  LiSendControllerBatteryEvent(0, state, percent);
+}
+
 void vitainput_start(void) {
   uint16_t gamepadMask = 1;
-  uint32_t gamepadCapabilites = LI_CCAP_GYRO | LI_CCAP_BATTERY_STATE | LI_CCAP_ACCEL | LI_CCAP_TOUCHPAD;
+  uint32_t gamepadCapabilites = LI_CCAP_GYRO | LI_CCAP_ACCEL | LI_CCAP_TOUCHPAD;
+  if (vita_has_battery()) {
+    gamepadCapabilites |= LI_CCAP_BATTERY_STATE;
+  }
 
   uint32_t gamepadSupportedButtonFlags = 0xffff;
   gamepadSupportedButtonFlags |= TOUCHPAD_FLAG;
@@ -1043,14 +1083,15 @@ void vitainput_start(void) {
   }
   LiSendControllerArrivalEvent(0, gamepadMask, controller_type, gamepadSupportedButtonFlags, gamepadCapabilites);
 
-  LiSendControllerBatteryEvent(0, LI_BATTERY_STATE_FULL, 100);
-
   if(config.enable_psbutton_capture)
     lock_psbutton();
 
   input_thread_logged = false;
   active_input_thread = true;
   active_motion_threads = true;
+
+  // The power thread sends it again when it changes
+  vitainput_report_battery(true);
 }
 
 void vitainput_stop(void) {
