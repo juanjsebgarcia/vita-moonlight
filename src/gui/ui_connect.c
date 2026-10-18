@@ -48,12 +48,12 @@ void ui_connect_stream(int appId) {
   int ret = session_start_stream(appId, err, sizeof(err));
   if (ret == SESSION_START_CANCELLED) {
     flash_message("%s", err);
-    // Let go of the button first, so the menu doesn't take the same press
-    // as going back (for at most a second)
-    for (int i = 0; i < 50 && ui_cancel_requested(); i++) {
+    sceKernelDelayThread(600 * 1000);
+    // Wait for the button to be let go: the menu would take a held press as
+    // going back, and close the app list
+    while (ui_cancel_requested()) {
       sceKernelDelayThread(20 * 1000);
     }
-    sceKernelDelayThread(600 * 1000);
   } else if (ret != 0) {
     display_error("%s", err);
   }
@@ -570,7 +570,7 @@ void ui_connect_restart_stream(void) {
   if (app_id == 0 || connection_get_status() != LI_MINIMIZED) {
     return;
   }
-  flash_message("%s", tr(STR_CONNECT_RESTARTING_CANCEL));
+  flash_message("%s", tr(STR_CONNECT_RESTARTING));
   // The app keeps running on the host; only our stream ends
   connection_terminate();
   sceKernelDelayThread(500 * 1000);
@@ -578,6 +578,8 @@ void ui_connect_restart_stream(void) {
   connection_paired();
   vitapower_config(config);
   vitainput_config(config);
+  // Only now can a press cancel, so only now say so
+  flash_message("%s", tr(STR_CONNECT_RESTARTING_CANCEL));
   // A resume carries the new resolution, frame rate and bitrate
   ui_connect_stream(app_id);
   while (connection_is_connected()) {
