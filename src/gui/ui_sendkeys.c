@@ -4,6 +4,7 @@
 #include "Limelight.h"
 #include "guilib.h"
 
+#include "../connection.h"
 #include "../debug.h"
 
 #include <stdio.h>
@@ -87,6 +88,11 @@ static void send_chord(const chord *c) {
 #define SEND_KEYS_SENT 2
 
 static int send_keys_loop(int id, void *context, const input_data *input) {
+  // The stream ended while the list was open: close it without sending, and
+  // the pause menu handles the disconnection
+  if (connection_get_status() != LI_MINIMIZED) {
+    return 1;
+  }
   if (!ui_pressed(input, UI_INTENT_CONFIRM) || id < 0 || id >= CHORD_COUNT) {
     return 0;
   }
