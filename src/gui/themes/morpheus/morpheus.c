@@ -10,6 +10,7 @@
 #include "mph_screen_stream.h"
 #include "mph_screen_settings.h"
 #include "mph_screen_hosts.h"
+#include "mph_screen_connected.h"
 
 #include "../../guilib.h"
 #include "../../text.h"
@@ -176,6 +177,10 @@ static void mph_draw_menu(const menu_view *view) {
   if (mph_hosts_draw(view, screen.t0, screen.animate)) {
     frame_end();
     return;
+  float enter = screen.animate ? mph_ease_eval(MPH_EASE_OUT, (mph_time() - screen.t0) / MPH_M_ENTER) : 1.0f;
+  switch (view->screen->id) {
+    case UI_SCREEN_CONNECTED: mph_screen_connected_draw(view, enter); frame_end(); return;
+    default: break;
   }
   int n = build_rows(view);
   mph_rect rect = list_rect(view);
@@ -211,6 +216,8 @@ static void mph_menu_follow(menu_view *view) {
     default: break;
   if (mph_hosts_follow(view)) {
     return;
+    case UI_SCREEN_CONNECTED: mph_screen_connected_follow(view); return;
+    default: break;
   }
   int n = build_rows(view);
   view->scroll = (int)roundf(mph_list_target(list_rect(view), rows, n, view->cursor_row, view->scroll));
