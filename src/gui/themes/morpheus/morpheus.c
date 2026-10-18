@@ -6,6 +6,7 @@
 // of the stream overlays. It shares no code with Homebrew.
 
 #include "mph.h"
+#include "mph_screen_connected.h"
 
 #include "../../guilib.h"
 #include "../../text.h"
@@ -156,6 +157,11 @@ static const char *screen_title(const menu_view *view) {
 static void mph_draw_menu(const menu_view *view) {
   mph_frame_begin();
   track_screen(view->screen->id);
+  float enter = screen.animate ? mph_ease_eval(MPH_EASE_OUT, (mph_time() - screen.t0) / MPH_M_ENTER) : 1.0f;
+  switch (view->screen->id) {
+    case UI_SCREEN_CONNECTED: mph_screen_connected_draw(view, enter); frame_end(); return;
+    default: break;
+  }
   int n = build_rows(view);
   mph_rect rect = list_rect(view);
   float target = mph_list_target(rect, rows, n, view->cursor_row, view->scroll);
@@ -183,6 +189,10 @@ static void mph_draw_menu(const menu_view *view) {
 }
 
 static void mph_menu_follow(menu_view *view) {
+  switch (view->screen->id) {
+    case UI_SCREEN_CONNECTED: mph_screen_connected_follow(view); return;
+    default: break;
+  }
   int n = build_rows(view);
   view->scroll = (int)roundf(mph_list_target(list_rect(view), rows, n, view->cursor_row, view->scroll));
 }
