@@ -145,9 +145,14 @@ announced=""
 for (( waited = 0; waited < WAIT_SECONDS; waited++ )); do
   if mkdir "$LOCK" 2>/dev/null; then
     now="$(date +%s)"
-    echo "$token" > "$LOCK/token"
-    echo "$now" > "$LOCK/started"
-    echo "$owner $now" > "$LOCK/owner.tmp" && mv "$LOCK/owner.tmp" "$LOCK/owner"
+    if ! { echo "$token" > "$LOCK/token" && echo "$now" > "$LOCK/started" \
+        && echo "$owner $now" > "$LOCK/owner.tmp" && mv "$LOCK/owner.tmp" "$LOCK/owner"; }; then
+      # Without them, others could take it for abandoned while the command
+      # runs. Just taken, so nobody else can have broken it yet.
+      echo "error: couldn't record the Vita lock in $LOCK" >&2
+      rm -rf "$LOCK"
+      exit 1
+    fi
     trap release EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
