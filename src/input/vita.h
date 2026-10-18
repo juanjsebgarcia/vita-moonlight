@@ -114,6 +114,10 @@ void vitainput_config(CONFIGURATION config);
 void vitainput_start(void);
 void vitainput_stop(void);
 
+// Sends the battery state to the host during a stream. Without force, only
+// when it changed since the last one sent. Does nothing on a PS TV.
+void vitainput_report_battery(bool force);
+
 uint8_t read_backscreen();
 uint8_t read_frontscreen();
 uint32_t is_pressed(uint32_t defined);

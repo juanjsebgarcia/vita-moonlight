@@ -7,7 +7,6 @@
 #include "../debug.h"
 #include "vita.h"
 
-#include "psp2/power.h"
 
 
 
@@ -48,21 +47,6 @@ int vitainput_motion_gyro_thread(SceSize args, void *argp) {
   while (1) {
     if (motion_state.motion_type_gyro_enabled == true && active_motion_threads == true) {
       motion_process_gyro();
-
-      //TODO: Reporting battery events more than one time per second seems unwise
-      //Possible solutions: New thread (heavy handed), using main thread (Idk)
-
-      /* uint32_t battery_percent = scePowerGetBatteryLifePercent();
-      
-      uint8_t battery_state;
-      if (scePowerIsBatteryCharging()) {
-        battery_state = LI_BATTERY_STATE_CHARGING;
-      } else {
-        battery_state = LI_BATTERY_STATE_DISCHARGING;
-      }
-
-      LiSendControllerBatteryEvent(0, battery_state, battery_percent); */
-
     } else {
       sceKernelDelayThread(1000000);
     }

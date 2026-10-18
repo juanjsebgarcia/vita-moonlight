@@ -22,6 +22,7 @@
 #include <psp2/power.h>
 #include "../config.h"
 #include "../debug.h"
+#include "../input/vita.h"
 
 enum {
   ENABLE_ALL = 0,
@@ -92,6 +93,8 @@ int vitapower_thread(SceSize args, void *argp) {
     if (!scePowerIsBatteryCharging() && scePowerIsLowBattery()) {
       // TODO print warning message
     }
+    // Every 10 seconds is often enough for a level that moves 1% at a time
+    vitainput_report_battery(false);
     sceKernelDelayThread(10 * 1000 * 1000);
   }
 
