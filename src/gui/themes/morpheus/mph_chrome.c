@@ -67,9 +67,19 @@ void mph_legend(const mph_hint *hints, int n) {
 }
 
 void mph_menu_legend(const menu_view *view) {
-  if (view->decorated && view->hint.text != NULL) {
-    mph_hint hint = {view->hint.glyph, view->hint.text};
-    mph_legend(&hint, 1);
+  if (!view->decorated) {
+    return;
+  }
+  mph_hint hints[2];
+  int n = 0;
+  if (view->extra_hint.text != NULL) {
+    hints[n++] = (mph_hint){view->extra_hint.glyph, view->extra_hint.text};
+  }
+  if (view->hint.text != NULL) {
+    hints[n++] = (mph_hint){view->hint.glyph, view->hint.text};
+  }
+  if (n > 0) {
+    mph_legend(hints, n);
   }
 }
 

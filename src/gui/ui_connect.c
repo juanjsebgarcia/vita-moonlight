@@ -56,10 +56,124 @@ enum {
   CONNECT_QUITAPP,
   CONNECT_SETTINGS,
   // The row of box art covers, which stands for every app
-  CONNECT_BOXART
+  CONNECT_BOXART,
+  // Lists the hidden apps too, or stops listing them
+  CONNECT_SHOW_HIDDEN
 };
 
 #define QUIT_RELOAD 2
+
+// Whether the apps the player hid are listed too, marked as hidden, so they
+// can be shown again. Kept while connected, as the menu is rebuilt after
+// every change.
+static bool show_hidden_apps;
+// Whether the open menu shows the apps as box art
+static bool menu_covers;
+
+// The connected PC's saved data, which holds its hidden apps
+static device_info_t *connected_device(void) {
+  return find_device(session_server_name());
+}
+
+// Whether the app list shows this app. The app streaming now always shows.
+static bool app_shown(const device_info_t *dev, int app_id) {
+  return show_hidden_apps || app_id == server.currentGame || dev == NULL || !device_app_hidden(dev, app_id);
+}
+
+// Whether id is one of the host's apps, which square can hide or show again
+static bool is_app(int id) {
+  for (PAPP_LIST app = server_applist; app != NULL; app = app->next) {
+    if (app->id == id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// The app a menu row or the covers' row stands for, if square can hide it or
+// show it again; otherwise 0. Never the app streaming now: the Resume row
+// has its id, and the app rows and covers are locked while it runs.
+static int hideable_app(int row_id) {
+  int app_id = row_id == CONNECT_BOXART ? ui_boxart_selected_app() : row_id;
+  if (app_id == 0 || app_id == server.currentGame || !is_app(app_id)) {
+    return 0;
+  }
+  return app_id;
+}
+
+// Hides the app, or shows it again, saving the choice with the PC, and
+// chooses where the cursor comes back to in the rebuilt menu
+static int toggle_app_hidden(int app_id) {
+  device_info_t *dev = connected_device();
+  if (dev == NULL) {
+    return 0;
+  }
+  bool hide = !device_app_hidden(dev, app_id);
+
+  // An app hidden from the list leaves it: stay on the next app shown, or
+  // else the one before it
+  int stay = app_id;
+  if (hide && !show_hidden_apps) {
+    int before = 0, after = 0;
+    bool passed = false;
+    for (PAPP_LIST app = server_applist; app != NULL && after == 0; app = app->next) {
+      if (app->id == app_id) {
+        passed = true;
+      } else if (app_shown(dev, app->id)) {
+        if (passed) {
+          after = app->id;
+        } else {
+          before = app->id;
+        }
+      }
+    }
+    stay = after != 0 ? after : before;
+  }
+
+  if (!device_set_app_hidden(dev, app_id, hide)) {
+    char count[8], message[256];
+    snprintf(count, sizeof(count), "%d", DEVICE_MAX_HIDDEN_APPS);
+    TR_FMT(message, sizeof(message), STR_APPS_HIDE_FULL, count);
+    display_error("%s", message);
+    return 0;
+  }
+  save_device_info(dev);
+
+  if (menu_covers) {
+    ui_boxart_remember(stay);
+    display_menu_select(CONNECT_BOXART);
+  } else {
+    // With no app left to stay on, the row that lists them again
+    display_menu_select(stay != 0 ? stay : CONNECT_SHOW_HIDDEN);
+  }
+  return QUIT_RELOAD;
+}
+
+// The square button's hint, on an app it can hide or show again
+static void ui_connect_update(menu_view *view) {
+  if (menu_covers) {
+    ui_boxart_update(view);
+  } else {
+    view->hint = (ui_hint){BUTTON_GLYPH_NONE, NULL};
+  }
+  view->extra_hint = (ui_hint){BUTTON_GLYPH_NONE, NULL};
+
+  if (view->cursor_row < 0 || view->cursor_row >= view->row_count || view->rows[view->cursor_row].disabled) {
+    return;
+  }
+  int app_id = hideable_app(view->rows[view->cursor_row].id);
+  device_info_t *dev = connected_device();
+  if (app_id == 0 || dev == NULL) {
+    return;
+  }
+  ui_hint hint = {BUTTON_GLYPH_SQUARE, tr(device_app_hidden(dev, app_id) ? STR_APPS_HINT_UNHIDE : STR_APPS_HINT_HIDE)};
+  // With covers, beside their refresh hint
+  if (menu_covers) {
+    view->extra_hint = hint;
+  } else {
+    view->hint = hint;
+  }
+}
 
 int ui_connect_loop(int id, void *context, const input_data *input) {
   int status = connection_get_status();
@@ -76,6 +190,11 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
   ui_boxart_set_focus(id == CONNECT_BOXART);
   if (id == CONNECT_BOXART) {
     ui_boxart_input(input);
+  }
+
+  if (ui_pressed(input, UI_INTENT_SECONDARY)) {
+    int app_id = hideable_app(id);
+    return app_id != 0 ? toggle_app_hidden(app_id) : 0;
   }
 
   if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
@@ -174,6 +293,11 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
     case CONNECT_DISCONNECT:
       goto disconnect;
 
+    case CONNECT_SHOW_HIDDEN:
+      show_hidden_apps = !show_hidden_apps;
+      display_menu_select(CONNECT_SHOW_HIDDEN);
+      return QUIT_RELOAD;
+
     case CONNECT_QUITAPP:
       flash_message("%s", tr(STR_CONNECT_QUITTING));
       ret = gs_quit_app(&server);
@@ -247,6 +371,8 @@ int ui_connect(char *name, char *address, uint16_t port) {
 
     ret = gs_init(&server, address, port, key_dir, 0, true);
     session_set_host(name);
+    // A new connection starts with the hidden apps out of the list
+    show_hidden_apps = false;
     if (ret == GS_OUT_OF_MEMORY) {
       display_error("%s", tr(STR_CONNECT_NO_MEMORY));
       return 0;
@@ -311,7 +437,46 @@ int ui_connected_menu() {
     }
   }
 
-  // current menu = 11 + app_count. but little more alloc ;)
+  // The apps the list shows, linked in order, and the names hidden ones are
+  // shown under. Without the memory for them, every app shows unmarked.
+  device_info_t *dev = connected_device();
+  PAPP_LIST shown_apps = server_applist;
+  APP_LIST *shown = app_count > 0 ? calloc(app_count, sizeof(APP_LIST)) : NULL;
+  char (*labels)[256] = app_count > 0 ? malloc(app_count * sizeof(*labels)) : NULL;
+  int hidden_count = 0;
+  if (dev != NULL) {
+    for (PAPP_LIST app = server_applist; app != NULL; app = app->next) {
+      hidden_count += device_app_hidden(dev, app->id);
+    }
+  }
+  if (hidden_count == 0) {
+    // Nothing left to list again
+    show_hidden_apps = false;
+  }
+  if (shown != NULL && labels != NULL) {
+    int n = 0;
+    for (PAPP_LIST app = server_applist; app != NULL; app = app->next) {
+      if (!app_shown(dev, app->id)) {
+        continue;
+      }
+      shown[n] = (APP_LIST){.name = app->name, .id = app->id};
+      if (dev != NULL && device_app_hidden(dev, app->id)) {
+        TR_FMT(labels[n], sizeof(labels[n]), STR_APPS_HIDDEN_NAME, app->name);
+        shown[n].name = labels[n];
+      }
+      if (n > 0) {
+        shown[n - 1].next = &shown[n];
+      }
+      n++;
+    }
+    shown_apps = n > 0 ? shown : NULL;
+  }
+  // The row that lists the hidden apps again, while there are any
+  char hidden_text[12], show_hidden_name[128];
+  snprintf(hidden_text, sizeof(hidden_text), "%d", hidden_count);
+  TR_FMT(show_hidden_name, sizeof(show_hidden_name), STR_APPS_SHOW_HIDDEN, hidden_text);
+
+  // current menu = 12 + app_count. but little more alloc ;)
   struct menu_entry menu[app_count + 16];
 
   int idx = 0;
@@ -354,6 +519,7 @@ int ui_connected_menu() {
 
   // Covers need the room under the menu, so the menu is kept short
   bool boxart = config.app_list_style == APP_LIST_BOXART && server.paired && server_applist != NULL;
+  menu_covers = boxart;
   if (!boxart) {
     MENU_MESSAGE("");
   }
@@ -406,13 +572,17 @@ int ui_connected_menu() {
 
       pos[0] = idx;
 
-      PAPP_LIST list = server_applist;
+      PAPP_LIST list = shown_apps;
       while (list) {
         MENU_ENTRY(list->id, list->name);
         list = list->next;
       }
 
       pos[1] = idx;
+    }
+    // Not mid-stream, when the apps are locked (and the covers need the room)
+    if (hidden_count > 0 && server.currentGame == 0) {
+      MENU_ACTION(CONNECT_SHOW_HIDDEN, show_hidden_apps ? (char *)tr(STR_APPS_HIDE_HIDDEN) : show_hidden_name, false);
     }
   }
 
@@ -429,18 +599,21 @@ int ui_connected_menu() {
   menu_screen screen = {
     .id = UI_SCREEN_CONNECTED,
     .title = connected.host,
-    .update = boxart ? ui_boxart_update : NULL,
+    .update = ui_connect_update,
     .connected = &connected,
   };
 
   if (!boxart) {
-    return display_menu(menu, idx, &screen, &ui_connect_loop, NULL, &menu);
+    ret = display_menu(menu, idx, &screen, &ui_connect_loop, NULL, &menu);
+  } else {
+    // The row copies the list it's given
+    ui_boxart_open(&server, session_server_name(), shown_apps, server.currentGame);
+    ret = display_menu(menu, idx, &screen, &ui_connect_loop, NULL, &menu);
+    // display_menu has finished its last frame, so the textures can be freed
+    ui_boxart_close();
   }
-
-  ui_boxart_open(&server, session_server_name(), server_applist, server.currentGame);
-  ret = display_menu(menu, idx, &screen, &ui_connect_loop, NULL, &menu);
-  // display_menu has finished its last frame, so the textures can be freed
-  ui_boxart_close();
+  free(shown);
+  free(labels);
   return ret;
 }
 

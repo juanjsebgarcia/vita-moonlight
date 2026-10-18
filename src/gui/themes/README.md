@@ -92,6 +92,8 @@ cursor it calls `menu_follow`.
   decorations appeared from the 4th frame, as the old draw callbacks did).
 - `view->hint` is the button hint shown now: a `glyph` (or
   `BUTTON_GLYPH_NONE`) and rich `text`, or `text == NULL` for none.
+  `view->extra_hint` is a second one, for the screens with two buttons
+  to explain (S4: the square button hides an app); show it beside `hint`.
 
 ### Dialogs
 

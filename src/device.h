@@ -2,6 +2,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// The most apps one PC can have hidden
+#define DEVICE_MAX_HIDDEN_APPS 64
+
 typedef struct device_info device_info_t;
 struct device_info {
   // The host's identity: its folder under key_dir (pairing keys, device.ini)
@@ -15,6 +18,9 @@ struct device_info {
   char external[256];
   char mac[18]; // XX:XX:XX:XX:XX:XX\0
   bool prefer_external;
+  // Apps the player hid from this PC's app list, by the host's app id
+  int hidden_apps[DEVICE_MAX_HIDDEN_APPS];
+  int hidden_app_count;
 };
 
 typedef struct device_infos device_infos_t;
@@ -39,3 +45,8 @@ bool load_device_info(device_info_t *info);
 void save_device_info(const device_info_t *info);
 bool remove_device(const char *name);
 void device_file_path(char *out, const char *dir);
+// Whether the player hid this app from the PC's app list
+bool device_app_hidden(const device_info_t *info, int app_id);
+// Hides the app, or shows it again. Returns false, changing nothing, when
+// DEVICE_MAX_HIDDEN_APPS are hidden already. The caller saves the device.
+bool device_set_app_hidden(device_info_t *info, int app_id, bool hidden);

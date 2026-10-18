@@ -59,7 +59,7 @@ void hb_draw_menu(const menu_view *view);
 void hb_menu_follow(menu_view *view);
 
 // homebrew_boxart.c
-void hb_draw_boxart(const boxart_view *view, ui_hint hint);
+void hb_draw_boxart(const boxart_view *view, ui_hint hint, ui_hint extra_hint);
 void hb_boxart_fini(void);
 
 // homebrew_dialog.c
