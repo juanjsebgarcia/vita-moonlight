@@ -103,6 +103,25 @@ tools/vita.sh crash       # fetch the newest core dump into build/
 
 The elevated permissions that PS button capture needs are inside `eboot.bin` (`vita-make-fself -a 0x2800000000000001`), so replacing it keeps them. Changes to `sce_sys/` (LiveArea, `param.sfo`) or `assets/` still need the VPK reinstalled.
 
+### Sharing a Vita between sessions
+
+**Why:** when several sessions (people, terminals or agents) drove one Vita at once, they relaunched the app under each other and deployed different builds in the middle of each other's tests. The overload eventually froze the Vita outright, and under heavy screenshot polling its FTP server stopped transferring.
+
+**The lock:** so sessions take turns, every device command takes a lock first and waits for it (up to 30 minutes), printing who holds it. That covers `tools/vita.sh` (everything except `build`; `all` takes it only for the push), `tools/bench/run.sh` (for the whole run) and `tools/bench/shot.sh`. Nobody has to remember anything.
+
+- **One lock per clone.** It's the directory `vita.lock` in the clone's `.git` directory, shared by all its worktrees. Set `VITA_LOCK` to a path to share one across clones.
+- **Who holds it:** `tools/vita-lock.sh --status`. Name yourself for others with `VITA_LOCK_OWNER` (the default is `user@host:pid`).
+- **For a batch of steps** (a deploy, button presses with `nc`, then screenshots), wrap the whole batch so nobody gets in between. The tools inside see the lock is held and don't wait for it again:
+
+  ```sh
+  VITA_LOCK_OWNER=settings-check tools/vita-lock.sh ./my-batch.sh
+  ```
+
+- **Release:** the lock is released when the command ends, or on Ctrl-C. Killing only `vita-lock.sh` releases it once its command has ended, so kill the process group to stop both. A lock whose holder hasn't been seen for 20 minutes counts as abandoned; holders refresh it every minute, so a long benchmark keeps it.
+- **On your own,** turn it off with `VITA_LOCK=off`.
+
+Keep each turn short, and redeploy (checking the hash) at the start of a batch, since the installed `eboot.bin` may be someone else's.
+
 ### vitacompanion commands
 
 Send one command per connection, ending in a newline, for example `printf 'launch XYZZ00002\n' | nc -w 3 $VITA_IP 1338`. Version 1.08 lists:

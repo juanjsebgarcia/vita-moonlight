@@ -33,6 +33,9 @@
 # with Moonlight installed), the host awake with Sunshine running, and the
 # benchmark app set up as in tools/bench/README.md. Your moonlight.conf is
 # backed up first and restored at the end, even if a run fails.
+#
+# The whole run holds the Vita lock (tools/vita-lock.sh), so other sessions
+# sharing the Vita wait for it to finish. VITA_LOCK=off skips the lock.
 
 set -euo pipefail
 
@@ -52,6 +55,7 @@ host=""
 app="Moonlight Bench"
 out=""
 variants=()
+args=("$@")
 
 die() {
   echo "error: $*" >&2
@@ -79,6 +83,10 @@ done
 [ ${#variants[@]} -gt 0 ] || usage
 [ -n "${VITA_IP:-}" ] || die "set VITA_IP to the Vita's address"
 [ -x "$VITA_SH" ] || die "tools/vita.sh is missing; it's needed to start and stop the app"
+# Run again holding the Vita lock; tools/vita.sh, run from here, sees it's held
+if [ -z "${VITA_LOCK_HELD:-}" ] && [ "${VITA_LOCK:-}" != off ]; then
+  exec bash "$REPO_ROOT/tools/vita-lock.sh" bash "$BENCH_DIR/run.sh" "${args[@]}"
+fi
 out="${out:-$REPO_ROOT/build/bench/$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$out"
 

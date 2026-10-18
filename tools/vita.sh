@@ -17,6 +17,12 @@
 #   VITA_CMD_PORT  vitacompanion command port (default 1338)
 #   VITASDK_IMAGE  Docker image to build with (default: the pinned image below)
 #   VITA_OPT_LEVEL Passed to CMake, e.g. -O0 for a debugging build
+#   VITA_LOCK      Lock shared with other sessions; "off" to skip it
+#   VITA_LOCK_OWNER Name others see while you hold the lock
+#
+# Every command but build takes the Vita lock (tools/vita-lock.sh) first, so
+# several sessions sharing one Vita take turns instead of clobbering each
+# other's deploys. `tools/vita-lock.sh --status` shows who holds it.
 #
 # One-time setup on the Vita: install the VPK once with VitaShell, then load
 # vitacompanion (https://github.com/devnoname120/vitacompanion) under *main in
@@ -58,6 +64,15 @@ vita_cmd() {
 
 ftp_url() {
   echo "ftp://$VITA_IP:$FTP_PORT/$1"
+}
+
+# Runs this script again with the same arguments, holding the Vita lock.
+# Returns at once when the lock is already held (by us or a parent script)
+# or turned off.
+lock_vita() {
+  if [ -z "${VITA_LOCK_HELD:-}" ] && [ "${VITA_LOCK:-}" != off ]; then
+    exec bash "$REPO_ROOT/tools/vita-lock.sh" bash "$REPO_ROOT/tools/vita.sh" "$@"
+  fi
 }
 
 cmd_build() {
@@ -151,13 +166,14 @@ cmd_crash() {
 
 case "${1:-}" in
   build) cmd_build ;;
-  push) cmd_push ;;
-  launch) cmd_launch ;;
-  kill) cmd_kill ;;
-  log) shift; cmd_log "${1:-}" ;;
-  crash) cmd_crash ;;
+  push) lock_vita "$@"; cmd_push ;;
+  launch) lock_vita "$@"; cmd_launch ;;
+  kill) lock_vita "$@"; cmd_kill ;;
+  log) lock_vita "$@"; shift; cmd_log "${1:-}" ;;
+  crash) lock_vita "$@"; cmd_crash ;;
   # One after the other, not joined with &&, which would turn off set -e inside
-  # cmd_build and let a failed build upload the previous eboot.bin
-  all) cmd_build; cmd_push ;;
-  *) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  # cmd_build and let a failed build upload the previous eboot.bin. The lock
+  # is only taken for the push, so a build doesn't keep others waiting.
+  all) cmd_build; lock_vita push; cmd_push ;;
+  *) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

@@ -8,24 +8,40 @@
 # it draws when it finds a request file (src/devshot.c). Combine with
 # vitacompanion's synthetic input to drive the menus, e.g.
 #   printf 'press down; wait 100ms; release down\n' | nc -w 3 "$VITA_IP" 1338
+#
+# It takes the Vita lock (tools/vita-lock.sh) unless a parent script already
+# holds it; wrap a batch of shots and presses in the lock yourself, so they
+# aren't interleaved with someone else's. VITA_LOCK=off skips it.
 
 set -euo pipefail
 
-[ $# -eq 1 ] || { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[ $# -eq 1 ] || { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 [ -n "${VITA_IP:-}" ] || { echo "error: set VITA_IP to the Vita's address" >&2; exit 1; }
+if [ -z "${VITA_LOCK_HELD:-}" ] && [ "${VITA_LOCK:-}" != off ]; then
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  exec bash "$here/../vita-lock.sh" bash "$here/shot.sh" "$@"
+fi
 out="$1"
 dir="ux0:/data/moonlight"
 ftp="ftp://$VITA_IP:${VITA_FTP_PORT:-1337}"
 raw="$(mktemp)"
 trap 'rm -f "$raw"' EXIT
 
-# Remove the previous capture, so only a new one is fetched
-curl -s --max-time 10 -Q "DELE $dir/shot.raw" "$ftp/" -o /dev/null 2>/dev/null || true
-printf 'shot\n' | curl -sSf --max-time 10 -T - "$ftp/$dir/shot.req"
+size=$((960 * 544 * 4))
 
-for _ in $(seq 1 20); do
-  sleep 0.5
-  if curl -sf --max-time 10 "$ftp/$dir/shot.raw" -o "$raw" && [ "$(wc -c < "$raw")" -eq $((960 * 544 * 4)) ]; then
+# vitacompanion's FTP server gives up under heavy polling (transfers hang at
+# 0 bytes), so this keeps to few, cheap sessions: one to remove the previous
+# capture and ask for a new one, a directory listing a second to see when the
+# capture is there, and one download of the finished file.
+# The leading * lets the upload go ahead when there's no capture to remove.
+printf 'shot\n' | curl -sSf --max-time 10 -Q "*DELE $dir/shot.raw" -T - "$ftp/$dir/shot.req"
+
+for _ in $(seq 1 10); do
+  sleep 1
+  # The app writes shot.raw.tmp and renames it, so shot.raw at full size is complete
+  listed="$(curl -sf --max-time 10 "$ftp/$dir/" | tr -d '\r' | awk '$NF == "shot.raw" { print $5 }')" || listed=""
+  [ "$listed" = "$size" ] || continue
+  if curl -sf --max-time 20 "$ftp/$dir/shot.raw" -o "$raw" && [ "$(wc -c < "$raw")" -eq "$size" ]; then
     python3 -I - "$raw" "$out" <<'PY'
 import struct, sys, zlib
 
