@@ -215,7 +215,23 @@ static void row_draw(mph_rect r, const mph_row *row, bool focused, float switch_
       break;
   }
 
-  float value_max = r.w * 0.45f;
+  if (row->value_colour != 0 && !focused && !row->disabled) {
+    value_c = row->value_colour;
+  }
+  // The value (and suffix) take what the label leaves: when both don't fit,
+  // the value is cut first, down to 64 px (a few letters and the ellipsis),
+  // then the label
+  float left_edge = r.x + (row->icon >= 0 ? 44 : 16);
+  float label_w = row->label != NULL ? mph_text_w(MPH_T_ROW, row->label) : 0;
+  float value_max = 64;
+  float spare = right - left_edge - label_w - 14;
+  if (row->kind == MPH_ROW_CHOICE && row->value != NULL) {
+    spare -= mph_text_w(MPH_T_ROW, "\xe2\x80\xb9") + mph_text_w(MPH_T_ROW, "\xe2\x80\xba") + 20;
+  }
+  if (row->value != NULL && row->suffix != NULL && row->kind != MPH_ROW_TOGGLE) {
+    spare = (spare - 10) / 2;
+  }
+  value_max = spare > value_max ? spare : value_max;
   if (row->value != NULL && row->kind != MPH_ROW_TOGGLE) {
     bool arrows = row->kind == MPH_ROW_CHOICE;
     uint32_t arrow_c = focused ? MPH_C_HL_FG : MPH_C_FAINT;

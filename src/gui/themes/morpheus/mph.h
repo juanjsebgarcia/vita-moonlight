@@ -332,6 +332,7 @@ typedef struct {
   bool checked, disabled, danger;
   menu_status status;
   int icon;  // a leading icon (mph_icon_id), or -1
+  uint32_t value_colour;  // the value's colour when not focused, or 0 for the default
 } mph_row;
 
 // The row for a menu entry (DESIGN.md §3.6). The label of a category is
