@@ -356,6 +356,8 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
   }
 
 disconnect:
+  // The next connection, even to this PC, starts with the hidden apps out
+  show_hidden_apps = false;
   flash_message("%s", tr(STR_CONNECT_DISCONNECTING));
   connection_terminate();
   sceKernelDelayThread(1000 * 1000);
