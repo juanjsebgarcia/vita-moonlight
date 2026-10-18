@@ -6,6 +6,7 @@
 // of the stream overlays. It shares no code with Homebrew.
 
 #include "mph.h"
+#include "mph_screen_touch.h"
 
 #include "../../guilib.h"
 #include "../../text.h"
@@ -156,6 +157,10 @@ static const char *screen_title(const menu_view *view) {
 static void mph_draw_menu(const menu_view *view) {
   mph_frame_begin();
   track_screen(view->screen->id);
+  if (mph_screen_touch_draw(view, screen.t0, screen.animate)) {
+    frame_end();
+    return;
+  }
   int n = build_rows(view);
   mph_rect rect = list_rect(view);
   float target = mph_list_target(rect, rows, n, view->cursor_row, view->scroll);
