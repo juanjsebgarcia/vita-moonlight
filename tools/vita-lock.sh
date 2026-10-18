@@ -11,8 +11,11 @@
 # it go so others get a turn.
 #
 # It waits up to 30 minutes for the lock. A lock whose holder hasn't been seen
-# for 20 minutes is treated as abandoned and broken. It's released when the
-# command ends, on Ctrl-C, or when this script is killed. Nested calls (a
+# for 20 minutes is treated as abandoned and broken; holders refresh it every
+# minute. It's released when the command ends, or on Ctrl-C. Killing only
+# this script releases it once the command has ended (bash waits for it),
+# so the lock is never released while the command still drives the Vita;
+# to stop both, press Ctrl-C or kill the process group. Nested calls (a
 # script that takes the lock running another that does) don't wait: the
 # holder exports VITA_LOCK_HELD, and with it set this just runs the command.
 #
@@ -82,47 +85,93 @@ fi
 
 owner="${VITA_LOCK_OWNER:-${USER:-$(id -un)}@$(hostname -s 2>/dev/null || hostname):$$}"
 owner="${owner//[[:space:]]/_}"
+# The owner is only a name to show, and may not be unique; this identifies
+# this one taking of the lock
+token="$$.$RANDOM.$(date +%s)"
 mkdir -p "$(dirname "$LOCK")"
 
-release() {
+# A short-lived second lock around everything that changes or removes a lock
+# that's already taken (breaking an abandoned one, the holder's refresh, and
+# release), so a waiter can't remove a lock someone has just taken fresh.
+GUARD="$LOCK.guard"
+take_guard() {
+  local i
+  for (( i = 0; i < 50; i++ )); do
+    mkdir "$GUARD" 2>/dev/null && return 0
+    # It's only ever held for a moment, so one over a minute old was left
+    # by a process killed while holding it
+    [ -n "$(find "$GUARD" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$GUARD" 2>/dev/null
+    sleep 0.1
+  done
+  return 1
+}
+drop_guard() {
+  rmdir "$GUARD" 2>/dev/null
+}
+ours() {
+  [ "$(cat "$LOCK/token" 2>/dev/null)" = "$token" ]
+}
+
+# Succeeds, printing whose it was, when the lock is abandoned: its holder
+# hasn't been seen for STALE_SECONDS, or it was taken over a minute ago and
+# never given an owner (whoever took it died)
+abandoned() {
   local who seen
-  [ -n "${heartbeat:-}" ] && kill "$heartbeat" 2>/dev/null
-  # Only remove the lock if it's still ours: it may have been broken as abandoned
-  read -r who seen 2>/dev/null < "$LOCK/owner"
-  [ "${who:-}" = "$owner" ] && rm -rf "$LOCK"
+  if read -r who seen 2>/dev/null < "$LOCK/owner" && [[ "$seen" =~ ^[0-9]+$ ]]; then
+    [ $(( $(date +%s) - seen )) -gt "$STALE_SECONDS" ] && echo "held by $who"
+    return
+  fi
+  [ -n "$(find "$LOCK" -maxdepth 0 -mmin +1 2>/dev/null)" ] && echo "with no owner"
+}
+
+release() {
+  local guarded=""
+  take_guard && guarded=1
+  # Only if it's still ours: it may have been broken as abandoned
+  ours && rm -rf "$LOCK"
+  [ -n "$guarded" ] && drop_guard
 }
 
 announced=""
 for (( waited = 0; waited < WAIT_SECONDS; waited++ )); do
   if mkdir "$LOCK" 2>/dev/null; then
     now="$(date +%s)"
+    echo "$token" > "$LOCK/token"
     echo "$now" > "$LOCK/started"
     echo "$owner $now" > "$LOCK/owner.tmp" && mv "$LOCK/owner.tmp" "$LOCK/owner"
     trap release EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
     # Shows the holder is alive, so a long benchmark isn't taken for an
-    # abandoned lock. It stops by itself if this script is killed outright.
+    # abandoned lock. It's detached, so this script has no child to stop or
+    # reap; it ends by itself within a second once this script has exited
+    # or the lock is no longer ours (released, or broken as abandoned after,
+    # say, the Mac slept for longer than STALE_SECONDS).
     (
-      while sleep 60 && kill -0 $$ 2>/dev/null; do
-        echo "$owner $(date +%s)" > "$LOCK/owner.tmp" && mv "$LOCK/owner.tmp" "$LOCK/owner"
-      done
-    ) </dev/null >/dev/null 2>&1 &
-    heartbeat=$!
+      (
+        for (( beat = 1; ; beat++ )); do
+          sleep 1
+          kill -0 $$ 2>/dev/null && ours || exit 0
+          (( beat % 60 == 0 )) || continue
+          take_guard || continue
+          ours && echo "$owner $(date +%s)" > "$LOCK/owner.tmp" && mv "$LOCK/owner.tmp" "$LOCK/owner"
+          drop_guard
+        done
+      ) </dev/null >/dev/null 2>&1 &
+    )
     export VITA_LOCK_HELD="$owner"
     "$@"
     exit $?
   fi
-  if read -r who seen 2>/dev/null < "$LOCK/owner" && [[ "$seen" =~ ^[0-9]+$ ]]; then
-    if [ $(( $(date +%s) - seen )) -gt "$STALE_SECONDS" ]; then
-      echo "breaking the abandoned Vita lock held by $who" >&2
+  if [ -n "$(abandoned)" ] && take_guard; then
+    # Checked again holding the guard, in case another waiter broke it and
+    # took it fresh in the meantime
+    why="$(abandoned)"
+    if [ -n "$why" ]; then
+      echo "breaking the abandoned Vita lock $why" >&2
       rm -rf "$LOCK"
-      continue
     fi
-  elif [ -n "$(find "$LOCK" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
-    # Taken over a minute ago but never given an owner: whoever took it died
-    echo "breaking a Vita lock that has no owner" >&2
-    rm -rf "$LOCK"
+    drop_guard
     continue
   fi
   if [ -z "$announced" ]; then

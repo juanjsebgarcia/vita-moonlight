@@ -117,7 +117,7 @@ The elevated permissions that PS button capture needs are inside `eboot.bin` (`v
   VITA_LOCK_OWNER=settings-check tools/vita-lock.sh ./my-batch.sh
   ```
 
-- **Release:** the lock is released when the command ends, on Ctrl-C, or when it's killed. A lock whose holder hasn't been seen for 20 minutes counts as abandoned; holders refresh it every minute, so a long benchmark keeps it.
+- **Release:** the lock is released when the command ends, or on Ctrl-C. Killing only `vita-lock.sh` releases it once its command has ended, so kill the process group to stop both. A lock whose holder hasn't been seen for 20 minutes counts as abandoned; holders refresh it every minute, so a long benchmark keeps it.
 - **On your own,** turn it off with `VITA_LOCK=off`.
 
 Keep each turn short, and redeploy (checking the hash) at the start of a batch, since the installed `eboot.bin` may be someone else's.
