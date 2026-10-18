@@ -173,6 +173,9 @@ SceRtcTick current, until;
 
 input_data curr, old;
 int controller_port;
+// Serializes a rumble write with the stream stopping the motors, so a late
+// one can't start them again behind the pause menu
+static SceUID pad_mutex;
 bool _calibrateGyro = true;
 bool _motionActivated = false;
 bool _motionCalibrated = false;
@@ -922,6 +925,11 @@ bool vitainput_init() {
   sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START);
   sceTouchSetSamplingState(SCE_TOUCH_PORT_BACK, SCE_TOUCH_SAMPLING_STATE_START);
 
+  pad_mutex = sceKernelCreateMutex("pad_mutex", 0, 0, NULL);
+  if (pad_mutex < 0) {
+    return false;
+  }
+
   SceUID thid = sceKernelCreateThread("vitainput_thread", vitainput_thread, 0, 0x40000, 0, 0, NULL);
   if (thid >= 0) {
     sceKernelStartThread(thid, 0, NULL);
@@ -1077,17 +1085,21 @@ static void stop_pad_motors(void) {
 }
 
 void vitainput_rumble(unsigned short controller, unsigned short low_freq, unsigned short high_freq) {
-  // Rumble sent while paused would keep buzzing until the stream resumes
-  if (controller != 0 || !pad_has_motors() || !active_input_thread) {
+  if (controller != 0 || !pad_has_motors()) {
     return;
   }
 
-  // The large motor is the low frequency one; scaled from 16 to 8 bits
-  SceCtrlActuator state = {
-    .small = high_freq >> 8,
-    .large = low_freq >> 8,
-  };
-  sceCtrlSetActuator(controller_port, &state);
+  // Rumble sent while paused would keep buzzing until the stream resumes
+  sceKernelLockMutex(pad_mutex, 1, NULL);
+  if (active_input_thread) {
+    // The large motor is the low frequency one; scaled from 16 to 8 bits
+    SceCtrlActuator state = {
+      .small = high_freq >> 8,
+      .large = low_freq >> 8,
+    };
+    sceCtrlSetActuator(controller_port, &state);
+  }
+  sceKernelUnlockMutex(pad_mutex, 1);
 }
 
 void vitainput_set_led(uint16_t controller, uint8_t r, uint8_t g, uint8_t b) {
@@ -1146,7 +1158,10 @@ void vitainput_start(void) {
 
 void vitainput_stop(void) {
   unlock_psbutton();
-  active_input_thread = false;
   active_motion_threads = false;
+
+  sceKernelLockMutex(pad_mutex, 1, NULL);
+  active_input_thread = false;
   stop_pad_motors();
+  sceKernelUnlockMutex(pad_mutex, 1);
 }
