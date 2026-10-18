@@ -67,6 +67,9 @@ enum {
 // can be shown again. Kept while connected, as the menu is rebuilt after
 // every change.
 static bool show_hidden_apps;
+// The PC it was turned on for: any other starts with it off, however it was
+// connected to (the host menu, or Auto-detect's own connection)
+static char show_hidden_host[256];
 // Whether the open menu shows the apps as box art
 static bool menu_covers;
 
@@ -139,12 +142,14 @@ static int toggle_app_hidden(int app_id) {
   }
   save_device_info(dev);
 
-  if (menu_covers) {
+  if (stay == 0) {
+    // No app is left to stay on (nor any covers): the row that lists them again
+    display_menu_select(CONNECT_SHOW_HIDDEN);
+  } else if (menu_covers) {
     ui_boxart_remember(stay);
     display_menu_select(CONNECT_BOXART);
   } else {
-    // With no app left to stay on, the row that lists them again
-    display_menu_select(stay != 0 ? stay : CONNECT_SHOW_HIDDEN);
+    display_menu_select(stay);
   }
   return QUIT_RELOAD;
 }
@@ -371,8 +376,6 @@ int ui_connect(char *name, char *address, uint16_t port) {
 
     ret = gs_init(&server, address, port, key_dir, 0, true);
     session_set_host(name);
-    // A new connection starts with the hidden apps out of the list
-    show_hidden_apps = false;
     if (ret == GS_OUT_OF_MEMORY) {
       display_error("%s", tr(STR_CONNECT_NO_MEMORY));
       return 0;
@@ -440,6 +443,24 @@ int ui_connected_menu() {
   // The apps the list shows, linked in order, and the names hidden ones are
   // shown under. Without the memory for them, every app shows unmarked.
   device_info_t *dev = connected_device();
+  if (strcmp(show_hidden_host, session_server_name()) != 0) {
+    snprintf(show_hidden_host, sizeof(show_hidden_host), "%s", session_server_name());
+    show_hidden_apps = false;
+  }
+  // Forget hidden apps the PC no longer lists (removed, or given a new id by
+  // an edit), so they don't use up the room for hiding others
+  if (server.paired && dev != NULL && server_applist != NULL && dev->hidden_app_count > 0) {
+    bool forgot = false;
+    for (int i = dev->hidden_app_count - 1; i >= 0; i--) {
+      if (!is_app(dev->hidden_apps[i])) {
+        device_set_app_hidden(dev, dev->hidden_apps[i], false);
+        forgot = true;
+      }
+    }
+    if (forgot) {
+      save_device_info(dev);
+    }
+  }
   PAPP_LIST shown_apps = server_applist;
   APP_LIST *shown = app_count > 0 ? calloc(app_count, sizeof(APP_LIST)) : NULL;
   char (*labels)[256] = app_count > 0 ? malloc(app_count * sizeof(*labels)) : NULL;
@@ -518,7 +539,9 @@ int ui_connected_menu() {
   MENU_MESSAGE(server_info);
 
   // Covers need the room under the menu, so the menu is kept short
-  bool boxart = config.app_list_style == APP_LIST_BOXART && server.paired && server_applist != NULL;
+  // With every app hidden there are no covers to show, only the row that
+  // lists them again
+  bool boxart = config.app_list_style == APP_LIST_BOXART && server.paired && shown_apps != NULL;
   menu_covers = boxart;
   if (!boxart) {
     MENU_MESSAGE("");
@@ -668,6 +691,10 @@ device_info_t* ui_connect_and_pairing(device_info_t *info) {
     ret = update_device(info);
     if (ret == false) {
       display_error("%s", tr(STR_CONNECT_DEVICE_SAVE_FAILED));
+    } else {
+      // Save the known PC, so what only it holds (its hidden apps, its
+      // display name) isn't overwritten by this new record
+      info = find_device(info->name);
     }
 
   } else {
