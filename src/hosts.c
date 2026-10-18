@@ -166,12 +166,8 @@ static bool ask_pc_to_unpair(device_info_t *info, bool *told) {
     vita_debug_log("[HOSTS] %s didn't answer at %s: %d", info->name, address, ret);
     return false;
   }
-  if (!server.paired) {
-    // It no longer trusts this Vita's certificate
-    vita_debug_log("[HOSTS] %s had already unpaired this Vita", info->name);
-    *told = true;
-    return true;
-  }
+  // Asked even when it reports this Vita unpaired: over plain HTTP, which
+  // gs_init falls back to, that report isn't reliable
   ret = gs_unpair(&server);
   vita_debug_log("[HOSTS] unpair request to %s: %d", info->name, ret);
   *told = ret == GS_OK;
