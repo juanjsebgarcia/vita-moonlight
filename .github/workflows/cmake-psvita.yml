@@ -27,6 +27,18 @@ jobs:
           vdpm pacman -- -Rdd --noconfirm openssl-1.1.1 || true
           vdpm pacman -- -S --noconfirm openssl
 
+      # Built once per tools/libcrypto.sh (which pins the commit), then cached
+      - name: Cache the optimised libcrypto
+        uses: actions/cache@v4
+        with:
+          path: build/libcrypto-*.a
+          key: libcrypto-${{ hashFiles('tools/libcrypto.sh') }}
+
+      # Same 1.0.2 at -O2 with the ARM/NEON assembly, about 9x faster at
+      # decrypting streams
+      - name: Install the optimised libcrypto
+        run: sh tools/libcrypto.sh
+
       - name: Build
         run: |
           cmake -S . -B build
