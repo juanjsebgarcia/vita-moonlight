@@ -4,6 +4,7 @@
 #include "connection.h"
 #include "stats.h"
 #include "util.h"
+#include "hardware.h"
 #include "video/vita.h"
 #include "input/touchabsolute.h"
 #include "input/swap_shoulder_buttons.h"
@@ -360,6 +361,39 @@ static void debug_log_help(char *out, size_t size) {
            "afterwards.", config.key_dir);
 }
 
+/*
+ * The Bluetooth warning
+ */
+
+// Bluetooth shares the 2.4 GHz radio with Wi-Fi only: a wired PS TV, or a 3G
+// Vita streaming over its modem, isn't disturbed by it. Listed when Wi-Fi is
+// off too, since that's what the stream will use once it's back.
+static bool bluetooth_disturbs_wifi(void) {
+  if (!vita_bluetooth_enabled()) {
+    return false;
+  }
+  int network = vita_network_type();
+  return network != VITA_NETWORK_WIRED && network != VITA_NETWORK_MOBILE;
+}
+
+static void bluetooth_help(char *out, size_t size) {
+  if (vita_is_ps_tv()) {
+    // A PS TV's controllers connect over Bluetooth, so turning it off isn't
+    // the answer there
+    snprintf(out, size,
+             "Bluetooth and Wi-Fi share the PS TV's 2.4 GHz radio, so while Bluetooth is on the "
+             "stream can stutter or lose frames, more so with Bluetooth controllers or headphones "
+             "in use. Connect the PS TV to your router with a network cable instead: Bluetooth "
+             "can't disturb that.");
+    return;
+  }
+  snprintf(out, size,
+           "Bluetooth and Wi-Fi share the Vita's 2.4 GHz radio, so while Bluetooth is on the "
+           "stream can stutter or lose frames, more so with a Bluetooth controller or headphones "
+           "in use. If you aren't using a Bluetooth device, turn it off in the Vita's Settings, "
+           "under Bluetooth Devices.");
+}
+
 static void mapping_help(char *out, size_t size) {
   snprintf(out, size,
            "Use your own button layout from a file at %smappings/vita.conf instead of the "
@@ -423,12 +457,8 @@ static const char ABOUT_HELP[] =
 const setting_def SETTINGS[] = {
   // Above the tabs, on every one
   {.tab = SETTINGS_TAB_ALL, .kind = SETTING_ACTION, .flags = SETTING_WARNING,
-   .label = "Bluetooth is on, which can disturb Wi-Fi", .listed = vita_bluetooth_enabled,
-   .action = SETTING_ACTION_SHOW_HELP,
-   .help = "Bluetooth and Wi-Fi share the Vita's 2.4 GHz radio, so while Bluetooth is on the "
-      "stream can stutter or lose frames, more so with a Bluetooth controller or headphones "
-      "in use. If you aren't using a Bluetooth device, turn it off in the Vita's Settings, "
-      "under Bluetooth Devices."},
+   .label = "Bluetooth is on, which can disturb Wi-Fi", .listed = bluetooth_disturbs_wifi,
+   .action = SETTING_ACTION_SHOW_HELP, .help_with = bluetooth_help},
   {.tab = SETTINGS_TAB_ALL, .kind = SETTING_NOTE,
    .label = "Settings that need a new stream return once this one ends.", .listed = settings_streaming},
 
