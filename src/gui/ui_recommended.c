@@ -73,7 +73,6 @@ static const char *PRIORITY_NAMES[PRIORITY_COUNT] = {"Balanced", "Lowest delay",
 
 typedef struct {
   int width, height, fps, bitrate_kbps;
-  bool boost_clocks;
 } preset;
 
 enum {
@@ -124,18 +123,20 @@ static bool is_pstv(void) {
 //   against 13.9 by the access point), with as few freezes, and looks the
 //   same on the Vita's 960x544 screen. 720p at 10 Mbps drops frames on busy
 //   content, so lower delay stays at 540p.
-// - Battery life: half the frames, half the bitrate, no clock boost. Over 10
-//   minutes on battery: 312 mA against 426 mA for Balanced and 378 mA for
-//   Lowest delay, about 7 hours on a full charge against 5.
+// - Battery life: half the frames and half the bitrate. Over 10 minutes on
+//   battery, with clock boost off as well: 312 mA against 426 mA for Balanced
+//   and 378 mA for Lowest delay, about 7 hours on a full charge against 5.
+//   Boost now stays on, so expect a little less than that.
+// Every choice turns clock boost on, so a recommended stream always runs at
+// the Vita's full speed.
 // The frame rate follows the player's own when it's 50 or 60, since a stream
 // that doesn't match the PC's display costs ~30 ms; otherwise 60.
 static preset choose(int connection) {
   int fps = config.stream.fps == 50 || config.stream.fps == 60 ? config.stream.fps : 60;
-  preset p = {960, 540, fps, 10000, true};
+  preset p = {960, 540, fps, 10000};
   if (priority == PRIORITY_BATTERY && !is_pstv()) {
     p.fps = 30;
     p.bitrate_kbps = 5000;
-    p.boost_clocks = false;
   } else if (priority == PRIORITY_BALANCED && connection == RECOMMENDED_GOOD) {
     p.width = 1280;
     p.height = 720;
@@ -149,8 +150,8 @@ static const char *connection_name(int connection) {
 }
 
 static void describe(const preset *p, char *out, size_t size) {
-  snprintf(out, size, "%dx%d, %d fps, %d Mbps, clock boost %s", p->width, p->height, p->fps,
-           p->bitrate_kbps / 1000, p->boost_clocks ? "on" : "off");
+  snprintf(out, size, "%dx%d, %d fps, %d Mbps, clock boost on", p->width, p->height, p->fps,
+           p->bitrate_kbps / 1000);
 }
 
 static void apply(int connection) {
@@ -159,8 +160,8 @@ static void apply(int connection) {
   config.stream.height = p.height;
   config.stream.fps = p.fps;
   config.stream.bitrate = p.bitrate_kbps;
-  config.boost_clocks = p.boost_clocks;
   // The lowest-latency choices, whatever else
+  config.boost_clocks = true;
   config.enable_frame_pacer = false;
   config.enable_vita_vblank_wait = false;
 }
@@ -448,8 +449,7 @@ static const char *help_text(int row) {
       return "Balanced gives the sharpest picture a connection can carry smoothly: 1280x720 at 20 "
              "Mbps on a good one. Lowest delay uses 960x540 at 10 Mbps, which looks the same on the "
              "Vita's screen and cuts the delay by a few milliseconds, more on weaker Wi-Fi. Battery "
-             "life streams 30 frames a second at 5 Mbps with clock boost off. Use left and right to "
-             "change.";
+             "life streams 30 frames a second at 5 Mbps. Use left and right to change.";
     case ROW_AUTO:
       return "Tests the connection where you'll play, then recommends settings for it and for "
              "what matters most to you. It measures the Wi-Fi signal (unless you're wired), then "
