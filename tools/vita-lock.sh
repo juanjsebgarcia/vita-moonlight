@@ -157,6 +157,8 @@ for (( waited = 0; waited < WAIT_SECONDS; waited++ )); do
       exit 1
     fi
     trap release EXIT
+    # Trapped, so bash waits for the command before releasing the lock
+    trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
     # Shows the holder is alive, so a long benchmark isn't taken for an
