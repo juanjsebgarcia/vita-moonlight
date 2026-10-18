@@ -1,7 +1,8 @@
 // Morpheus: the new theme, opted into with L and R on the host list.
 //
 // A placeholder until it's built from claude_bundle/demo/index.html: plain
-// text on black in the Vita's own font, so every screen works after the
+// text on black in the Vita's system font (the shared one from text.h,
+// which has the forms the UI language needs), so every screen works after the
 // switch. It shares no drawing code with Homebrew, only the view models
 // (ui_view.h) and the shared text handling (text.h). Replace it screen by
 // screen; see src/gui/themes/README.md.
@@ -29,18 +30,11 @@
 #define MPH_HIGHLIGHT RGBA8(0x2A, 0x3A, 0x5A, 0xFF)
 #define MPH_PANEL RGBA8(0x1C, 0x1C, 0x22, 0xFF)
 
-static vita2d_pgf *mph_font;
-
 static void morpheus_init(void) {
   vita2d_set_clear_color(RGBA8(0x0B, 0x0B, 0x0F, 0xFF));
-  mph_font = vita2d_load_default_pgf();
 }
 
 static void morpheus_fini(void) {
-  if (mph_font != NULL) {
-    vita2d_free_pgf(mph_font);
-    mph_font = NULL;
-  }
 }
 
 static void morpheus_language_changed(void) {
@@ -60,12 +54,25 @@ static const char *glyph_label(int glyph) {
     case BUTTON_GLYPH_START: return "[START]";
     case BUTTON_GLYPH_SELECT: return "[SELECT]";
     case BUTTON_GLYPH_PS: return "[PS]";
+    case BUTTON_GLYPH_DPAD: return "[+]";
+    case BUTTON_GLYPH_DPAD_UP: return "[Up]";
+    case BUTTON_GLYPH_DPAD_DOWN: return "[Down]";
+    case BUTTON_GLYPH_DPAD_LEFT: return "[Left]";
+    case BUTTON_GLYPH_DPAD_RIGHT: return "[Right]";
+    case BUTTON_GLYPH_LEFT_STICK: return "[LS]";
+    case BUTTON_GLYPH_RIGHT_STICK: return "[RS]";
+    case BUTTON_GLYPH_L3: return "[L3]";
+    case BUTTON_GLYPH_R3: return "[R3]";
+    case BUTTON_GLYPH_FRONT_TOUCH: return "[Touch]";
+    case BUTTON_GLYPH_REAR_TOUCH: return "[Rear touch]";
     default: return "[?]";
   }
 }
 
 // Draws (or only measures) text with its button markers as labels
 static int mph_text(bool draw, int x, int y, unsigned int color, const char *text) {
+  // Owned by text.c, which reloads it for a new language
+  vita2d_pgf *mph_font = text_system_font();
   if (mph_font == NULL || text == NULL) {
     return 0;
   }
@@ -153,6 +160,14 @@ static void mph_draw_menu(const menu_view *view) {
       int width = mph_text(false, 0, 0, 0, value);
       mph_text(true, MPH_RIGHT - width, baseline, color, value);
     }
+  }
+
+  // The selected box art cover, which confirm on the covers' row starts
+  if (view->decorated && view->boxart != NULL && view->boxart->count > 0) {
+    char cover[300];
+    snprintf(cover, sizeof(cover), "< %s >  %s", view->boxart->cover(view->boxart->selected)->name,
+             view->boxart->counter);
+    mph_text(true, MPH_LEFT, 496, view->boxart->focused ? MPH_ACCENT : MPH_FG, cover);
   }
 
   if (view->decorated) {
