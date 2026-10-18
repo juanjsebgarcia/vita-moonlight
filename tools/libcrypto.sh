@@ -36,4 +36,6 @@ if [ ! -f "$lib" ]; then
   rm -rf "$src"
 fi
 
-cp "$lib" "$VITASDK/arm-vita-eabi/lib/libcrypto.a"
+# Keeping the cached file's time relinks moonlight.elf (CMakeLists.txt
+# LINK_DEPENDS) only when the library changes
+cp -p "$lib" "$VITASDK/arm-vita-eabi/lib/libcrypto.a"

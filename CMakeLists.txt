@@ -190,8 +190,10 @@ target_link_libraries(${PROJECT_NAME}.elf
 	-lc
 )
 # Passed through -Wl, the linker script isn't a dependency by itself, so
-# editing it would not relink
-set_target_properties(${PROJECT_NAME}.elf PROPERTIES LINK_DEPENDS ${CMAKE_SOURCE_DIR}/sce_gap.ld)
+# editing it would not relink. Nor is libcrypto.a, linked with -l, which
+# tools/libcrypto.sh replaces
+set_target_properties(${PROJECT_NAME}.elf PROPERTIES LINK_DEPENDS
+	"${CMAKE_SOURCE_DIR}/sce_gap.ld;$ENV{VITASDK}/arm-vita-eabi/lib/libcrypto.a")
 
 add_custom_target(${PROJECT_NAME}.velf ALL
 	COMMAND vita-elf-create ${PROJECT_NAME}.elf ${PROJECT_NAME}.velf
