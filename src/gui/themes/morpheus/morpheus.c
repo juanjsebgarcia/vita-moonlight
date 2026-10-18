@@ -9,6 +9,7 @@
 #include "mph_screen_dialogs.h"
 #include "mph_screen_stream.h"
 #include "mph_screen_settings.h"
+#include "mph_screen_hosts.h"
 
 #include "../../guilib.h"
 #include "../../text.h"
@@ -172,6 +173,9 @@ static void mph_draw_menu(const menu_view *view) {
     case UI_SCREEN_RECOMMENDED: mph_screen_recommended_draw(view); return;
     case UI_SCREEN_KEYBOARD_LAYOUT: mph_screen_keyboard_draw(view); return;
     default: break;
+  if (mph_hosts_draw(view, screen.t0, screen.animate)) {
+    frame_end();
+    return;
   }
   int n = build_rows(view);
   mph_rect rect = list_rect(view);
@@ -205,6 +209,8 @@ static void mph_menu_follow(menu_view *view) {
     case UI_SCREEN_RECOMMENDED: mph_screen_recommended_follow(view); return;
     case UI_SCREEN_KEYBOARD_LAYOUT: mph_screen_keyboard_follow(view); return;
     default: break;
+  if (mph_hosts_follow(view)) {
+    return;
   }
   int n = build_rows(view);
   view->scroll = (int)roundf(mph_list_target(list_rect(view), rows, n, view->cursor_row, view->scroll));
