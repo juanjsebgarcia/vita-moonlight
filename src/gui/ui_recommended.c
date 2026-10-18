@@ -73,9 +73,21 @@ enum {
 static const str_id PRIORITY_NAMES[PRIORITY_COUNT] = {STR_REC_BALANCED, STR_REC_LOWEST_DELAY, STR_REC_BATTERY};
 
 typedef struct {
-  int width, height, fps, bitrate_kbps;
+  int width, height, fps, bitrate_kbps, packet_size;
   bool boost_clocks;
 } preset;
+
+// Ethernet carries a PS TV's stream without Wi-Fi's airtime and interference
+#define WIRED_BITRATE_KBPS 30000
+// The larger video packet size (Settings > Stream): about a quarter fewer
+// packets for the same video, and well inside Ethernet's 1500-byte frames
+#define WIRED_PACKET_SIZE 1392
+// The packet size every other recommendation uses, as in config.c
+#define RECOMMENDED_PACKET_SIZE 1024
+
+static bool wired(void) {
+  return vita_network_type() == VITA_NETWORK_WIRED;
+}
 
 enum {
   ROW_NOW,
@@ -127,11 +139,14 @@ static bool is_pstv(void) {
 // - Battery life: half the frames, half the bitrate, no clock boost. Over 10
 //   minutes on battery: 312 mA against 426 mA for Balanced and 378 mA for
 //   Lowest delay, about 7 hours on a full charge against 5.
+// - On Ethernet (a PS TV's port): larger packets, and Balanced on a good
+//   connection streams 720p at 30 Mbps.
 // The frame rate follows the player's own when it's 50 or 60, since a stream
 // that doesn't match the PC's display costs ~30 ms; otherwise 60.
 static preset choose(int connection) {
   int fps = config.stream.fps == 50 || config.stream.fps == 60 ? config.stream.fps : 60;
-  preset p = {960, 540, fps, 10000, true};
+  bool on_cable = wired();
+  preset p = {960, 540, fps, 10000, on_cable ? WIRED_PACKET_SIZE : RECOMMENDED_PACKET_SIZE, true};
   if (priority == PRIORITY_BATTERY && !is_pstv()) {
     p.fps = 30;
     p.bitrate_kbps = 5000;
@@ -139,7 +154,7 @@ static preset choose(int connection) {
   } else if (priority == PRIORITY_BALANCED && connection == RECOMMENDED_GOOD) {
     p.width = 1280;
     p.height = 720;
-    p.bitrate_kbps = 20000;
+    p.bitrate_kbps = on_cable ? WIRED_BITRATE_KBPS : 20000;
   }
   return p;
 }
@@ -158,6 +173,7 @@ static void apply(int connection) {
   config.stream.height = p.height;
   config.stream.fps = p.fps;
   config.stream.bitrate = p.bitrate_kbps;
+  config.stream.packetSize = p.packet_size;
   config.boost_clocks = p.boost_clocks;
   // The lowest-latency choices, whatever else
   config.enable_frame_pacer = false;
@@ -310,15 +326,16 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
     TR_FMT(err, err_len, STR_REC_NO_DESKTOP_APP, TEST_APP);
     return false;
   }
-  // Test at 720p and 20 Mbps, the most a good connection gets, then put the
-  // player's own settings back
+  // Test at 720p and the bitrate a good connection gets (more on a cable),
+  // then put the player's own settings back
+  bool on_cable = wired();
   STREAM_CONFIGURATION saved = config.stream;
   config.stream.width = 1280;
   config.stream.height = 720;
-  config.stream.bitrate = 20000;
+  config.stream.bitrate = on_cable ? WIRED_BITRATE_KBPS : 20000;
   // The packet counter (src/netcount.c) only sees full-size video packets,
-  // so test at the default size even if the player set a small one
-  config.stream.packetSize = 1024;
+  // so test at the recommended size even if the player set a small one
+  config.stream.packetSize = on_cable ? WIRED_PACKET_SIZE : RECOMMENDED_PACKET_SIZE;
 
   bool ok = false;
   if (session_start_app_by_id(app_id, err, err_len) != 0) {
@@ -461,6 +478,9 @@ static int auto_detect(void) {
 static const char *help_text(int row) {
   switch (row) {
     case ROW_PRIORITY:
+      if (wired()) {
+        return tr(STR_REC_HELP_PRIORITY_WIRED);
+      }
       if (is_pstv()) {
         return tr(STR_REC_HELP_PRIORITY_PSTV);
       }
@@ -468,7 +488,7 @@ static const char *help_text(int row) {
     case ROW_AUTO:
       return tr(STR_REC_HELP_AUTO);
     case ROW_GOOD:
-      return tr(STR_REC_HELP_GOOD);
+      return tr(wired() ? STR_REC_HELP_GOOD_WIRED : STR_REC_HELP_GOOD);
     case ROW_WEAK:
       return tr(STR_REC_HELP_WEAK);
     default:
