@@ -180,6 +180,17 @@ static bool atlas_place(int w, int h, int *x, int *y) {
   return true;
 }
 
+// Coverage is darkened a little, as browsers on the reference renders do:
+// FreeType's linear coverage reads thinner on the Vita's screen
+#define COVERAGE_GAMMA 1.45f
+static uint8_t coverage[256];
+
+static void make_coverage(void) {
+  for (int i = 0; i < 256; i++) {
+    coverage[i] = (uint8_t)(255.0f * powf(i / 255.0f, 1.0f / COVERAGE_GAMMA) + 0.5f);
+  }
+}
+
 static float system_scale(mph_type t) {
   return STYLES[t].size / TEXT_SYSTEM_FONT_BASE_SIZE;
 }
@@ -235,7 +246,9 @@ static void rasterise(glyph *g, mph_type t) {
         dst[i] = (src[i >> 3] & (0x80 >> (i & 7))) ? 0xFF : 0;
       }
     } else {
-      memcpy(dst, src, w);
+      for (int i = 0; i < w; i++) {
+        dst[i] = coverage[src[i]];
+      }
     }
   }
   g->x = (uint16_t)x;
@@ -726,6 +739,7 @@ void mph_text_init(void) {
     memset(vita2d_texture_get_datap(atlas), 0, vita2d_texture_get_stride(atlas) * ATLAS_H);
     vita2d_texture_set_filters(atlas, SCE_GXM_TEXTURE_FILTER_POINT, SCE_GXM_TEXTURE_FILTER_POINT);
   }
+  make_coverage();
   cache_clear();
   warm_up();
 }

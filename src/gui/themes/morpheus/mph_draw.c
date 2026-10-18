@@ -357,9 +357,15 @@ static void rrect_rings(mph_rect r, const float radius[4], const float *offs, co
   bool gradient = top != bottom;
   for (int i = 0; i < rings; i++) {
     perimeter(r, radius, offs[i], segs, xs[i], ys[i]);
-    for (int p = 0; p < points; p++) {
-      uint32_t c = gradient ? lerp_colour(top, bottom, (ys[i][p] - r.y) / r.h) : top;
-      cs[i][p] = scale_alpha(c, alphas[i]);
+    if (gradient) {
+      for (int p = 0; p < points; p++) {
+        cs[i][p] = scale_alpha(lerp_colour(top, bottom, (ys[i][p] - r.y) / r.h), alphas[i]);
+      }
+    } else {
+      uint32_t c = scale_alpha(top, alphas[i]);
+      for (int p = 0; p < points; p++) {
+        cs[i][p] = c;
+      }
     }
   }
   if (fill) {
