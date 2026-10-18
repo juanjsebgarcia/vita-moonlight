@@ -15,6 +15,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define HEADER_ICON_X 40
@@ -61,8 +62,30 @@ typedef struct {
   float top, h;
 } item;
 
-static item items[MPH_LIST_MAX];
-static int item_count;
+// One per row. The text list has a row for every app, so this grows with
+// the menu (when a bigger one opens, never per frame) and lives until fini.
+static item *items;
+static int item_count, item_capacity;
+
+// Room for n items; fewer (the old room) if memory runs out
+static int reserve_items(int n) {
+  if (n > item_capacity) {
+    int capacity = n > 2 * item_capacity ? n : 2 * item_capacity;
+    item *grown = realloc(items, capacity * sizeof(item));
+    if (grown == NULL) {
+      return item_capacity;
+    }
+    items = grown;
+    item_capacity = capacity;
+  }
+  return n;
+}
+
+void mph_screen_connected_fini(void) {
+  free(items);
+  items = NULL;
+  item_count = item_capacity = 0;
+}
 static const char *kicker, *server_line;
 static const char *shelf_label;  // upper-cased CONNECTED_APPS, box art only
 static const char *shelf_counter;
@@ -90,7 +113,7 @@ static void build(const menu_view *view) {
   const connected_view *c = view->screen->connected;
   bool covers = c != NULL && c->covers;
   bool running = c != NULL && c->running_app != NULL;
-  int n = view->row_count < MPH_LIST_MAX ? view->row_count : MPH_LIST_MAX;
+  int n = reserve_items(view->row_count > 0 ? view->row_count : 0);
   kicker = server_line = NULL;
   shelf_label = shelf_counter = NULL;
   shelf_row = -1;

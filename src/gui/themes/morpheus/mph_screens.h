@@ -27,6 +27,7 @@ void mph_screen_search_follow(menu_view *view);
 // mph_screen_connected.c: S4 a connected PC's menu, with the box art shelf
 void mph_screen_connected_draw(const menu_view *view, const mph_enter *enter);
 void mph_screen_connected_follow(menu_view *view);
+void mph_screen_connected_fini(void);  // frees its row layout (theme fini)
 
 // mph_screen_settings.c: S5 Settings, S6 Apply recommended settings, S10
 // Keyboard layout

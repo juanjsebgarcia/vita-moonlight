@@ -24,6 +24,7 @@ static void gallery_fini(void);
 
 static void morpheus_fini(void) {
   gallery_fini();
+  mph_screen_connected_fini();
   mph_fini();
 }
 
