@@ -352,8 +352,11 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
     start_host_scan();
     g_host_status_changed = 0; // Limpiar flag para evitar refresco doble
     first_scan_pending = 0;
+    display_menu_select(cursor);
     return 2; // Forzar refresco del menú
   }
+  // A rebuild for the host scan keeps the cursor on the row it was on (a
+  // host, or the row the player came back to, such as Controls & shortcuts)
   // Refresco automático solo una vez tras el primer escaneo, pero NO si hay IP cambiada
   if (first_scan_pending && g_host_status_changed && g_host_scan_thread_status != 1) {
     // Si hay IP cambiada, no forzar refresco/reinicio del menú
@@ -369,6 +372,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
       vita_debug_log("[UI] Refresco automático tras primer escaneo\n");
       g_host_status_changed = 0;
       first_scan_pending = 0;
+      display_menu_select(cursor);
       return 2;
     }
     // Si hay IP cambiada, solo limpiar flags pero NO reiniciar menú
@@ -379,6 +383,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
   if (g_host_status_changed && g_host_scan_thread_status == 1) {
     vita_debug_log("[UI] Refrescando menú por cambio de estado de host\n");
     g_host_status_changed = 0;
+    display_menu_select(cursor);
     return 2; // Forzar refresco del menú
   }
 
