@@ -174,7 +174,16 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
     case CONNECT_DISCONNECT:
       goto disconnect;
 
-    case CONNECT_QUITAPP:
+    case CONNECT_QUITAPP: {
+      // Quitting ends the game on the PC, so ask first, naming it
+      char quit_appname[256], quit_ask[512];
+      if (!get_app_name(server_applist, server.currentGame, quit_appname)) {
+        snprintf(quit_appname, sizeof(quit_appname), "%s", tr(STR_CONNECTED_UNKNOWN_APP));
+      }
+      TR_FMT(quit_ask, sizeof(quit_ask), STR_CONNECTED_QUIT_ASK, quit_appname);
+      if (!display_confirm(quit_ask)) {
+        return 0;
+      }
       flash_message("%s", tr(STR_CONNECT_QUITTING));
       ret = gs_quit_app(&server);
       if (ret == GS_OK) {
@@ -187,6 +196,7 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
       TR_FMT(quit_message, sizeof(quit_message), STR_CONNECT_QUIT_FAILED, quit_code);
       display_error("%s", quit_message);
       return 0;
+    }
 
     // application launcher / resume
     default:
