@@ -326,15 +326,16 @@ static bool test_stream(link_test *result, char *err, size_t err_len) {
     TR_FMT(err, err_len, STR_REC_NO_DESKTOP_APP, TEST_APP);
     return false;
   }
-  // Test at 720p and 20 Mbps, the most a good connection gets, then put the
-  // player's own settings back
+  // Test at 720p and the bitrate a good connection gets (more on a cable),
+  // then put the player's own settings back
+  bool on_cable = wired();
   STREAM_CONFIGURATION saved = config.stream;
   config.stream.width = 1280;
   config.stream.height = 720;
-  config.stream.bitrate = 20000;
+  config.stream.bitrate = on_cable ? WIRED_BITRATE_KBPS : 20000;
   // The packet counter (src/netcount.c) only sees full-size video packets,
-  // so test at the default size even if the player set a small one
-  config.stream.packetSize = 1024;
+  // so test at the recommended size even if the player set a small one
+  config.stream.packetSize = on_cable ? WIRED_PACKET_SIZE : RECOMMENDED_PACKET_SIZE;
 
   bool ok = false;
   if (session_start_app_by_id(app_id, err, err_len) != 0) {
