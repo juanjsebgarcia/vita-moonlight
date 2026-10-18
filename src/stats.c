@@ -18,23 +18,18 @@
 #include "stats.h"
 #include "config.h"
 #include "debug.h"
-#include "gui/guilib.h"
+#include "gui/theme.h"
 
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <psp2/net/netctl.h>
 #include <psp2/power.h>
-#include <vita2d.h>
 
 #define STATS_LINE_COUNT 10
 #define STATS_LINE_LENGTH 80
-#define STATS_FONT_SIZE 16
-#define STATS_LINE_HEIGHT 18
-// Below this the Wi-Fi reading is drawn in yellow; frame loss starts to climb
+// Below this the Wi-Fi reading is shown as weak; frame loss starts to climb
 #define STATS_WEAK_WIFI_PERCENT 60
-#define STATS_ORIGIN_X 10
-#define STATS_ORIGIN_Y 20
 
 typedef struct {
   uint64_t sum_us;
@@ -311,8 +306,6 @@ void vitastats_draw(void) {
 
   // The previous frame's drawing cost is recorded under the same lock as the copy
   static uint64_t last_draw_us = 0;
-  static int measured_version = -1;
-  static int box_width = 0;
   uint64_t start_us = LiGetMicroseconds();
 
   // Copy out under the lock, then draw without holding it
@@ -334,15 +327,20 @@ void vitastats_draw(void) {
   }
   pthread_mutex_unlock(&stats_mutex);
 
-  // Yellow when the signal is weak enough to start costing frames
-  unsigned int wifi_color = wifi >= 0 && wifi < STATS_WEAK_WIFI_PERCENT ? RGBA8(0xFF, 0xD0, 0x00, 0xFF)
-                                                                        : RGBA8(0xFF, 0xFF, 0xFF, 0xFF);
-  if (config.stats_overlay == STATS_OVERLAY_FPS) {
-    vita2d_font_draw_textf(font, 40, 20, RGBA8(0xFF, 0xFF, 0xFF, 0xFF), STATS_FONT_SIZE,
-                           "fps: %.0f / %d", fps, config.stream.fps);
-    if (wifi >= 0) {
-      vita2d_font_draw_textf(font, 40, 20 + STATS_LINE_HEIGHT, wifi_color, STATS_FONT_SIZE, "Wi-Fi %d%%", wifi);
-    }
+  stats_view view = {
+    .full = config.stats_overlay != STATS_OVERLAY_FPS,
+    .fps = fps,
+    .target_fps = config.stream.fps,
+    .wifi_percent = wifi,
+    .wifi_weak = wifi >= 0 && wifi < STATS_WEAK_WIFI_PERCENT,
+    .lines = &local_lines[0][0],
+    .line_stride = STATS_LINE_LENGTH,
+    .line_count = n,
+    .wifi_line = wifi_at,
+    .version = version,
+  };
+  if (!view.full) {
+    theme_active()->draw_stats(&view);
     last_draw_us = 0;
     return;
   }
@@ -351,22 +349,6 @@ void vitastats_draw(void) {
     last_draw_us = 0;
     return;
   }
-  // Measuring text is the expensive part, so only redo it when the text changed
-  if (version != measured_version) {
-    box_width = 0;
-    for (int i = 0; i < n; i++) {
-      int w = vita2d_font_text_width(font, STATS_FONT_SIZE, local_lines[i]);
-      if (w > box_width) {
-        box_width = w;
-      }
-    }
-    measured_version = version;
-  }
-  vita2d_draw_rectangle(STATS_ORIGIN_X - 6, STATS_ORIGIN_Y - STATS_LINE_HEIGHT + 2,
-                        box_width + 12, n * STATS_LINE_HEIGHT + 8, RGBA8(0, 0, 0, 0xA0));
-  for (int i = 0; i < n; i++) {
-    vita2d_font_draw_text(font, STATS_ORIGIN_X, STATS_ORIGIN_Y + i * STATS_LINE_HEIGHT,
-                          i == wifi_at ? wifi_color : RGBA8(0xFF, 0xFF, 0xFF, 0xFF), STATS_FONT_SIZE, local_lines[i]);
-  }
+  theme_active()->draw_stats(&view);
   last_draw_us = LiGetMicroseconds() - start_us;
 }

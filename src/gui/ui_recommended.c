@@ -176,11 +176,15 @@ static void show_applied(int connection) {
 }
 
 // Shows the live reading and the priority, and marks the choice that fits
+// The reading, as a number, for themes that draw it as a meter
+static recommended_view reading = {.wifi_percent = -1};
+
 static void refresh(menu_entry *menu) {
   int network = vita_network_type();
   bool wired = network == VITA_NETWORK_WIRED;
   bool mobile = network == VITA_NETWORK_MOBILE;
   int percent = vita_wifi_percent();
+  reading.wifi_percent = wired || mobile || percent < 0 ? -1 : percent;
   if (wired) {
     snprintf(menu[ROW_NOW].subname, sizeof(menu[ROW_NOW].subname), "%s", tr(STR_REC_WIRED));
   } else if (mobile) {
@@ -472,6 +476,12 @@ static const char *help_text(int row) {
   }
 }
 
+static void menu_update(menu_view *view) {
+  view->recommended = &reading;
+  view->hint = (ui_hint){BUTTON_GLYPH_TRIANGLE, tr(STR_HINT_HELP)};
+  view->help = view->cursor_row < view->row_count ? help_text(view->rows[view->cursor_row].id) : NULL;
+}
+
 static int menu_loop(int id, void *context, const input_data *input) {
   menu_entry *menu = context;
 
@@ -524,16 +534,19 @@ int ui_recommended_settings_menu(void) {
     priority = PRIORITY_BALANCED;
   }
   menu[ROW_NOW] = (menu_entry) { .name = "", .disabled = true };
-  menu[ROW_PRIORITY] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_PRIORITY), .id = ROW_PRIORITY, .adjustable = true };
-  menu[ROW_AUTO] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_AUTO), .id = ROW_AUTO };
-  menu[ROW_GOOD] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_GOOD), .id = ROW_GOOD };
-  menu[ROW_WEAK] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_WEAK), .id = ROW_WEAK };
+  menu[ROW_PRIORITY] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_PRIORITY), .id = ROW_PRIORITY, .adjustable = true, .kind = MENU_ROW_CHOICE };
+  menu[ROW_AUTO] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_AUTO), .id = ROW_AUTO, .kind = MENU_ROW_ACTION };
+  menu[ROW_GOOD] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_GOOD), .id = ROW_GOOD, .kind = MENU_ROW_ACTION };
+  menu[ROW_WEAK] = (menu_entry) { .name = (char *)tr(STR_REC_ROW_WEAK), .id = ROW_WEAK, .kind = MENU_ROW_ACTION };
   refresh(menu);
 
   chosen = RECOMMENDED_NONE;
   restart_requested = false;
-  // A row of 24 px each, plus margins
-  menu_geom geom = make_geom_centered(620, (ROW_COUNT + 1) * 24);
-  display_menu(menu, ROW_COUNT, &geom, menu_loop, NULL, NULL, menu);
+  menu_screen screen = {
+    .id = UI_SCREEN_RECOMMENDED,
+    .title = tr(STR_SET_RECOMMENDED),
+    .update = menu_update,
+  };
+  display_menu(menu, ROW_COUNT, &screen, menu_loop, NULL, menu);
   return chosen;
 }

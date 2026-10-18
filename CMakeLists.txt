@@ -89,6 +89,15 @@ add_executable(${PROJECT_NAME}.elf
 	src/graphics.c
 	src/font.c
 	src/gui/guilib.c
+	src/gui/text.c
+	src/gui/theme.c
+	src/gui/themes/homebrew/homebrew.c
+	src/gui/themes/homebrew/homebrew_boxart.c
+	src/gui/themes/homebrew/homebrew_dialog.c
+	src/gui/themes/homebrew/homebrew_menu.c
+	src/gui/themes/homebrew/homebrew_stream.c
+	src/gui/themes/homebrew/homebrew_text.c
+	src/gui/themes/morpheus/morpheus.c
 	src/gui/ime.c
 	src/gui/ui.c
 	src/gui/ui_settings.c

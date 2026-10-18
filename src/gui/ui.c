@@ -38,15 +38,6 @@
 
 extern SceNetInitParam net_param;
 
-enum {
-  MAIN_MENU_CONNECTED = 100,
-  MAIN_MENU_SEARCH,
-  MAIN_MENU_CONNECT_RESUME,
-  MAIN_MENU_SETTINGS,
-  MAIN_MENU_CONNECT,
-  MAIN_MENU_CONNECT_PAIRED,
-  MAIN_MENU_QUIT = 999,
-};
 
 // Variables globales para actualización pendiente de IP
 int pending_ip_update_idx = -1;
@@ -118,20 +109,13 @@ static bool wake_and_wait(device_info_t *info) {
 
 static void connect_host(device_info_t *info);
 
-// Shown outside the box, bottom right, while the Wake row is selected
-static void host_manage_draw(void) {
+// The square-button hint, while the Wake row is selected
+static void host_manage_update(menu_view *view) {
   if (host_manage_cursor != HOST_MANAGE_WAKE) {
+    view->hint = (ui_hint){BUTTON_GLYPH_NONE, NULL};
     return;
   }
-  const char *hint = tr(STR_HOST_HINT_WAKE_ONLY);
-  const int glyph_size = 14;
-  const int gap = 6;
-  int width = glyph_size + gap + rich_text_width(18, hint);
-  // The host menu is a 600x320 box, centred on the 960x544 screen
-  int x = 480 + 300 - width;
-  int y = 272 + 160 + 26;
-  x += draw_button_glyph(BUTTON_GLYPH_SQUARE, x, y, glyph_size) + gap;
-  draw_rich_text(x, y, 0xffffffff, 18, hint);
+  view->hint = (ui_hint){BUTTON_GLYPH_SQUARE, tr(STR_HOST_HINT_WAKE_ONLY)};
 }
 
 // Connects to a paired host, confirming first if its IP has changed
@@ -292,13 +276,18 @@ void ui_host_manage_menu(device_info_t *info) {
       break;
     }
   }
+  // The same, as meaning, for themes that show it as a mark
+  menu_status status = MENU_STATUS_NONE;
   if (host_idx >= 0) {
     struct host_status st = g_host_status[host_idx];
     if (pending_ip_update_idx == host_idx && pending_ip_update[0] != '\0') {
       snprintf(status_text, sizeof(status_text), "%s", tr(STR_HOST_STATUS_IP_CHANGED));
+      status = MENU_STATUS_CHANGED;
     } else if (st.current_ip[0] && strcmp(info->internal, st.current_ip) != 0) {
       snprintf(status_text, sizeof(status_text), "%s", tr(STR_HOST_STATUS_IP_CHANGED));
+      status = MENU_STATUS_CHANGED;
     } else {
+      status = st.status == HOST_ONLINE ? MENU_STATUS_ONLINE : MENU_STATUS_OFFLINE;
       if (st.status == HOST_ONLINE) {
         snprintf(status_text, sizeof(status_text), "%s", tr(info->paired ? STR_HOST_PAIRED_ONLINE : STR_HOST_UNPAIRED_ONLINE));
       } else {
@@ -316,19 +305,31 @@ void ui_host_manage_menu(device_info_t *info) {
   idx++;
   menu[idx++] = (menu_entry){ .name = "", .disabled = true, .separator = true };
   // Opciones (sin Info)
-  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_CONNECT), .id = HOST_MANAGE_CONNECT };
+  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_CONNECT), .id = HOST_MANAGE_CONNECT, .kind = MENU_ROW_ACTION };
   // menu[idx++] = (menu_entry){ .name = "Check MAC", .id = HOST_MANAGE_CHECK_MAC }; // Oculta la opción Check MAC
-  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_WAKE), .id = HOST_MANAGE_WAKE };
+  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_WAKE), .id = HOST_MANAGE_WAKE, .kind = MENU_ROW_ACTION };
 // Opción extra para pruebas
 #define HOST_MANAGE_CHECK_MAC 3001
-  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_FORCE_CONNECT), .id = HOST_MANAGE_FORCE_CONNECT };
-  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_DELETE), .id = HOST_MANAGE_DELETE };
-  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_CHANGE_IP), .id = HOST_MANAGE_CHANGE_IP };
-  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_CHANGE_NAME), .id = HOST_MANAGE_CHANGE_NAME };
-  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_BACK), .id = HOST_MANAGE_BACK };
-  menu_geom geom = make_geom_centered(600, 320);
+  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_FORCE_CONNECT), .id = HOST_MANAGE_FORCE_CONNECT, .kind = MENU_ROW_ACTION };
+  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_DELETE), .id = HOST_MANAGE_DELETE, .kind = MENU_ROW_ACTION, .danger = true };
+  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_CHANGE_IP), .id = HOST_MANAGE_CHANGE_IP, .kind = MENU_ROW_ACTION };
+  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_CHANGE_NAME), .id = HOST_MANAGE_CHANGE_NAME, .kind = MENU_ROW_ACTION };
+  menu[idx++] = (menu_entry){ .name = (char *)tr(STR_HOST_BACK), .id = HOST_MANAGE_BACK, .kind = MENU_ROW_ACTION };
+  host_view host = {
+    .label = device_label(info),
+    .status = status,
+    .status_text = status_text,
+    .address = info->internal,
+    .port = port,
+  };
+  menu_screen screen = {
+    .id = UI_SCREEN_HOST,
+    .title = title,
+    .update = host_manage_update,
+    .host = &host,
+  };
   host_manage_cursor = 0;
-  display_menu(menu, idx, &geom, &ui_host_manage_menu_loop, &ui_host_manage_menu_back, &host_manage_draw, info);
+  display_menu(menu, idx, &screen, &ui_host_manage_menu_loop, &ui_host_manage_menu_back, info);
 }
 
 int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
@@ -509,13 +510,16 @@ int ui_main_menu() {
   } while(0)
 #define MENU_SEPARATOR(NAME) \
   do { \
-    menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true }; \
+    menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true, \
+                               .kind = *(NAME) ? MENU_ROW_HEADER : MENU_ROW_PLAIN }; \
     idx++; \
   } while(0)
 
-  char program_info[256];
+  char program_info[256] = "";
+  char version[32] = "";
 #ifdef __vita__
-  snprintf(program_info, 256, "Moonlight v%d.%d.%d", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
+  snprintf(version, sizeof(version), "v%d.%d.%d", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
+  snprintf(program_info, 256, "Moonlight %s", version);
   MENU_TITLE(program_info);
 #endif
 
@@ -582,10 +586,18 @@ int ui_main_menu() {
   MENU_ENTRY(MAIN_MENU_QUIT, (char *)tr(STR_MAIN_QUIT), false);
 
   // Solo iniciar escaneo si NO hay cambio de IP pendiente y no se ha hecho ya
-  // Shrinks to its rows, and grows up to the settings menu's height so
-  // Settings and Quit stay visible once a few hosts are listed
-  menu_geom geom = make_geom_fitted(500, idx);
-  return display_menu(menu, idx, &geom, &ui_main_menu_loop, &ui_main_menu_back, NULL, NULL);
+  main_view main = {
+    .version = version,
+    .connected = ui_connect_connected(),
+    .connection_label = addr[0] ? device_label_for_address(addr, addr) : NULL,
+    .connection_address = addr[0] ? addr : NULL,
+  };
+  menu_screen screen = {
+    .id = UI_SCREEN_MAIN,
+    .title = program_info,
+    .main = &main,
+  };
+  return display_menu(menu, idx, &screen, &ui_main_menu_loop, &ui_main_menu_back, NULL);
 }
 
 int global_loop(int cursor, void *ctx, const input_data *input) {
@@ -622,7 +634,7 @@ static const ui_ops GUI_OPS = {
 };
 
 void gui_init() {
-  guilib_init(&global_loop, NULL);
+  guilib_init(&global_loop);
   ui_ops_set(&GUI_OPS);
 }
 

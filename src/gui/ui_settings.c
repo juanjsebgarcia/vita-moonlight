@@ -103,25 +103,19 @@ static const special_name settings_special_names[] = {
  */
 
 #define lerp(value, from_max, to_max) ((((value*10) * (to_max*10))/(from_max*10))/10)
-static void deadzone_draw() {
-  int vertical = (WIDTH - config.back_deadzone.left - config.back_deadzone.right) / 2 + config.back_deadzone.left,
-      horizontal = (HEIGHT - config.back_deadzone.top - config.back_deadzone.bottom) / 2 + config.back_deadzone.top;
-
-  vita2d_draw_rectangle(
-      config.back_deadzone.left,
-      config.back_deadzone.top,
-      WIDTH - config.back_deadzone.right - config.back_deadzone.left,
-      HEIGHT - config.back_deadzone.bottom - config.back_deadzone.top,
-      0x3000ff00
-      );
-
-  vita2d_draw_line(vertical, config.back_deadzone.top, vertical, HEIGHT - config.back_deadzone.bottom, 0xffffffff);
-  vita2d_draw_line(config.back_deadzone.left, horizontal, WIDTH - config.back_deadzone.right, horizontal, 0xffffffff);
+// The active area and the fingers inside it, read from the rear touchpad
+static void deadzone_update(menu_view *view) {
+  static deadzone_view zone;
+  zone.top = config.back_deadzone.top;
+  zone.right = config.back_deadzone.right;
+  zone.bottom = config.back_deadzone.bottom;
+  zone.left = config.back_deadzone.left;
+  zone.touch_count = 0;
 
   SceTouchData touch_data;
   sceTouchPeek(SCE_TOUCH_PORT_BACK, &touch_data, 1);
 
-  for (int i = 0; i < touch_data.reportNum; i++) {
+  for (int i = 0; i < touch_data.reportNum && zone.touch_count < DEADZONE_MAX_TOUCHES; i++) {
     int x = lerp(touch_data.report[i].x, 1919, 960);
     int y = lerp(touch_data.report[i].y, 1087, 544);
     if (x < config.back_deadzone.left || x > WIDTH - config.back_deadzone.right)
@@ -130,8 +124,11 @@ static void deadzone_draw() {
     if (y < config.back_deadzone.top || y > HEIGHT - config.back_deadzone.bottom)
       continue;
 
-    vita2d_draw_fill_circle(x, y, 30, 0xffffffff);
+    zone.touches[zone.touch_count].x = x;
+    zone.touches[zone.touch_count].y = y;
+    zone.touch_count++;
   }
+  view->deadzone = &zone;
 }
 
 static int deadzone_loop(int cursor, void *context, const input_data *input) {
@@ -172,16 +169,16 @@ static int deadzone_settings_menu() {
   menu_entry menu[16];
   int idx = 0;
   // In the order deadzone_loop adjusts them (it used to label 1 and 3 the wrong way round)
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_TOP), .disabled = false, .id = 0, .adjustable = true };
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_RIGHT), .disabled = false, .id = 1, .adjustable = true };
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_BOTTOM), .disabled = false, .id = 2, .adjustable = true };
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_LEFT), .disabled = false, .id = 3, .adjustable = true };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_TOP), .disabled = false, .id = 0, .adjustable = true, .kind = MENU_ROW_CHOICE };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_RIGHT), .disabled = false, .id = 1, .adjustable = true, .kind = MENU_ROW_CHOICE };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_BOTTOM), .disabled = false, .id = 2, .adjustable = true, .kind = MENU_ROW_CHOICE };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_DEADZONE_LEFT), .disabled = false, .id = 3, .adjustable = true, .kind = MENU_ROW_CHOICE };
 
-  menu_geom geom = make_geom_centered(250, 120);
-  geom.x = 50;
-  geom.y = 50;
-  geom.el = 25;
-  return display_menu(menu, idx, &geom, &deadzone_loop, NULL, &deadzone_draw, &menu);
+  static const menu_screen screen = {
+    .id = UI_SCREEN_DEADZONE,
+    .update = deadzone_update,
+  };
+  return display_menu(menu, idx, &screen, &deadzone_loop, NULL, &menu);
 }
 
 /*
@@ -259,15 +256,20 @@ static int select_special_key_menu(int *code) {
     menu[idx++] = (menu_entry) {
       .id = id,
       .name = malloc(sizeof(char) * 256),
-      .disabled = (id >= INPUT_TYPE_DEF_NAME)
+      .disabled = (id >= INPUT_TYPE_DEF_NAME),
+      .kind = id >= INPUT_TYPE_DEF_NAME ? MENU_ROW_HEADER : MENU_ROW_PLAIN,
     };
     special_keys_name(id, menu[idx-1].name);
   }
 
   menu[idx++] = (menu_entry) { .name = "", .disabled = true, .separator = true };
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_ENTER_MANUALLY), .id = SETTINGS_SELECT_SPECIAL_KEY_MANUAL };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_ENTER_MANUALLY), .id = SETTINGS_SELECT_SPECIAL_KEY_MANUAL, .kind = MENU_ROW_ACTION };
 
-  int return_code = display_menu(menu, idx, NULL, &select_special_key_loop, NULL, NULL, code);
+  menu_screen screen = {
+    .id = UI_SCREEN_SPECIAL_KEY_LIST,
+    .title = tr(STR_SET_SPECIAL_KEYS),
+  };
+  int return_code = display_menu(menu, idx, &screen, &select_special_key_loop, NULL, code);
   for (int i = 0; i < sizeof(settings_special_codes) / sizeof(int); i++) {
     free(menu[i].name);
   }
@@ -327,63 +329,41 @@ static int special_keys_loop(int id, void *context, const input_data *input) {
   return 0;
 }
 
-static void special_keys_draw() {
-  int special_offset = config.special_keys.offset,
-      special_size = config.special_keys.size;
-
-  unsigned int color = 0xff006000;
-
-  for (int i = TOUCHSEC_SPECIAL_NW; i <= TOUCHSEC_SPECIAL_SE; i++) {
-    switch (i) {
-      case TOUCHSEC_SPECIAL_SW:
-        vita2d_draw_rectangle(
-            special_offset,
-            HEIGHT - special_size - special_offset,
-            special_size,
-            special_size,
-            color);
-        // fallthrough
-      case TOUCHSEC_SPECIAL_SE:
-        vita2d_draw_rectangle(
-            WIDTH - special_size - special_offset,
-            HEIGHT - special_size - special_offset,
-            special_size,
-            special_size,
-            color);
-        // fallthrough
-      case TOUCHSEC_SPECIAL_NW:
-        vita2d_draw_rectangle(
-            special_offset,
-            special_offset,
-            special_size,
-            special_size,
-            color);
-        // fallthrough
-      case TOUCHSEC_SPECIAL_NE:
-        vita2d_draw_rectangle(
-            WIDTH - special_size - special_offset,
-            special_offset,
-            special_size,
-            special_size,
-            color);
+// The corners' size and place, and which one's row is selected
+static void special_keys_update(menu_view *view) {
+  static special_keys_view keys;
+  keys.offset = config.special_keys.offset;
+  keys.size = config.special_keys.size;
+  keys.focused = -1;
+  if (view->cursor_row < view->row_count) {
+    switch (view->rows[view->cursor_row].id) {
+      case TOUCHSEC_SPECIAL_NW: keys.focused = 0; break;
+      case TOUCHSEC_SPECIAL_NE: keys.focused = 1; break;
+      case TOUCHSEC_SPECIAL_SW: keys.focused = 2; break;
+      case TOUCHSEC_SPECIAL_SE: keys.focused = 3; break;
     }
   }
-
+  view->special_keys = &keys;
 }
 
 static int special_keys_menu() {
   menu_entry menu[16];
   int idx = 0;
 
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_OFFSET), .id = SETTINGS_SPECIAL_KEYS_OFFSET };
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_SIZE), .id = SETTINGS_SPECIAL_KEYS_SIZE };
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_ASSIGNMENTS), .disabled = true, .separator = false };
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_TOP_LEFT), .id = TOUCHSEC_SPECIAL_NW };
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_TOP_RIGHT), .id = TOUCHSEC_SPECIAL_NE };
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_BOTTOM_LEFT), .id = TOUCHSEC_SPECIAL_SW };
-  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_BOTTOM_RIGHT), .id = TOUCHSEC_SPECIAL_SE };
+  // Offset and size respond to left and right, though they aren't marked adjustable
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_OFFSET), .id = SETTINGS_SPECIAL_KEYS_OFFSET, .kind = MENU_ROW_CHOICE };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_SIZE), .id = SETTINGS_SPECIAL_KEYS_SIZE, .kind = MENU_ROW_CHOICE };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_ASSIGNMENTS), .disabled = true, .separator = false, .kind = MENU_ROW_HEADER };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_TOP_LEFT), .id = TOUCHSEC_SPECIAL_NW, .kind = MENU_ROW_ACTION };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_TOP_RIGHT), .id = TOUCHSEC_SPECIAL_NE, .kind = MENU_ROW_ACTION };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_BOTTOM_LEFT), .id = TOUCHSEC_SPECIAL_SW, .kind = MENU_ROW_ACTION };
+  menu[idx++] = (menu_entry) { .name = (char *)tr(STR_SPECIAL_BOTTOM_RIGHT), .id = TOUCHSEC_SPECIAL_SE, .kind = MENU_ROW_ACTION };
 
-  return display_menu(menu, idx, NULL, &special_keys_loop, NULL, &special_keys_draw, &menu);
+  static const menu_screen screen = {
+    .id = UI_SCREEN_SPECIAL_KEYS,
+    .update = special_keys_update,
+  };
+  return display_menu(menu, idx, &screen, &special_keys_loop, NULL, &menu);
 }
 
 
@@ -418,12 +398,26 @@ static void move_tab(int step) {
   } while (!settings_tab_shown(settings_tab));
 }
 
+// What kind of row a setting makes
+static menu_row_kind row_kind(const setting_def *setting) {
+  switch (setting->kind) {
+    case SETTING_TOGGLE: return setting->is_on != NULL ? MENU_ROW_TOGGLE : MENU_ROW_CYCLE;
+    case SETTING_CHOICE: return MENU_ROW_CHOICE;
+    case SETTING_ACTION: return MENU_ROW_ACTION;
+    case SETTING_INFO: return MENU_ROW_INFO;
+    case SETTING_NOTE: return MENU_ROW_NOTE;
+    case SETTING_HEADER: return MENU_ROW_HEADER;
+  }
+  return MENU_ROW_PLAIN;
+}
+
 // Fills in every row's value and whether it can be selected, from the settings
 static void refresh_rows(void) {
   for (int i = 0; i < settings_row_count; i++) {
     menu_entry *row = &settings_rows[i];
     const setting_def *setting = &SETTINGS[row->id];
     setting_value(setting, row->subname, sizeof(row->subname));
+    row->on = setting->is_on != NULL && setting->is_on();
     bool selectable = setting->kind != SETTING_NOTE && setting->kind != SETTING_HEADER;
     row->disabled = !selectable || (setting->available != NULL && !setting->available());
   }
@@ -521,46 +515,45 @@ static int run_action(const setting_def *setting) {
   return 0;
 }
 
-// Drawn around the settings box: the tabs above it, and the help hint below,
-// so the help is discoverable without taking a row
-static void settings_draw(void) {
-  const char *hint = tr(STR_HINT_HELP);
-  const int glyph_size = 14;
-  const int gap = 6;
-
-  // The tab bar, above the box on the left, level with the clock on the right
-  const int tab_spacing = 16;
-  int tab_x = 480 - 300;
-  int tab_y = 272 - 200 - 10;
-  tab_x += draw_button_glyph(BUTTON_GLYPH_L, tab_x, tab_y, glyph_size) + gap * 2;
+// Around the rows: the tabs, the help hint (so the help is discoverable
+// without taking a row), and the selected row's help for themes that show it
+static void settings_update(menu_view *view) {
+  static ui_tab tabs[SETTINGS_TAB_COUNT];
+  static tabs_view tab_bar;
+  tab_bar.count = 0;
   for (int tab = 0; tab < SETTINGS_TAB_COUNT; tab++) {
     if (!settings_tab_shown(tab)) {
       continue;
     }
-    unsigned int colour = tab == settings_tab ? 0xff00ff00 : 0xffaaaaaa;
-    draw_rich_text(tab_x, tab_y, colour, 18, tr(SETTINGS_TAB_NAMES[tab]));
-    tab_x += rich_text_width(18, tr(SETTINGS_TAB_NAMES[tab])) + tab_spacing;
+    tabs[tab_bar.count++] = (ui_tab){tr(SETTINGS_TAB_NAMES[tab]), tab == settings_tab};
   }
-  draw_button_glyph(BUTTON_GLYPH_R, tab_x - tab_spacing + gap * 2, tab_y, glyph_size);
+  tab_bar.tabs = tabs;
+  view->tabs = &tab_bar;
+  view->hint = (ui_hint){BUTTON_GLYPH_TRIANGLE, tr(STR_HINT_HELP)};
 
-  int width = glyph_size + gap + rich_text_width(18, hint);
-  // The settings menu uses the default 600x400 box, centred on the 960x544 screen
-  int x = 480 + 300 - width;
-  int y = 272 + 200 + 26;
-  x += draw_button_glyph(BUTTON_GLYPH_TRIANGLE, x, y, glyph_size) + gap;
-  draw_rich_text(x, y, 0xffffffff, 18, hint);
+  // Written again only when the selection moves to another setting, or the
+  // language changes
+  static char help[1024];
+  static const setting_def *helped = NULL;
+  static const i18n_language *helped_language = NULL;
+  if (view->cursor_row < view->row_count) {
+    const setting_def *setting = &SETTINGS[view->rows[view->cursor_row].id];
+    if (setting != helped || i18n_current() != helped_language) {
+      setting_help(setting, help, sizeof(help));
+      helped = setting;
+      helped_language = i18n_current();
+    }
+    view->help = help;
+  } else {
+    view->help = NULL;
+  }
 }
 
 static int settings_loop(int id, void *context, const input_data *input) {
   const setting_def *setting = &SETTINGS[id];
 
   if (ui_pressed(input, UI_INTENT_HELP)) {
-    // read_buttons() only reports newly pressed buttons, so check L and R are held directly
-    SceCtrlData pad = {0};
-    sceCtrlPeekBufferPositive(0, &pad, 1);
-    // The menus' sceCtrlPeekBufferPositive reports the shoulder buttons on the
-    // L2/R2 bits (the old LTRIGGER/RTRIGGER names), so accept either pair
-    if ((pad.buttons & (SCE_CTRL_L1 | SCE_CTRL_L2)) && (pad.buttons & (SCE_CTRL_R1 | SCE_CTRL_R2))) {
+    if (ui_shoulders_held()) {
       config.developer_mode = !config.developer_mode;
       ui_settings_save_config();
       display_error("%s", tr(config.developer_mode ? STR_SET_DEVELOPER_SHOWN : STR_SET_DEVELOPER_HIDDEN));
@@ -676,10 +669,15 @@ int ui_settings_menu() {
         .separator = setting->kind == SETTING_HEADER,
         .adjustable = setting->kind == SETTING_CHOICE,
         .status = (setting->flags & SETTING_WARNING) ? MENU_STATUS_WARNING : MENU_STATUS_NONE,
+        .kind = row_kind(setting),
       };
     }
     refresh_rows();
-    ret = display_menu(menu, settings_row_count, NULL, &settings_loop, &settings_back, &settings_draw, NULL);
+    static const menu_screen screen = {
+      .id = UI_SCREEN_SETTINGS,
+      .update = settings_update,
+    };
+    ret = display_menu(menu, settings_row_count, &screen, &settings_loop, &settings_back, NULL);
   } while (ret == SETTINGS_REBUILD);
   settings_rows = NULL;
   settings_row_count = 0;

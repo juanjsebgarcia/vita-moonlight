@@ -131,7 +131,7 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
               (uint32_t)rand() % 10, (uint32_t)rand() % 10, (uint32_t)rand() % 10, (uint32_t)rand() % 10);
       char pin_message[256];
       TR_FMT(pin_message, sizeof(pin_message), STR_CONNECT_ENTER_PIN, pin);
-      flash_message("%s", pin_message);
+      flash_message_pin(pin, pin_message);
       vita_debug_log("[UI] gs_pair: calling gs_pair at %u", (unsigned)time(NULL));
       ret = gs_pair(&server, &pin[0]);
       vita_debug_log("[UI] gs_pair: returned ret=%d at %u", ret, (unsigned)time(NULL));
@@ -318,7 +318,7 @@ int ui_connected_menu() {
 
 #define MENU_CATEGORY(NAME) \
   do { \
-    menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true }; \
+    menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true, .kind = MENU_ROW_HEADER }; \
     idx++; \
   } while (0)
 #define MENU_ENTRY(ID, NAME) \
@@ -326,11 +326,19 @@ int ui_connected_menu() {
     menu[idx] = (menu_entry) { .name = (NAME), .id = (ID) }; \
     idx++; \
   } while(0)
+#define MENU_ACTION(ID, NAME, DANGER) \
+  do { \
+    menu[idx] = (menu_entry) { .name = (NAME), .id = (ID), .kind = MENU_ROW_ACTION, .danger = (DANGER) }; \
+    idx++; \
+  } while(0)
 #define MENU_MESSAGE(MESSAGE) \
   do { \
     menu[idx] = (menu_entry) { .name = (MESSAGE), .disabled = true }; \
     idx++; \
   } while(0)
+
+  // The app streaming now, if one is, for the theme
+  char running_app[256] = "";
 
   //header
   //MENU
@@ -353,9 +361,9 @@ int ui_connected_menu() {
   if (!server.paired) {
     // pairing
     MENU_CATEGORY((char *)tr(STR_CONNECTED_NOT_PAIRED));
-    MENU_ENTRY(CONNECT_PAIRUNPAIR, (char *)tr(STR_CONNECTED_PAIR));
+    MENU_ACTION(CONNECT_PAIRUNPAIR, (char *)tr(STR_CONNECTED_PAIR), false);
 
-    MENU_ENTRY(CONNECT_DISCONNECT, (char *)tr(STR_CONNECTED_DISCONNECT));
+    MENU_ACTION(CONNECT_DISCONNECT, (char *)tr(STR_CONNECTED_DISCONNECT), true);
   } else {
     // current stream
     if (server.currentGame != 0) {
@@ -365,12 +373,13 @@ int ui_connected_menu() {
       if (!get_app_name(server_applist, server.currentGame, current_appname)) {
         snprintf(current_appname, sizeof(current_appname), "%s", tr(STR_CONNECTED_UNKNOWN_APP));
       }
+      snprintf(running_app, sizeof(running_app), "%s", current_appname);
       TR_FMT(current_status, sizeof(current_status), STR_CONNECTED_STREAMING, current_appname);
 
       MENU_CATEGORY(current_status);
-      MENU_ENTRY(server.currentGame, (char *)tr(STR_CONNECTED_RESUME));
-      MENU_ENTRY(CONNECT_SETTINGS, (char *)tr(STR_MAIN_SETTINGS));
-      MENU_ENTRY(CONNECT_QUITAPP, (char *)tr(STR_CONNECTED_QUIT_APP));
+      MENU_ACTION(server.currentGame, (char *)tr(STR_CONNECTED_RESUME), false);
+      MENU_ACTION(CONNECT_SETTINGS, (char *)tr(STR_MAIN_SETTINGS), false);
+      MENU_ACTION(CONNECT_QUITAPP, (char *)tr(STR_CONNECTED_QUIT_APP), true);
     }
 
     // pairing
@@ -381,9 +390,9 @@ int ui_connected_menu() {
 
     // While streaming, Settings is listed with Resume and Quit instead
     if (server.currentGame == 0) {
-      MENU_ENTRY(CONNECT_SETTINGS, (char *)tr(STR_MAIN_SETTINGS));
+      MENU_ACTION(CONNECT_SETTINGS, (char *)tr(STR_MAIN_SETTINGS), false);
     }
-    MENU_ENTRY(CONNECT_DISCONNECT, (char *)tr(STR_CONNECTED_DISCONNECT));
+    MENU_ACTION(CONNECT_DISCONNECT, (char *)tr(STR_CONNECTED_DISCONNECT), true);
 
     // app list
     if (boxart) {
@@ -407,16 +416,29 @@ int ui_connected_menu() {
     }
   }
 
+  connected_view connected = {
+    .host = session_server_name(),
+    .address = server.serverInfo.address,
+    .port = port_text,
+    .gpu = server.gpuType ? server.gpuType : "",
+    .gfe_version = server.serverInfo.serverInfoGfeVersion ? server.serverInfo.serverInfoGfeVersion : "",
+    .running_app = running_app[0] ? running_app : NULL,
+    .paired = server.paired,
+    .covers = boxart,
+  };
+  menu_screen screen = {
+    .id = UI_SCREEN_CONNECTED,
+    .title = connected.host,
+    .update = boxart ? ui_boxart_update : NULL,
+    .connected = &connected,
+  };
+
   if (!boxart) {
-    return display_menu(menu, idx, NULL, &ui_connect_loop, NULL, NULL, &menu);
+    return display_menu(menu, idx, &screen, &ui_connect_loop, NULL, &menu);
   }
 
-  // The menu sits at the top, as tall as its rows, with the covers beneath it
-  menu_geom geom = make_geom_centered(600, (idx + 1) * 24);
-  geom.y = 30;
-  geom.total_y = geom.y + geom.height;
   ui_boxart_open(&server, session_server_name(), server_applist, server.currentGame);
-  ret = display_menu(menu, idx, &geom, &ui_connect_loop, NULL, &ui_boxart_draw, &menu);
+  ret = display_menu(menu, idx, &screen, &ui_connect_loop, NULL, &menu);
   // display_menu has finished its last frame, so the textures can be freed
   ui_boxart_close();
   return ret;
@@ -497,7 +519,7 @@ device_info_t* ui_connect_and_pairing(device_info_t *info) {
           (int)rand() % 10, (int)rand() % 10, (int)rand() % 10, (int)rand() % 10);
   char pin_message[256];
   TR_FMT(pin_message, sizeof(pin_message), STR_CONNECT_ENTER_PIN, pin);
-  flash_message("%s", pin_message);
+  flash_message_pin(pin, pin_message);
 
   ret = gs_pair(&server, pin);
   if (ret != GS_OK) {
