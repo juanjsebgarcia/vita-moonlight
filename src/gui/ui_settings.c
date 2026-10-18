@@ -514,7 +514,17 @@ static int run_action(const setting_def *setting) {
       }
       config_reset_settings();
       // Applied as at launch, since every setting may have changed
+      const i18n_language *language = i18n_current();
       i18n_use(config.language);
+      if (i18n_current() != language) {
+        // Before the done message, so it's drawn with the new language's
+        // fonts. The frame in progress is finished first, as the menu loop
+        // below does for a system language change, since it may still use
+        // glyphs that changing the fonts would free.
+        ui_end();
+        guilib_language_changed();
+        ui_start();
+      }
       settings_sync_bitrate();
       touchabsolute_enable(config.touchscreen_mode == 2);
       keyboardsystem_set_layout((KeyboardLayout)config.keyboard_layout);
