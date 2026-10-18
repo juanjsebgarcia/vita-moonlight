@@ -98,9 +98,14 @@ take_guard() {
   local i
   for (( i = 0; i < 50; i++ )); do
     mkdir "$GUARD" 2>/dev/null && return 0
-    # It's only ever held for a moment, so one over a minute old was left
-    # by a process killed while holding it
-    [ -n "$(find "$GUARD" -maxdepth 0 -mmin +1 2>/dev/null)" ] && rmdir "$GUARD" 2>/dev/null
+    # It's only ever held for a few milliseconds, so one over a minute old
+    # was left by a process killed while holding it. Renamed away before it's
+    # removed, so of several waiters that see it, only one removes it.
+    if [ -n "$(find "$GUARD" -maxdepth 0 -mmin +1 2>/dev/null)" ] \
+        && mv "$GUARD" "$GUARD.stale.$$" 2>/dev/null; then
+      rm -rf "$GUARD.stale.$$"
+      continue
+    fi
     sleep 0.1
   done
   return 1
@@ -125,11 +130,15 @@ abandoned() {
 }
 
 release() {
-  local guarded=""
-  take_guard && guarded=1
+  if ! take_guard; then
+    # Removing it unguarded could remove someone else's; left as it is, it
+    # counts as abandoned once the heartbeat has stopped
+    echo "warning: couldn't release the Vita lock; others can take it in $(( STALE_SECONDS / 60 )) minutes" >&2
+    return
+  fi
   # Only if it's still ours: it may have been broken as abandoned
   ours && rm -rf "$LOCK"
-  [ -n "$guarded" ] && drop_guard
+  drop_guard
 }
 
 announced=""
