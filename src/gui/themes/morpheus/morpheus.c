@@ -6,6 +6,7 @@
 // of the stream overlays. It shares no code with Homebrew.
 
 #include "mph.h"
+#include "mph_screen_settings.h"
 
 #include "../../guilib.h"
 #include "../../text.h"
@@ -153,9 +154,23 @@ static const char *screen_title(const menu_view *view) {
   return "Moonlight";
 }
 
+float mph_screen_enter(void) {
+  if (screen.animate) {
+    float k = mph_ease_eval(MPH_EASE_OUT, (mph_time() - screen.t0) / MPH_M_ENTER);
+    mph_transform(k, 1.0f, 0, 0, 18.0f * (1.0f - k), 0);
+  }
+  return screen.t0;
+}
+
 static void mph_draw_menu(const menu_view *view) {
   mph_frame_begin();
   track_screen(view->screen->id);
+  switch (view->screen->id) {
+    case UI_SCREEN_SETTINGS: mph_screen_settings_draw(view); return;
+    case UI_SCREEN_RECOMMENDED: mph_screen_recommended_draw(view); return;
+    case UI_SCREEN_KEYBOARD_LAYOUT: mph_screen_keyboard_draw(view); return;
+    default: break;
+  }
   int n = build_rows(view);
   mph_rect rect = list_rect(view);
   float target = mph_list_target(rect, rows, n, view->cursor_row, view->scroll);
@@ -183,6 +198,12 @@ static void mph_draw_menu(const menu_view *view) {
 }
 
 static void mph_menu_follow(menu_view *view) {
+  switch (view->screen->id) {
+    case UI_SCREEN_SETTINGS: mph_screen_settings_follow(view); return;
+    case UI_SCREEN_RECOMMENDED: mph_screen_recommended_follow(view); return;
+    case UI_SCREEN_KEYBOARD_LAYOUT: mph_screen_keyboard_follow(view); return;
+    default: break;
+  }
   int n = build_rows(view);
   view->scroll = (int)roundf(mph_list_target(list_rect(view), rows, n, view->cursor_row, view->scroll));
 }
