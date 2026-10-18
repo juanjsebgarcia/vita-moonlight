@@ -28,6 +28,7 @@
 #include "../config.h"
 #include "../connection.h"
 #include "../device.h"
+#include "../hardware.h"
 #include "../netcount.h"
 #include "../util.h"
 
@@ -35,7 +36,6 @@
 
 #include <stdbool.h>
 #include <psp2/ctrl.h>
-#include <psp2/kernel/sysmem.h>
 #include <psp2/kernel/threadmgr.h>
 #include <stdio.h>
 #include <string.h>
@@ -109,11 +109,6 @@ bool ui_recommended_take_restart(void) {
   return requested;
 }
 
-// A PS TV runs off the mains and usually sits on Ethernet
-static bool is_pstv(void) {
-  return config.model == SCE_KERNEL_MODEL_VITATV;
-}
-
 // The values, from benchmarks in docs/DECODE.md (with the out-of-order packet
 // fix in place):
 // - Balanced, good connection: 720p at 20 Mbps was sharp and smooth by the
@@ -132,7 +127,7 @@ static bool is_pstv(void) {
 static preset choose(int connection) {
   int fps = config.stream.fps == 50 || config.stream.fps == 60 ? config.stream.fps : 60;
   preset p = {960, 540, fps, 10000, true};
-  if (priority == PRIORITY_BATTERY && !is_pstv()) {
+  if (priority == PRIORITY_BATTERY && vita_has_battery()) {
     p.fps = 30;
     p.bitrate_kbps = 5000;
     p.boost_clocks = false;
@@ -440,7 +435,7 @@ static int auto_detect(void) {
 static const char *help_text(int row) {
   switch (row) {
     case ROW_PRIORITY:
-      if (is_pstv()) {
+      if (!vita_has_battery()) {
         return "Balanced gives the sharpest picture a connection can carry smoothly: 1280x720 at "
                "20 Mbps on a good one. Lowest delay uses 960x540 at 10 Mbps, which cuts the delay by "
                "a few milliseconds, more on a weaker connection. Use left and right to change.";
@@ -492,7 +487,7 @@ static int menu_loop(int id, void *context, const input_data *input) {
     bool right = ui_pressed(input, UI_INTENT_RIGHT | UI_INTENT_CONFIRM);
     if (left || right) {
       // No battery on a PS TV, so no battery option
-      int count = is_pstv() ? PRIORITY_BATTERY : PRIORITY_COUNT;
+      int count = !vita_has_battery() ? PRIORITY_BATTERY : PRIORITY_COUNT;
       priority = (priority + (left ? count - 1 : 1)) % count;
       refresh(menu);
     }
@@ -518,7 +513,7 @@ static int menu_loop(int id, void *context, const input_data *input) {
 int ui_recommended_settings_menu(void) {
   menu_entry menu[ROW_COUNT];
   memset(menu, 0, sizeof(menu));
-  if (is_pstv() && priority == PRIORITY_BATTERY) {
+  if (!vita_has_battery() && priority == PRIORITY_BATTERY) {
     priority = PRIORITY_BALANCED;
   }
   menu[ROW_NOW] = (menu_entry) { .name = "", .disabled = true };

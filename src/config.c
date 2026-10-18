@@ -33,7 +33,6 @@
 
 extern char* strdup(const char*);
 
-#include <psp2/kernel/sysmem.h>
 
 #define MOONLIGHT_PATH "/moonlight"
 #define USER_PATHS "."
@@ -132,6 +131,8 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->input_sync_to_controller = BOOL(value);
     } else if (strcmp(name, "developer_mode") == 0) {
       config->developer_mode = BOOL(value);
+    } else if (strcmp(name, "force_ps_tv") == 0) {
+      config->force_ps_tv = BOOL(value);
     } else if (strcmp(name, "bench_seconds") == 0) {
       config->bench_seconds = INT(value);
     } else if (strcmp(name, "bench_app") == 0) {
@@ -247,6 +248,8 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_bool(fd, "direct_decode", config->direct_decode);
   write_config_bool(fd, "input_sync_to_controller", config->input_sync_to_controller);
   write_config_bool(fd, "developer_mode", config->developer_mode);
+  if (config->force_ps_tv)
+    write_config_bool(fd, "force_ps_tv", config->force_ps_tv);
   write_config_int(fd, "bench_seconds", config->bench_seconds);
   write_config_string(fd, "bench_app", config->bench_app);
   write_config_string(fd, "bench_host", config->bench_host);
@@ -320,7 +323,6 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->stream.supportedVideoFormats = VIDEO_FORMAT_H264;
 
   config->platform = "vita";
-  config->model = sceKernelGetModelForCDialog();
   config->app = "Steam";
   config->action = NULL;
   config->address = NULL;
@@ -335,6 +337,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->direct_decode = false;
   config->input_sync_to_controller = true;
   config->developer_mode = false;
+  config->force_ps_tv = false;
   config->bench_seconds = BENCH_DEFAULT_SECONDS;
   config->bench_app = "Moonlight Bench";
   config->bench_host = "";

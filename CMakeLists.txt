@@ -76,6 +76,7 @@ add_executable(${PROJECT_NAME}.elf
 	src/ui_ops.c
 	src/devshot.c
 	src/util.c
+	src/hardware.c
 	src/device.c
 	src/check_dir.c
 	src/wake_on_lan.c
@@ -150,6 +151,8 @@ target_link_libraries(${PROJECT_NAME}.elf
 	-lSceIme_stub
 	-lSceMotion_stub
 	-lSceAppUtil_stub
+	# Weak: the app still starts if SceVshBridge is missing (src/hardware.c)
+	-lSceVshBridge_stub_weak
 	-lvita2d
 	-lSceGxm_stub
 	-lScePgf_stub
