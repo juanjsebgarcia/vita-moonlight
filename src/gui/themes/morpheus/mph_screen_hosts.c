@@ -115,12 +115,15 @@ static int main_layout(const menu_view *view) {
     bool named = e->name != NULL && e->name[0] != '\0';
     item *it = &items[i];
     *it = (item){.kind = IT_SKIP, .y = y, .icon = -1};
-    if (e->id == MAIN_MENU_SETTINGS || e->id == MAIN_MENU_QUIT) {
-      *it = (item){IT_ROW, y, HOME_ROW_H, e->id == MAIN_MENU_SETTINGS ? MPH_ICON_GEAR_18 : MPH_ICON_POWER_18};
+    if (e->id == MAIN_MENU_SETTINGS || e->id == MAIN_MENU_CONTROLS || e->id == MAIN_MENU_QUIT) {
+      int icon = e->id == MAIN_MENU_SETTINGS   ? MPH_ICON_GEAR_18
+                 : e->id == MAIN_MENU_CONTROLS ? MPH_ICON_DPAD_ALL_18
+                                               : MPH_ICON_POWER_18;
+      *it = (item){IT_ROW, y, HOME_ROW_H, icon};
       y += HOME_ROW_H;
     } else if (connected) {
-      // The current connection is drawn on the left; only Settings and Quit
-      // stay in the column
+      // The current connection is drawn on the left; only Settings, Controls
+      // & shortcuts and Quit stay in the column
       continue;
     } else if (e->separator && named) {
       *it = (item){IT_CATEGORY, y, HOME_CATEGORY_H, -1};

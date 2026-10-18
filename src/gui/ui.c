@@ -6,6 +6,7 @@
 #include "theme.h"
 
 #include "ui_settings.h"
+#include "ui_controls.h"
 #include "ui_connect.h"
 #include "ui_device.h"
 #include "ui_check.h"
@@ -351,8 +352,11 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
     start_host_scan();
     g_host_status_changed = 0; // Limpiar flag para evitar refresco doble
     first_scan_pending = 0;
+    display_menu_select(cursor);
     return 2; // Forzar refresco del menú
   }
+  // A rebuild for the host scan keeps the cursor on the row it was on (a
+  // host, or the row the player came back to, such as Controls & shortcuts)
   // Refresco automático solo una vez tras el primer escaneo, pero NO si hay IP cambiada
   if (first_scan_pending && g_host_status_changed && g_host_scan_thread_status != 1) {
     // Si hay IP cambiada, no forzar refresco/reinicio del menú
@@ -368,6 +372,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
       vita_debug_log("[UI] Refresco automático tras primer escaneo\n");
       g_host_status_changed = 0;
       first_scan_pending = 0;
+      display_menu_select(cursor);
       return 2;
     }
     // Si hay IP cambiada, solo limpiar flags pero NO reiniciar menú
@@ -378,6 +383,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
   if (g_host_status_changed && g_host_scan_thread_status == 1) {
     vita_debug_log("[UI] Refrescando menú por cambio de estado de host\n");
     g_host_status_changed = 0;
+    display_menu_select(cursor);
     return 2; // Forzar refresco del menú
   }
 
@@ -462,6 +468,14 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
       // to a PC, and the menu should offer to resume that connection
       exit_menu = 2;
       break;
+    case MAIN_MENU_CONTROLS:
+      vita_debug_log("[UI] Selected: Controls & shortcuts");
+      stop_host_scan();
+      ui_controls_menu();
+      // Rebuilt, which restarts the host scan, with the cursor back here
+      display_menu_select(MAIN_MENU_CONTROLS);
+      exit_menu = 2;
+      break;
     case MAIN_MENU_QUIT:
       vita_debug_log("[UI] Seleccionado: Quit");
       vita_debug_log("[UI] Deteniendo escaneo de hosts antes de salir");
@@ -509,7 +523,9 @@ int ui_main_menu() {
     stop_host_scan(); // Detener escaneo si por alguna razón sigue activo
   }
 
-  menu_entry menu[16];
+  // 9 rows plus the paired PCs (one more than before Controls & shortcuts,
+  // so it still holds 7)
+  menu_entry menu[17];
   int idx = 0;
 
 #define MENU_TITLE(NAME) \
@@ -598,6 +614,7 @@ int ui_main_menu() {
 
   MENU_SEPARATOR("");
   MENU_ENTRY(MAIN_MENU_SETTINGS, (char *)tr(STR_MAIN_SETTINGS), false);
+  MENU_ENTRY(MAIN_MENU_CONTROLS, (char *)tr(STR_MAIN_CONTROLS), false);
   MENU_ENTRY(MAIN_MENU_QUIT, (char *)tr(STR_MAIN_QUIT), false);
 
   // Solo iniciar escaneo si NO hay cambio de IP pendiente y no se ha hecho ya

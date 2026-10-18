@@ -185,7 +185,7 @@ static int deadzone_settings_menu() {
  * Special keys
  */
 
-static void special_keys_name(int ord, char *text) {
+void ui_settings_special_key_name(int ord, char *text) {
   if (ord == 0) {
     strcpy(text, tr(STR_SPECIAL_NONE));
     return;
@@ -259,7 +259,7 @@ static int select_special_key_menu(int *code) {
       .disabled = (id >= INPUT_TYPE_DEF_NAME),
       .kind = id >= INPUT_TYPE_DEF_NAME ? MENU_ROW_HEADER : MENU_ROW_PLAIN,
     };
-    special_keys_name(id, menu[idx-1].name);
+    ui_settings_special_key_name(id, menu[idx-1].name);
   }
 
   menu[idx++] = (menu_entry) { .name = "", .disabled = true, .separator = true };
@@ -321,10 +321,10 @@ static int special_keys_loop(int id, void *context, const input_data *input) {
   sprintf(menu[idx++].subname, "%d", config.special_keys.size);
 
   idx++;
-  special_keys_name(config.special_keys.nw, menu[idx++].subname);
-  special_keys_name(config.special_keys.ne, menu[idx++].subname);
-  special_keys_name(config.special_keys.sw, menu[idx++].subname);
-  special_keys_name(config.special_keys.se, menu[idx++].subname);
+  ui_settings_special_key_name(config.special_keys.nw, menu[idx++].subname);
+  ui_settings_special_key_name(config.special_keys.ne, menu[idx++].subname);
+  ui_settings_special_key_name(config.special_keys.sw, menu[idx++].subname);
+  ui_settings_special_key_name(config.special_keys.se, menu[idx++].subname);
 
   return 0;
 }
