@@ -161,19 +161,38 @@ over at the next frame instead of dropping glyphs.
    wider than a 1 px fringe, measurements cached by `stats_view.version`.
 9. Report the HUD's numbers for each screen you build.
 
-Measured on the Vita (2026-10-18, developer HUD, averages over a second):
+Measured on the Vita (2026-10-18, developer HUD, averages over a second; the
+stream overlays with the `overlay poor` developer sample, which logs their
+drawing time):
 
-| Screen | CPU | Draws | Vertices | Glyphs | Pool |
+| Screen | CPU (avg) | Draws | Vertices | Glyphs | Pool |
 |---|---|---|---|---|---|
-| Host list (generic layout) | 0.40 ms | 9 | 2,700 | 136 | 80 KB |
-| PC menu (generic layout) | 0.56 ms | 14 | 4,100 | 184 | 86 KB |
-| Settings, Stream tab, with the help card | 1.23 ms | 25 | 8,850 | 576 | 196 KB |
-| Confirm dialog | 0.25 ms | 11 | 2,300 | 32 | 68 KB |
-| Help dialog | 0.45 ms | 8 | 4,100 | 191 | 86 KB |
-| Gallery (every primitive) | 2.29 ms | 65 | 22,200 | 331 | 430 KB |
+| S1 Host list | 0.55 ms | 10 | 4,914 | 127 | 143 KB |
+| S2 PC menu | 0.58 ms | 15 | 3,900 | 160 | 84 KB |
+| S3 Find a PC | 0.52 ms | 13 | 5,784 | 66 | 136 KB |
+| S4 Connected PC, box art, a game running | 0.77 ms | 18 | 6,830 | 174 | 150 KB |
+| S4 Connected PC, box art, cover focused | 0.65 ms | 15 | 5,346 | 167 | 149 KB |
+| S4 Connected PC, text list | 0.56 ms | 15 | 4,062 | 177 | 85 KB |
+| S5 Settings, Stream tab, with the help card | 1.37 ms | 26 | 9,132 | 527 | 190 KB |
+| S5 Settings, Controls tab | 1.27 ms | 25 | 9,162 | 401 | 176 KB |
+| S6 Apply recommended settings | 1.17 ms | 18 | 7,884 | 481 | 185 KB |
+| S7 Touchscreen special keys | 0.72 ms | 13 | 5,244 | 167 | 148 KB |
+| S8 Choose a corner's key | 0.51 ms | 11 | 3,642 | 108 | 77 KB |
+| S9 Back touchscreen dead zone | 0.84 ms | 11 | 10,236 | 70 | 200 KB |
+| S10 Keyboard layout | 0.34 ms | 8 | 2,454 | 65 | 71 KB |
+| S11 Confirm (Spanish / Japanese) | 0.24 / 0.36 ms | 9 / 30 | 2,286 / 2,196 | 33 / 39 | 68 KB |
+| S11 Error, 20 lines | 0.44 ms | 6 | 3,156 | 240 | 92 KB |
+| S11 Flash, pairing PIN | 0.23 ms | 3 | 2,658 | 27 | 67 KB |
+| S11 Help | 0.46 ms | 7 | 4,080 | 190 | 86 KB |
+| S12 Stream overlays (video thread, 600 frames) | 0.23 ms avg, 0.46 ms max | | | | |
+
+Japanese text costs a draw call per character, since the system font draws
+it outside the batch.
 
 The budget is 4 ms CPU, 450 draws, 20k vertices and 700 KB of pool per menu
-frame. The frame interval stayed at 16.7 ms throughout.
+frame. The frame interval stayed at 16.7 ms on every screen but Find a PC
+(33.4 ms: the shared search loop rebuilds its menu every frame while nothing
+is found) and flash messages (`flash_message()` draws one frame per call).
 
 ## The developer HUD and the gallery
 
