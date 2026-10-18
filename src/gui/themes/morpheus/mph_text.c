@@ -732,7 +732,10 @@ const char *mph_upper(const char *s) {
  */
 
 static void warm_up(void) {
-  static const mph_type warm[] = {MPH_T_ROW, MPH_T_BTN, MPH_T_SMALL, MPH_T_LABEL, MPH_T_BODY_B, MPH_T_BODY};
+  // MONO and TAG too: the stream overlay draws them on the video thread, where
+  // loading a face and rasterising on the first frame showed as a 64 ms hitch
+  static const mph_type warm[] = {MPH_T_ROW,    MPH_T_BTN,  MPH_T_SMALL, MPH_T_LABEL,
+                                  MPH_T_BODY_B, MPH_T_BODY, MPH_T_MONO,  MPH_T_TAG};
   for (size_t i = 0; i < sizeof(warm) / sizeof(warm[0]); i++) {
     for (unsigned int c = 0x20; c < 0x7F; c++) {
       get_glyph(warm[i], c);
