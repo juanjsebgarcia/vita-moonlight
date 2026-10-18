@@ -47,6 +47,9 @@ default_lock() {
 }
 
 LOCK="${VITA_LOCK:-$(default_lock)}"
+# Without trailing slashes, so the guard ($LOCK.guard) sits beside the lock,
+# not inside it
+while [[ "$LOCK" == */ && "$LOCK" != / ]]; do LOCK="${LOCK%/}"; done
 STALE_SECONDS=1200
 WAIT_SECONDS=1800
 
