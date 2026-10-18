@@ -15,6 +15,7 @@
 #include "../util.h"
 #include "../device.h"
 #include "../debug.h"
+#include "../hosts.h"
 #include "../netcount.h"
 
 #include "client.h"
@@ -110,20 +111,21 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
     }
     case CONNECT_PAIRUNPAIR:
       if (server.paired) {
-        flash_message("%s", tr(STR_CONNECT_UNPAIRING));
-        ret = gs_unpair(&server);
-        if (ret == GS_OK) {
-          if (connection_terminate()) {
-            display_error("%s", tr(STR_CONNECT_RECONNECT_FAILED));
-            return 0;
-          }
-          return QUIT_RELOAD;
+        device_info_t *info = find_device(session_server_name());
+        if (info == NULL) {
+          return 0;
         }
-        char code[16], message[256];
-        snprintf(code, sizeof(code), "%d", ret);
-        TR_FMT(message, sizeof(message), STR_CONNECT_UNPAIR_FAILED, code);
-        display_error("%s", message);
-        return 0;
+        char ask[512];
+        TR_FMT(ask, sizeof(ask), STR_CONNECT_UNPAIR_ASK, device_label(info));
+        if (!display_confirm(ask)) {
+          flash_message("%s", tr(STR_HOST_UNPAIR_CANCELLED));
+          return 0;
+        }
+        // The cover downloads share the connection that's about to end
+        ui_boxart_stop_loading();
+        // Back to the list of PCs, which no longer has this one
+        ui_connect_forget_host(info);
+        return 1;
       }
 
       char pin[5];
@@ -385,12 +387,12 @@ int ui_connected_menu() {
     // pairing
     MENU_CATEGORY((char *)tr(STR_CONNECTED_PAIRED));
     connection_paired();
-    // FIXME: unpair not work
-    // MENU_ENTRY(CONNECT_PAIRUNPAIR, "Unpair");
 
-    // While streaming, Settings is listed with Resume and Quit instead
+    // While streaming, Settings is listed with Resume and Quit instead, and
+    // Unpair waits until the app is quit
     if (server.currentGame == 0) {
       MENU_ACTION(CONNECT_SETTINGS, (char *)tr(STR_MAIN_SETTINGS), false);
+      MENU_ACTION(CONNECT_PAIRUNPAIR, (char *)tr(STR_CONNECTED_UNPAIR), true);
     }
     MENU_ACTION(CONNECT_DISCONNECT, (char *)tr(STR_CONNECTED_DISCONNECT), true);
 
@@ -618,6 +620,33 @@ bool check_connection(const char *name, char *addr, uint16_t port) {
 
   connection_terminate();
   return true;
+}
+
+bool ui_connect_forget_host(device_info_t *info) {
+  // The label goes with the host, so keep a copy for the message
+  char label[256];
+  snprintf(label, sizeof(label), "%s", device_label(info));
+  flash_message("%s", tr(STR_CONNECT_UNPAIRING));
+  char message[512];
+  switch (host_unpair(info)) {
+    case HOST_UNPAIR_DONE:
+      TR_FMT(message, sizeof(message), STR_HOST_UNPAIR_DONE, label);
+      flash_message("%s", message);
+      sceKernelDelayThread(1500 * 1000);
+      return true;
+    case HOST_UNPAIR_PC_REFUSED:
+      TR_FMT(message, sizeof(message), STR_HOST_UNPAIR_PC_REFUSED, label);
+      display_error("%s", message);
+      return true;
+    case HOST_UNPAIR_PC_UNREACHABLE:
+      TR_FMT(message, sizeof(message), STR_HOST_UNPAIR_PC_UNREACHABLE, label);
+      display_error("%s", message);
+      return true;
+    case HOST_UNPAIR_FORGET_FAILED:
+      break;
+  }
+  display_error("%s", tr(STR_HOST_DELETE_FAILED));
+  return false;
 }
 
 void ui_connect_paired_device(device_info_t *info) {

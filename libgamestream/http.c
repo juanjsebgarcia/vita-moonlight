@@ -79,8 +79,14 @@ int http_request(char* url, PHTTP_DATA data) {
 }
 
 int http_request_timeout(char* url, PHTTP_DATA data, long timeout_seconds) {
+  return http_request_code(url, data, timeout_seconds, NULL);
+}
+
+int http_request_code(char* url, PHTTP_DATA data, long timeout_seconds, long *response_code) {
   pthread_mutex_lock(&curl_lock);
   int ret = GS_OK;
+  if (response_code)
+    *response_code = 0;
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, data);
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_seconds);
@@ -102,6 +108,8 @@ int http_request_timeout(char* url, PHTTP_DATA data, long timeout_seconds) {
     data->size = 0;
   }
   CURLcode res = curl_easy_perform(curl);
+  if (response_code)
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, response_code);
 
   if(res != CURLE_OK) {
     gs_error = curl_easy_strerror(res);

@@ -50,6 +50,9 @@ int gs_applist(PSERVER_DATA server, PAPP_LIST *app_list);
 // Downloads an app's box art (a PNG from Sunshine). On GS_OK, *image holds
 // *image_size bytes that the caller frees.
 int gs_app_boxart(PSERVER_DATA server, int app_id, long timeout_seconds, char **image, size_t *image_size);
+// Asks the PC to forget this client. GS_OK when it did; GS_ERROR when it
+// answered but refused (Sunshine has no /unpair); another code when it
+// couldn't be reached.
 int gs_unpair(PSERVER_DATA server);
 int gs_pair(PSERVER_DATA server, char* pin);
 int gs_quit_app(PSERVER_DATA server);

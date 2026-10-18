@@ -3,8 +3,12 @@
 
 #include "check_host.h"
 #include "config.h"
+#include "connection.h"
 #include "debug.h"
+#include "session.h"
 #include "ui_ops.h"
+
+#include "errors.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -108,7 +112,81 @@ host_wait_result host_wake_and_wait(device_info_t *info, char *new_address, size
 
 bool host_forget(device_info_t *info) {
   vita_debug_log("[HOSTS] forgetting %s", info->name);
-  return remove_device(info->name);
+  // remove_device shifts the list over info before it deletes the files by
+  // name, so the name must not point into the list
+  char name[sizeof(info->name)];
+  snprintf(name, sizeof(name), "%s", info->name);
+  return remove_device(name);
+}
+
+// Whether gs_unpair's result came from the PC, rather than from not reaching it
+static bool pc_answered(int ret) {
+  return ret == GS_OK || ret == GS_ERROR || ret == GS_INVALID;
+}
+
+// Asks the PC to forget this Vita. Returns whether it answered at all, and
+// sets told when it agreed (or had already forgotten it).
+static bool ask_pc_to_unpair(device_info_t *info, bool *told) {
+  *told = false;
+  int status = connection_get_status();
+  if (status != LI_DISCONNECTED) {
+    if (strcmp(session_server_name(), info->name) != 0) {
+      // Connected to another PC: opening this one would replace that
+      // connection's keys under it, so this PC isn't asked
+      vita_debug_log("[HOSTS] not asking %s to unpair: connected to %s", info->name, session_server_name());
+      return false;
+    }
+    // Already connected to it, so ask over that connection, then end it
+    int ret = gs_unpair(&server);
+    vita_debug_log("[HOSTS] unpair request to %s: %d", info->name, ret);
+    *told = ret == GS_OK;
+    if (status == LI_READY) {
+      connection_paired();
+    }
+    connection_terminate();
+    return pc_answered(ret);
+  }
+
+  // gs_init keeps a pointer to the address, so it can't be on the stack
+  static char address[sizeof(info->internal)];
+  struct host_status st = check_host_status(info);
+  if (st.status != HOST_OFFLINE) {
+    snprintf(address, sizeof(address), "%s", st.current_ip[0] ? st.current_ip : info->internal);
+  } else if (info->internal[0] && strspn(info->internal, "0123456789.") != strlen(info->internal)) {
+    // A host name, which the scan's IPv4 check can't reach but connecting can
+    snprintf(address, sizeof(address), "%s", info->internal);
+  } else if (info->external[0] && strcmp(info->external, info->internal) != 0) {
+    // The scan only looks nearby; connecting also tries the external address
+    snprintf(address, sizeof(address), "%s", info->external);
+  } else {
+    vita_debug_log("[HOSTS] %s is offline: not asked to unpair", info->name);
+    return false;
+  }
+  char key_dir[4096];
+  snprintf(key_dir, sizeof(key_dir), "%s/%s", config.key_dir, info->name);
+  int ret = gs_init(&server, address, info->port, key_dir, 0, true);
+  if (ret != GS_OK) {
+    vita_debug_log("[HOSTS] %s didn't answer at %s: %d", info->name, address, ret);
+    return false;
+  }
+  // Asked even when it reports this Vita unpaired: over plain HTTP, which
+  // gs_init falls back to, that report isn't reliable
+  ret = gs_unpair(&server);
+  vita_debug_log("[HOSTS] unpair request to %s: %d", info->name, ret);
+  *told = ret == GS_OK;
+  return pc_answered(ret);
+}
+
+host_unpair_result host_unpair(device_info_t *info) {
+  bool told = false;
+  bool answered = ask_pc_to_unpair(info, &told);
+  if (!host_forget(info)) {
+    return HOST_UNPAIR_FORGET_FAILED;
+  }
+  if (told) {
+    return HOST_UNPAIR_DONE;
+  }
+  return answered ? HOST_UNPAIR_PC_REFUSED : HOST_UNPAIR_PC_UNREACHABLE;
 }
 
 void host_set_address(device_info_t *info, const char *address) {

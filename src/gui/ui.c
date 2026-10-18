@@ -205,11 +205,8 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
       TR_FMT(msg, sizeof(msg), STR_HOST_DELETE_ASK, device_label(info));
       int res = display_confirm(msg);
       if (res) {
-        if (host_forget(info)) {
-          flash_message("%s", tr(STR_HOST_DELETED));
-        } else {
-          flash_message("%s", tr(STR_HOST_DELETE_FAILED));
-        }
+        // Unpairs too, so the PC is told when it answers
+        ui_connect_forget_host(info);
         return 1;
       } else {
         flash_message("%s", tr(STR_HOST_DELETE_CANCELLED));

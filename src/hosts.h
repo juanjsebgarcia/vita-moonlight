@@ -37,6 +37,18 @@ host_wait_result host_wake_and_wait(device_info_t *info, char *new_address, size
 // Forgets the host and its pairing keys. Returns false if it couldn't.
 bool host_forget(device_info_t *info);
 
+typedef enum {
+  HOST_UNPAIR_DONE,            // the PC forgot this Vita, and this Vita the PC
+  HOST_UNPAIR_PC_REFUSED,      // forgotten here; the PC answered but kept it (Sunshine)
+  HOST_UNPAIR_PC_UNREACHABLE,  // forgotten here; the PC couldn't be asked
+  HOST_UNPAIR_FORGET_FAILED,   // the PC may have been told, but it's still here
+} host_unpair_result;
+
+// Asks the PC to forget this Vita, if it answers, then forgets the host and
+// its pairing keys whatever the PC said. Ends the connection to it, if there
+// is one. info is gone afterwards, as with host_forget.
+host_unpair_result host_unpair(device_info_t *info);
+
 // Uses address for the host from now on, and saves it
 void host_set_address(device_info_t *info, const char *address);
 

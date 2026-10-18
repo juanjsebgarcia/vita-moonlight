@@ -459,6 +459,9 @@ void gs_set_device_name(const char *name) {
     strcpy(device_name, DEFAULT_DEVICE_NAME);
 }
 
+// How long each unpair request may take, so an unplugged PC can't hang the menu
+#define UNPAIR_TIMEOUT_SECONDS 10
+
 int gs_unpair(PSERVER_DATA server) {
   int ret = GS_OK;
   char url[4096];
@@ -468,10 +471,20 @@ int gs_unpair(PSERVER_DATA server) {
   if (data == NULL)
     return GS_OUT_OF_MEMORY;
 
+  // Plain HTTP, as moonlight-android and moonlight-embedded send it: GFE
+  // forgets the client by its unique ID. Sunshine has no /unpair (it unpairs
+  // from its web UI) and answers 404.
   uuid_generate_random(uuid);
   uuid_unparse(uuid, uuid_str);
   snprintf(url, sizeof(url), "http://%s:%u/unpair?uniqueid=%s&uuid=%s", server->serverInfo.address, server->httpPort, unique_id, uuid_str);
-  ret = http_request(url, data);
+  long response_code = 0;
+  ret = http_request_code(url, data, UNPAIR_TIMEOUT_SECONDS, &response_code);
+  if (ret == GS_OK)
+    ret = xml_status(data->memory, data->size);
+  else if (response_code != 0)
+    ret = GS_ERROR;  // it answered, but with an error such as 404
+  if (ret == GS_OK)
+    server->paired = false;
 
   http_free_data(data);
   return ret;
