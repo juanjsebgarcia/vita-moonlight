@@ -54,6 +54,12 @@ int get_app_name(PAPP_LIST list, int id, char *name) {
   return 0;
 }
 
+// What common-c agreed with the host when the stream started (Connection.c).
+// Limelight.h has no call that reports them, so the log reads them directly.
+extern bool AudioEncryptionEnabled;
+extern uint32_t EncryptionFeaturesEnabled;
+#define SS_ENC_VIDEO 0x02 // as in Limelight-internal.h
+
 // Set by start_stream once the host has launched the app, even if the stream
 // then fails to start
 static bool start_launched_app = false;
@@ -115,6 +121,11 @@ int session_start_stream(int appId, char *err, size_t err_len) {
   int reorder_wait_ms = config.video_reorder_wait_ms < 0 ? 0 : config.video_reorder_wait_ms;
   LiSetVideoReorderWaitUs((uint32_t)reorder_wait_ms * 1000);
 
+  // Input is always encrypted with Sunshine; these opt in for audio and video.
+  // Sunshine only encrypts video if its LAN Encryption Mode allows it.
+  config.stream.encryptionFlags = (config.encrypt_audio ? ENCFLG_AUDIO : 0) |
+                                  (config.encrypt_video ? ENCFLG_VIDEO : 0);
+
   vita_debug_log("Running LiStartConnection...");
   ret = LiStartConnection(&server.serverInfo, &config.stream, &connection_callbacks,
                           video_callback, platform_get_audio(system),
@@ -126,6 +137,10 @@ int session_start_stream(int appId, char *err, size_t err_len) {
   config.stream.height = orig_height;
 
   if (ret == 0) {
+    vita_debug_log("Stream encryption: audio %s (asked %s), video %s (asked %s)",
+                   AudioEncryptionEnabled ? "on" : "off", config.encrypt_audio ? "yes" : "no",
+                   (EncryptionFeaturesEnabled & SS_ENC_VIDEO) ? "on" : "off",
+                   config.encrypt_video ? "yes" : "no");
     server.currentGame = appId;
     return 0;
   }

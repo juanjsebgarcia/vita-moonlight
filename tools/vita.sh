@@ -62,7 +62,10 @@ ftp_url() {
 
 cmd_build() {
   # The image's libcurl is built against OpenSSL 1.0.2, but the image ships
-  # 1.1.1 (pulled in by cpython3). Swap to 1.0.2 inside the throwaway container.
+  # 1.1.1 (pulled in by cpython3). Swap to 1.0.2 inside the throwaway container,
+  # then replace its libcrypto.a with an optimised build of the same version
+  # (tools/libcrypto.sh, built once and cached in build/), which decrypts
+  # streams about 9x faster.
   docker run --rm \
     -v "$REPO_ROOT:/src" -w /src \
     -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
@@ -73,6 +76,7 @@ cmd_build() {
       trap "chown -R \"\$HOST_UID:\$HOST_GID\" build sce_sys/livearea/contents/template.xml 2>/dev/null || true" EXIT
       vdpm pacman -- -Rdd --noconfirm openssl-1.1.1 >/dev/null 2>&1 || true
       vdpm pacman -- -S --noconfirm openssl >/dev/null
+      sh tools/libcrypto.sh
       opt=""
       if [ -n "$VITA_OPT_LEVEL" ]; then opt="-DVITA_OPT_LEVEL=$VITA_OPT_LEVEL"; fi
       cmake -S . -B build $opt >/dev/null

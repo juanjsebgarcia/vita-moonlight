@@ -53,6 +53,7 @@ The SDK must provide OpenSSL **1.0.2**. See the next section.
 |---|---|---|
 | `implicit declaration of function 'strdup'` | GCC 14 and later make implicit declarations errors, and `-std=c99` hides POSIX functions in newlib | Built with `-std=gnu99` |
 | Undefined `sk_num`, `SSLeay`, `SSLv23_client_method`, `EVP_MD_CTX_create`... at link time | The SDK image ships OpenSSL 1.1.1 (required by its `cpython3` package), but its prebuilt `libcurl` is linked against **1.0.2** | The build swaps in the `openssl` (1.0.2) vdpm package inside the container. `vdpm install openssl` refuses because of the `cpython3` dependency, so it removes 1.1.1 with `vdpm pacman -- -Rdd` first. |
+| Video decryption takes most of a core (AES-128-GCM at about 1.3 MB/s) | The `openssl` package builds vita-openssl at `-O0` with no assembly | `tools/libcrypto.sh` builds [a fork](https://github.com/juanjsebgarcia/vita-openssl/pull/1) at a pinned commit with `-O2` and the ARM/NEON assembly (about 9x faster), and installs its `libcrypto.a` over the package's. It's built once and cached as `build/libcrypto-<commit>.a`; libssl and the headers stay the package's. Without Docker, run it from the repository root after installing the `openssl` package. |
 | Undefined `ZSTD_*` | The SDK's `libcurl` uses zstd | `-lzstd` is linked after `-lz` |
 
 ## One-time Vita setup

@@ -130,6 +130,10 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->direct_decode = BOOL(value);
     } else if (strcmp(name, "input_sync_to_controller") == 0) {
       config->input_sync_to_controller = BOOL(value);
+    } else if (strcmp(name, "encrypt_audio") == 0) {
+      config->encrypt_audio = BOOL(value);
+    } else if (strcmp(name, "encrypt_video") == 0) {
+      config->encrypt_video = BOOL(value);
     } else if (strcmp(name, "developer_mode") == 0) {
       config->developer_mode = BOOL(value);
     } else if (strcmp(name, "bench_seconds") == 0) {
@@ -248,6 +252,8 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_bool(fd, "boost_clocks", config->boost_clocks);
   write_config_bool(fd, "direct_decode", config->direct_decode);
   write_config_bool(fd, "input_sync_to_controller", config->input_sync_to_controller);
+  write_config_bool(fd, "encrypt_audio", config->encrypt_audio);
+  write_config_bool(fd, "encrypt_video", config->encrypt_video);
   write_config_bool(fd, "developer_mode", config->developer_mode);
   write_config_int(fd, "bench_seconds", config->bench_seconds);
   write_config_string(fd, "bench_app", config->bench_app);
@@ -337,6 +343,8 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->boost_clocks = true;
   config->direct_decode = false;
   config->input_sync_to_controller = true;
+  config->encrypt_audio = false;
+  config->encrypt_video = false;
   config->developer_mode = false;
   config->bench_seconds = BENCH_DEFAULT_SECONDS;
   config->bench_app = "Moonlight Bench";
