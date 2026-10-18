@@ -786,6 +786,8 @@ inline void vitainput_process(void) {
     sceCtrlPeekBufferPositiveExt2(controller_port, &pad, 1);
     sceKernelDelayThread(INPUT_FALLBACK_POLL_US);
   }
+  // Before anything reads the buttons, so the PC doesn't see the shortcut held
+  process_stats_shortcut(&pad);
   sceTouchPeek(SCE_TOUCH_PORT_FRONT, &front, 1);
   sceTouchPeek(SCE_TOUCH_PORT_BACK, &back, 1);
   // Siempre actualizar los puntos táctiles del frente

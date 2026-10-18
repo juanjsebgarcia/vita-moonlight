@@ -16,6 +16,7 @@
 #include "../device.h"
 #include "../debug.h"
 #include "../netcount.h"
+#include "../stats.h"
 
 #include "client.h"
 #include "errors.h"
@@ -215,6 +216,10 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
 //mainloop:
       while (connection_is_connected()) {
         sceKernelDelayThread(500 * 1000);
+      }
+      // The stats overlay mode, if the shortcut changed it mid-stream
+      if (vitastats_take_mode_change()) {
+        ui_settings_save_config();
       }
 
       int status = connection_get_status();

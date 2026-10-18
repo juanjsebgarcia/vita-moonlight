@@ -19,6 +19,7 @@
 #include "config.h"
 #include "debug.h"
 #include "gui/theme.h"
+#include "i18n/i18n.h"
 
 #include <pthread.h>
 #include <stdio.h>
@@ -30,6 +31,9 @@
 #define STATS_LINE_LENGTH 80
 // Below this the Wi-Fi reading is shown as weak; frame loss starts to climb
 #define STATS_WEAK_WIFI_PERCENT 60
+// The note after the shortcut changes the mode, fading out at the end
+#define STATS_NOTE_DURATION_US 2000000
+#define STATS_NOTE_FADE_US 500000
 
 typedef struct {
   uint64_t sum_us;
@@ -74,6 +78,10 @@ static int wifi_percent = -1;
 static int wifi_line = -1;
 // Bumped whenever lines change, so the draw only re-measures text when needed
 static int lines_version = 0;
+// When the shortcut last changed the mode (0 for not this stream), and whether
+// the config file still has the old one
+static uint64_t mode_changed_us = 0;
+static bool mode_unsaved = false;
 
 // Nothing is collected unless someone is looking: the overlay is on, or the
 // numbers are going to the log. Read on every frame, so kept trivial.
@@ -110,7 +118,53 @@ void vitastats_reset(void) {
   last_tick_us = LiGetMicroseconds();
   line_count = 0;
   rendered_fps = 0;
+  mode_changed_us = 0;
   pthread_mutex_unlock(&stats_mutex);
+}
+
+void vitastats_next_mode(void) {
+  pthread_mutex_lock(&stats_mutex);
+  if (!stats_active()) {
+    // Nothing was counted while it was off: start a fresh window, so the
+    // first figures don't take the frames since then as lost
+    memset(&current, 0, sizeof(current));
+    last_frame_number = 0;
+    frame_pipeline_us = 0;
+    last_tick_us = LiGetMicroseconds();
+    line_count = 0;
+    rendered_fps = 0;
+  }
+  config.stats_overlay = (config.stats_overlay + 1) % STATS_OVERLAY_COUNT;
+  mode_changed_us = LiGetMicroseconds();
+  mode_unsaved = true;
+  pthread_mutex_unlock(&stats_mutex);
+  vita_debug_log("[STATS] overlay mode %d, from the shortcut", config.stats_overlay);
+}
+
+const char *vitastats_mode_note(float *opacity) {
+  static const str_id notes[STATS_OVERLAY_COUNT] = {STR_STATS_NOTE_OFF, STR_STATS_NOTE_FPS, STR_STATS_NOTE_FULL};
+  pthread_mutex_lock(&stats_mutex);
+  uint64_t changed_us = mode_changed_us;
+  int mode = config.stats_overlay;
+  pthread_mutex_unlock(&stats_mutex);
+  if (changed_us == 0) {
+    return NULL;
+  }
+  uint64_t shown_for = LiGetMicroseconds() - changed_us;
+  if (shown_for >= STATS_NOTE_DURATION_US) {
+    return NULL;
+  }
+  uint64_t remaining = STATS_NOTE_DURATION_US - shown_for;
+  *opacity = remaining < STATS_NOTE_FADE_US ? (float)remaining / STATS_NOTE_FADE_US : 1.0f;
+  return tr(notes[mode]);
+}
+
+bool vitastats_take_mode_change(void) {
+  pthread_mutex_lock(&stats_mutex);
+  bool unsaved = mode_unsaved;
+  mode_unsaved = false;
+  pthread_mutex_unlock(&stats_mutex);
+  return unsaved;
 }
 
 void vitastats_frame_received(const DECODE_UNIT *du, uint64_t submit_us) {
@@ -190,7 +244,13 @@ void vitastats_tick(void) {
     return;
   }
   if (!stats_active()) {
-    // Skip the network and Wi-Fi queries and the formatting entirely
+    // Skip the network and Wi-Fi queries and the formatting entirely. Only
+    // the packet counters' baseline moves on, so turning the overlay on
+    // mid-stream (the shortcut) counts from then.
+    const RTP_VIDEO_STATS *rtp_now = LiGetRTPVideoStats();
+    if (rtp_now != NULL) {
+      last_rtp_stats = *rtp_now;
+    }
     pthread_mutex_lock(&stats_mutex);
     line_count = 0;
     pthread_mutex_unlock(&stats_mutex);
