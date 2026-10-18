@@ -125,11 +125,12 @@ Measured on the Vita (2026-10-18, developer HUD, averages over a second):
 
 | Screen | CPU | Draws | Vertices | Glyphs | Pool |
 |---|---|---|---|---|---|
-| Host list (generic layout) | 0.49 ms | 9 | 3,600 | 136 | 80 KB |
-| PC menu (generic layout) | 0.67 ms | 14 | 5,000 | 184 | 86 KB |
-| Settings, Stream tab, with the help card | 1.32 ms | 25 | 8,850 | 576 | 196 KB |
-| Confirm dialog | 0.32 ms | 11 | 3,100 | 32 | 68 KB |
-| Gallery (every primitive) | 2.39 ms | 59 | 20,700 | 331 | 363 KB |
+| Host list (generic layout) | 0.40 ms | 9 | 2,700 | 136 | 80 KB |
+| PC menu (generic layout) | 0.56 ms | 14 | 4,100 | 184 | 86 KB |
+| Settings, Stream tab, with the help card | 1.23 ms | 25 | 8,850 | 576 | 196 KB |
+| Confirm dialog | 0.25 ms | 11 | 2,300 | 32 | 68 KB |
+| Help dialog | 0.45 ms | 8 | 4,100 | 191 | 86 KB |
+| Gallery (every primitive) | 2.29 ms | 65 | 22,200 | 331 | 430 KB |
 
 The budget is 4 ms CPU, 450 draws, 20k vertices and 700 KB of pool per menu
 frame. The frame interval stayed at 16.7 ms throughout.
