@@ -218,6 +218,16 @@ S(STREAM_MODE_UNSUPPORTED, "Server doesn't support {0} ({1} fps)", "{0} = a reso
 S(STREAM_START_FAILED, "Errorcode starting app: {0}", "{0} = an error number")
 S(STREAM_FAILED_STAGE, "Failed to start stream:\nFailed stage: {0}\n(error code {1})", "{0} = a technical stage name in English, {1} = a number")
 S(STREAM_APP_RUNNING, "An app is already running on {0}. Quit it from the PC's menu first.", "{0} = PC name")
+S(STREAM_START_NEXT_STEP, "Check that the PC is on and its streaming software (Sunshine or GeForce Experience) is running, then try again.", "After STREAM_FAILED_STAGE, when no network port is to blame")
+S(STREAM_CHECK_PORTS, "Check that the PC's firewall allows {0}, and that your router forwards these ports if you stream from outside your home.", "{0} = network ports such as \"UDP 47998, UDP 48000\"; keep TCP and UDP as they are")
+
+/* Why a stream ended, shown once it has: each says what happened, then what to try */
+S(STREAM_END_NO_VIDEO, "The stream ended because no video arrived from the PC.", "Followed by STREAM_CHECK_PORTS")
+S(STREAM_END_NO_FRAMES, "The stream ended because the connection was too unstable for the video to get through. Lower the bitrate in Settings, or move closer to the Wi-Fi router, then try again.", "")
+S(STREAM_END_EARLY, "The PC ended the stream just after it started, usually because it couldn't capture its screen. Close any protected video (such as a film from a streaming service) on the PC, then try again.", "")
+S(STREAM_END_PROTECTED, "The PC ended the stream because protected content, such as a film from a streaming service, is on its screen. Close it on the PC, then try again.", "")
+S(STREAM_END_FRAME_CONVERSION, "The PC ended the stream because it couldn't convert its picture for streaming. This usually happens with HDR on, when the PC's desktop resolution differs from the stream's. Turn HDR off on the PC, or make the two resolutions match, then try again.", "HDR is a technical term; keep it")
+S(STREAM_END_LOST, "The connection to the PC was lost (error {0}). Check the Vita's Wi-Fi signal and that the PC is still on, then try again.", "{0} = an error number")
 S(CONNECT_FAILED, "Can't connect to {0}: {1}", "{0} = PC name, {1} = an error from the PC, in English")
 S(CONNECT_NO_RESPONSE, "no response", "Used as {1} above")
 S(CONNECT_NO_APP_LIST, "Can't read the app list from {0}: {1}", "{0} = PC name, {1} = an error from the PC, in English")

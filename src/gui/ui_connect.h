@@ -7,6 +7,9 @@ device_info_t* ui_connect_and_pairing(device_info_t *info);
 bool ui_connect_connected();
 
 void ui_connect_resume();
+// After a stream has ended by itself and torn down, says why if it was an
+// error. A normal end, such as quitting the game, shows nothing.
+void ui_connect_show_end_reason(void);
 void ui_connect_manual();
 void ui_connect_paired_device(device_info_t *info);
 

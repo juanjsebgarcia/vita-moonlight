@@ -18,6 +18,7 @@
  */
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <Limelight.h>
 
 //.DISCONNECTED <-.
@@ -55,3 +56,12 @@ int connection_terminate();
 bool connection_is_ready();
 bool connection_is_connected();
 int connection_get_status();
+
+// Forgets why the last stream ended, before another starts
+void connection_clear_end_reason(void);
+// If the last stream ended with an error, writes why to out, in words with a
+// next step, and forgets it. False after a normal end, or once taken. Call it
+// from the UI thread once the stream has torn down.
+bool connection_take_end_reason(char *out, size_t len);
+// Why a stream failed to start at stage with code, in words with a next step
+void connection_describe_start_failure(int stage, int code, char *out, size_t len);

@@ -42,8 +42,15 @@
 
 int pos[2];
 
+void ui_connect_show_end_reason(void) {
+  char reason[1024];
+  if (connection_take_end_reason(reason, sizeof(reason))) {
+    display_error("%s", reason);
+  }
+}
+
 void ui_connect_stream(int appId) {
-  char err[512];
+  char err[1024];
   if (session_start_stream(appId, err, sizeof(err)) != 0) {
     display_error("%s", err);
   }
@@ -65,7 +72,7 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
   int status = connection_get_status();
 
   if (status == LI_DISCONNECTED) {
-      goto disconnect;
+      goto ended;
   }
 
   menu_entry *menu = context;
@@ -220,12 +227,16 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
       int status = connection_get_status();
 
       if (status == LI_DISCONNECTED) {
-          goto disconnect;
+          goto ended;
       }
 
       return QUIT_RELOAD;
   }
 
+ended:
+  // The stream ended by itself, from the PC or an error, rather than from
+  // Disconnect
+  ui_connect_show_end_reason();
 disconnect:
   flash_message("%s", tr(STR_CONNECT_DISCONNECTING));
   connection_terminate();
@@ -572,6 +583,9 @@ void ui_connect_restart_stream(void) {
   ui_connect_stream(app_id);
   while (connection_is_connected()) {
     sceKernelDelayThread(500 * 1000);
+  }
+  if (connection_get_status() == LI_DISCONNECTED) {
+    ui_connect_show_end_reason();
   }
 }
 

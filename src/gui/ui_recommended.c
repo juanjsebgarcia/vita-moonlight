@@ -408,9 +408,10 @@ static int auto_detect(void) {
   char testing[512];
   TR_FMT(testing, sizeof(testing), STR_REC_TESTING, session_server_name(), test);
   flash_message("%s", testing);
-  char err[256] = "";
+  // Room for a start failure's port advice (connection_describe_start_failure)
+  char err[1024] = "";
   if (!test_stream(&result, err, sizeof(err))) {
-    char message[512];
+    char message[1536];
     TR_FMT(message, sizeof(message), STR_REC_TEST_FAILED, err);
     display_error("%s", message);
     return RECOMMENDED_NONE;

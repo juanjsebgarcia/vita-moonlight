@@ -115,6 +115,7 @@ int session_start_stream(int appId, char *err, size_t err_len) {
   int reorder_wait_ms = config.video_reorder_wait_ms < 0 ? 0 : config.video_reorder_wait_ms;
   LiSetVideoReorderWaitUs((uint32_t)reorder_wait_ms * 1000);
 
+  connection_clear_end_reason();
   vita_debug_log("Running LiStartConnection...");
   ret = LiStartConnection(&server.serverInfo, &config.stream, &connection_callbacks,
                           video_callback, platform_get_audio(system),
@@ -130,10 +131,7 @@ int session_start_stream(int appId, char *err, size_t err_len) {
     return 0;
   }
 
-  const char* connection_failed_stage_name = LiGetStageName(connection_stage);
-  char code[16];
-  snprintf(code, sizeof(code), "%d", ret);
-  TR_FMT(err, err_len, STR_STREAM_FAILED_STAGE, connection_failed_stage_name, code);
+  connection_describe_start_failure(connection_stage, ret, err, err_len);
   return ret < 0 ? ret : -1;
 }
 
@@ -246,7 +244,9 @@ int session_start_app_by_id(int app_id, char *err, size_t err_len) {
 
 void session_return_to_server(void) {
   // A finished stream leaves the connection disconnected; go back to the
-  // state the host's menu expects
+  // state the host's menu expects. Streams started this way report their
+  // own errors, so why it ended isn't kept for the host's menu to show.
+  connection_clear_end_reason();
   if (connection_get_status() == LI_DISCONNECTED) {
     connection_reset();
   }

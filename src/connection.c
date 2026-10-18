@@ -28,8 +28,19 @@
 #include <stdbool.h>
 #include "connection_overlay.h"
 #include "debug.h"
+#include "i18n/i18n.h"
+#include <stdio.h>
+#include <string.h>
 
 static int connection_status = LI_DISCONNECTED;
+
+// Why the last stream ended, if with an error. The termination callback runs
+// on a moonlight-common-c thread, so it only records the code; the UI thread
+// puts it into words once the stream has torn down. end_error_pending is set
+// with release ordering after the teardown and the code, and taken with
+// acquire ordering, so a reader that sees it also sees both.
+static int end_error = ML_ERROR_GRACEFUL_TERMINATION;
+static bool end_error_pending = false;
 
 extern motion_data_state motion_state;
 
@@ -77,24 +88,8 @@ static void connection_connection_terminated(int error_code) {
     vita_debug_log("connection_connection_terminated error: %d\n", connection_status);
   }
 
-  switch (error_code) {
-    case ML_ERROR_GRACEFUL_TERMINATION:
-      break;
-    case ML_ERROR_NO_VIDEO_TRAFFIC:
-      vita_debug_log("No video received from host. Check the host PC's firewall and port forwarding rules.\n");
-      break;
-    case ML_ERROR_NO_VIDEO_FRAME:
-      vita_debug_log("Your network connection isn't performing well. Reduce your video bitrate setting or try a faster connection.\n");
-      break;
-    case ML_ERROR_UNEXPECTED_EARLY_TERMINATION:
-      vita_debug_log("The connection was unexpectedly terminated by the host due to a video capture error. Make sure no DRM-protected content is playing on the host.\n");
-      break;
-    case ML_ERROR_PROTECTED_CONTENT:
-      vita_debug_log("The connection was terminated by the host due to DRM-protected content. Close any DRM-protected content on the host and try again.\n");
-      break;
-    default:
-      vita_debug_log("Connection terminated with error: %d\n", error_code);
-      break;    
+  if (error_code != ML_ERROR_GRACEFUL_TERMINATION) {
+    vita_debug_log("Connection terminated with error: %d\n", error_code);
   }
 
   LiStopConnection();
@@ -105,6 +100,11 @@ static void connection_connection_terminated(int error_code) {
     stop_output();
   }
   vita_debug_log("connection terminated\n");
+  // Published once torn down, and before the status the UI thread watches
+  if (error_code != ML_ERROR_GRACEFUL_TERMINATION) {
+    end_error = error_code;
+    __atomic_store_n(&end_error_pending, true, __ATOMIC_RELEASE);
+  }
   connection_status = LI_DISCONNECTED;
 }
 
@@ -172,6 +172,74 @@ void connection_stage_failed(int stage, int code) {
   connection_stage = stage;
   const char* connection_stage_name = LiGetStageName(stage);
   vita_debug_log("connection_stage_failed - stage: %s, %d\n", connection_stage_name, code);
+}
+
+// Appends the firewall advice for the ports in flags, as a new paragraph;
+// nothing when no port is to blame
+static void append_port_advice(char *out, size_t len, unsigned int flags) {
+  if (flags == 0) {
+    return;
+  }
+  char ports[128], advice[512];
+  LiStringifyPortFlags(flags, ", ", ports, sizeof(ports));
+  TR_FMT(advice, sizeof(advice), STR_STREAM_CHECK_PORTS, ports);
+  size_t used = strlen(out);
+  if (used < len) {
+    snprintf(out + used, len - used, "\n\n%s", advice);
+  }
+}
+
+void connection_clear_end_reason(void) {
+  __atomic_store_n(&end_error_pending, false, __ATOMIC_RELEASE);
+}
+
+bool connection_take_end_reason(char *out, size_t len) {
+  if (!__atomic_exchange_n(&end_error_pending, false, __ATOMIC_ACQUIRE)) {
+    return false;
+  }
+  int code = end_error;
+
+  switch (code) {
+    case ML_ERROR_NO_VIDEO_TRAFFIC:
+      snprintf(out, len, "%s", tr(STR_STREAM_END_NO_VIDEO));
+      break;
+    case ML_ERROR_NO_VIDEO_FRAME:
+      snprintf(out, len, "%s", tr(STR_STREAM_END_NO_FRAMES));
+      break;
+    case ML_ERROR_UNEXPECTED_EARLY_TERMINATION:
+      snprintf(out, len, "%s", tr(STR_STREAM_END_EARLY));
+      break;
+    case ML_ERROR_PROTECTED_CONTENT:
+      snprintf(out, len, "%s", tr(STR_STREAM_END_PROTECTED));
+      break;
+    case ML_ERROR_FRAME_CONVERSION:
+      snprintf(out, len, "%s", tr(STR_STREAM_END_FRAME_CONVERSION));
+      break;
+    default: {
+      // A socket error or a lost control connection
+      char number[16];
+      snprintf(number, sizeof(number), "%d", code);
+      TR_FMT(out, len, STR_STREAM_END_LOST, number);
+      break;
+    }
+  }
+  append_port_advice(out, len, LiGetPortFlagsFromTerminationErrorCode(code));
+  return true;
+}
+
+void connection_describe_start_failure(int stage, int code, char *out, size_t len) {
+  char number[16];
+  snprintf(number, sizeof(number), "%d", code);
+  TR_FMT(out, len, STR_STREAM_FAILED_STAGE, LiGetStageName(stage), number);
+  unsigned int flags = LiGetPortFlagsFromStage(stage);
+  if (flags != 0) {
+    append_port_advice(out, len, flags);
+  } else {
+    size_t used = strlen(out);
+    if (used < len) {
+      snprintf(out + used, len - used, "\n\n%s", tr(STR_STREAM_START_NEXT_STEP));
+    }
+  }
 }
 
 bool connection_is_ready() {
