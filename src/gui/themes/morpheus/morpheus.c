@@ -2,10 +2,12 @@
 //
 // Drawn with the primitives in mph.h (see README.md here). This file holds
 // the theme's entry points: a generic list screen that every screen uses
-// until it gets its own layout (DESIGN.md §4), the dialogs, and first passes
-// of the stream overlays. It shares no code with Homebrew.
+// until it gets its own layout (DESIGN.md §4), and the dispatch to the
+// screens in mph_screen_*.c. It shares no code with Homebrew.
 
 #include "mph.h"
+#include "mph_screen_dialogs.h"
+#include "mph_screen_stream.h"
 
 #include "../../guilib.h"
 #include "../../text.h"
@@ -188,134 +190,9 @@ static void mph_menu_follow(menu_view *view) {
 }
 
 /*
- * Dialogs
+ * Dialogs, the IME backdrop and the stream overlays: mph_screen_dialogs.c and
+ * mph_screen_stream.c. The help dialog also opens the developer gallery.
  */
-
-#define ALERT_W 500
-#define ALERT_W_WIDE 640
-#define ALERT_LINE 24
-#define FLASH_LINE 26
-
-// The modal enter transition plays when a dialog opens: a new message, or
-// the first frame after a pause
-static float modal_t0;
-static const void *modal_key;
-static float modal_last;
-
-static void modal_begin(const void *key, mph_rect frame) {
-  float now = mph_time();
-  if (key != modal_key || now - modal_last > 0.25f) {
-    modal_t0 = now;
-  }
-  modal_key = key;
-  modal_last = now;
-  float k = mph_ease_eval(MPH_EASE_OUT, (now - modal_t0) / MPH_M_MODAL);
-  mph_transform(k, 0.965f + 0.035f * k, frame.x + frame.w / 2, frame.y + frame.h / 2, 0, 0);
-}
-
-static void draw_buttons(float right, float top, int count, const int *glyphs, const char *const *captions) {
-  float x = right;
-  for (int i = 0; i < count; i++) {
-    int style = (i == 0 ? MPH_BTN_PRIMARY : MPH_BTN_SECONDARY) | MPH_BTN_SMALL;
-    x -= mph_button_w(glyphs[i], captions[i], style);
-    mph_button(x, top, glyphs[i], captions[i], style, false);
-    x -= 10;
-  }
-}
-
-// The pairing PIN's line: the view's PIN, or else a line of exactly four
-// digits (every translation of the pairing message ends in one)
-static bool is_pin_line(const char *line, const char *pin) {
-  if (pin != NULL) {
-    return strcmp(line, pin) == 0;
-  }
-  for (int i = 0; i < 4; i++) {
-    if (line[i] < '0' || line[i] > '9') {
-      return false;
-    }
-  }
-  return line[4] == '\0';
-}
-
-static void draw_flash(const alert_view *view) {
-  mph_lines lines;
-  int count = mph_wrap(MPH_T_ROW, view->message, ALERT_W_WIDE - 52, &lines);
-  float widest = 0, height = 26 + 26;
-  for (int i = 0; i < count; i++) {
-    if (is_pin_line(lines.line[i], view->pin)) {
-      height += 104 + 28;
-      widest = widest > 380 ? widest : 380;
-      continue;
-    }
-    float w = mph_text_w(MPH_T_ROW, lines.line[i]);
-    widest = w > widest ? w : widest;
-    height += FLASH_LINE;
-  }
-  float w = widest + 52;
-  w = w < 360 ? 360 : w > ALERT_W_WIDE ? ALERT_W_WIDE : w;
-  height = height > 504 ? 504 : height;
-  mph_rect frame = mph_rect_make(roundf((MPH_W - w) / 2), roundf((MPH_H - height) / 2), roundf(w), roundf(height));
-  mph_dialog_frame(frame);
-  float y = frame.y + 26;
-  float cx = frame.x + frame.w / 2;
-  for (int i = 0; i < count && y < frame.y + frame.h - 26; i++) {
-    if (is_pin_line(lines.line[i], view->pin)) {
-      mph_pin_tiles(cx, y + 14, lines.line[i]);
-      y += 104 + 28;
-      continue;
-    }
-    mph_text_center(MPH_T_ROW, cx, y + 19, MPH_C_FG, lines.line[i]);
-    y += FLASH_LINE;
-  }
-}
-
-static void mph_draw_alert(const alert_view *view) {
-  mph_frame_begin();
-  mph_bg_draw();
-  mph_scrim();
-  if (view->kind == ALERT_PROGRESS) {
-    draw_flash(view);
-    frame_end();
-    return;
-  }
-  float w = ALERT_W;
-  mph_lines lines;
-  int count = mph_wrap(MPH_T_ROW, view->message, w - 52, &lines);
-  if (count > 9) {
-    w = ALERT_W_WIDE;
-    count = mph_wrap(MPH_T_ROW, view->message, w - 52, &lines);
-  }
-  int buttons = view->button_count;
-  float h = 26 + count * ALERT_LINE + (buttons > 0 ? 20 + 40 : 0) + 22;
-  h = h < 160 ? 160 : h > 504 ? 504 : h;
-  mph_rect frame = mph_rect_make((MPH_W - w) / 2, roundf((MPH_H - h) / 2), w, roundf(h));
-  modal_begin(view->message, frame);
-  mph_dialog_frame(frame);
-  int fit = (int)((frame.h - 26 - (buttons > 0 ? 60 : 0) - 22) / ALERT_LINE);
-  mph_draw_lines(MPH_T_ROW, &lines, frame.x + 26, frame.y + 44, ALERT_LINE, 0, fit, MPH_C_FG, MPH_ALIGN_LEFT);
-  if (buttons > 0) {
-    draw_buttons(frame.x + frame.w - 22, frame.y + frame.h - 22 - 40, buttons, view->glyphs, view->captions);
-  }
-  frame_end();
-}
-
-#define HELP_X 180
-#define HELP_Y 92
-#define HELP_W 600
-#define HELP_H 360
-#define HELP_LINE 23
-#define HELP_FIRST 86
-#define HELP_VISIBLE 9
-
-static const char *help_message;
-
-static int mph_help_prepare(const char *title, const char *message) {
-  (void)title;
-  help_message = message;
-  mph_lines lines;
-  int count = mph_wrap(MPH_T_BODY, message, HELP_W - 52 - 14, &lines);
-  return count > HELP_VISIBLE ? count - HELP_VISIBLE : 0;
-}
 
 static void draw_gallery(void);
 
@@ -324,101 +201,7 @@ static void mph_draw_help(const help_view *view) {
     draw_gallery();
     return;
   }
-  mph_frame_begin();
-  mph_bg_draw();
-  mph_scrim();
-  mph_rect frame = mph_rect_make(HELP_X, HELP_Y, HELP_W, HELP_H);
-  modal_begin(view->message, frame);
-  mph_dialog_frame(frame);
-  mph_text_fit(MPH_T_DIALOG, frame.x + 26, frame.y + 50, frame.w - 52, MPH_C_FG, view->title);
-  mph_lines lines;
-  int count = mph_wrap(MPH_T_BODY, view->message, HELP_W - 52 - 14, &lines);
-  mph_draw_lines(MPH_T_BODY, &lines, frame.x + 26, frame.y + HELP_FIRST, HELP_LINE, view->offset, HELP_VISIBLE,
-                 MPH_C_DIM, MPH_ALIGN_LEFT);
-  float body_h = HELP_VISIBLE * HELP_LINE;
-  mph_scrollbar(mph_rect_make(frame.x + frame.w - 16, frame.y + HELP_FIRST - 16, 3, body_h), count * HELP_LINE,
-                body_h, view->offset * HELP_LINE);
-  draw_buttons(frame.x + frame.w - 22, frame.y + frame.h - 22 - 40, 1, &view->close_glyph,
-               (const char *const *)&view->close_caption);
-  frame_end();
-}
-
-static void mph_draw_ime_backdrop(void) {
-  mph_frame_begin();
-  mph_bg_draw();
-  mph_scrim();
-  mph_frame_end(false);
-}
-
-/*
- * Stream overlays: first passes (DESIGN.md S12)
- */
-
-static void mph_draw_stats(const stats_view *view) {
-  mph_frame_begin();
-  static int measured_version = -1;
-  static bool measured_full;
-  static float width;
-  char fps[64];
-  const char *lines[16];
-  int count = 0, wifi = -1;
-  if (view->full) {
-    for (int i = 0; i < view->line_count && count < 16; i++) {
-      wifi = i == view->wifi_line ? count : wifi;
-      lines[count++] = view->lines + i * view->line_stride;
-    }
-  } else {
-    snprintf(fps, sizeof(fps), "fps: %.0f / %d", view->fps, view->target_fps);
-    lines[count++] = fps;
-    if (view->wifi_line >= 0) {
-      wifi = count;
-      lines[count++] = view->lines + view->wifi_line * view->line_stride;
-    }
-  }
-  if (view->version != measured_version || view->full != measured_full) {
-    measured_version = view->version;
-    measured_full = view->full;
-    width = 0;
-    for (int i = 0; i < count; i++) {
-      float w = mph_text_w(MPH_T_MONO, lines[i]);
-      width = w > width ? w : width;
-    }
-    // The fps line changes every frame: leave it room
-    width = view->full ? width : (width > 150 ? width : 150);
-  }
-  mph_rrect_fill(mph_rect_make(16, 14, width + 24, count * 20 + 20), MPH_R_OVERLAY, MPH_C_OVERLAY_BG);
-  for (int i = 0; i < count; i++) {
-    uint32_t c = i == wifi && view->wifi_weak ? MPH_C_LIVE : MPH_C_OVERLAY_TEXT;
-    mph_text(MPH_T_MONO, 28, 14 + 10 + 15 + i * 20, c, lines[i]);
-  }
-  mph_frame_end(false);
-}
-
-static void mph_draw_stream_overlay(const stream_overlay_view *view) {
-  mph_frame_begin();
-  if (view->hint != NULL && view->hint_opacity > 0.0f) {
-    mph_transform(view->hint_opacity, 1.0f, 0, 0, 0, 0);
-    float w = mph_text_w(MPH_T_BODY, view->hint) + 32;
-    mph_rect r = mph_rect_make(roundf(480 - w / 2), 490 - 18, roundf(w), 36);
-    mph_pill(r, MPH_C_OVERLAY_BG);
-    mph_text(MPH_T_BODY, r.x + 16, mph_baseline(MPH_T_BODY, r.y, r.h), 0xFFFFFFFF, view->hint);
-    mph_transform_reset();
-  }
-  float x = 906;
-  if (view->poor_network) {
-    float a = view->poor_network_alpha / 255.0f;
-    mph_rrect_fill(mph_rect_make(x, 16, 36, 36), MPH_R_OVERLAY, mph_alpha(MPH_C_OVERLAY_BG, a));
-    float ix = x + 7, iy = 16 + 9;
-    mph_icon(MPH_ICON_WIFI_OUT_22, ix, iy, mph_alpha(MPH_C_FG, 0.25f * a));
-    mph_icon(MPH_ICON_WIFI_MID_22, ix, iy, mph_alpha(MPH_C_FG, 0.25f * a));
-    mph_icon(MPH_ICON_WIFI_DOT_22, ix, iy, mph_alpha(MPH_C_LIVE, a));
-    x -= 44;
-  }
-  if (view->sprinting) {
-    mph_rrect_fill(mph_rect_make(x, 16, 36, 36), MPH_R_OVERLAY, MPH_C_OVERLAY_BG);
-    mph_icon(MPH_ICON_SPRINT_22, x + 7, 16 + 7, mph_alpha(MPH_C_FG, 0.85f));
-  }
-  mph_frame_end(false);
+  mph_screen_help_draw(view);
 }
 
 /*
@@ -541,10 +324,10 @@ const struct theme THEME_MORPHEUS = {
   .language_changed = morpheus_language_changed,
   .draw_menu = mph_draw_menu,
   .menu_follow = mph_menu_follow,
-  .draw_alert = mph_draw_alert,
-  .help_prepare = mph_help_prepare,
+  .draw_alert = mph_screen_alert_draw,
+  .help_prepare = mph_screen_help_prepare,
   .draw_help = mph_draw_help,
-  .draw_ime_backdrop = mph_draw_ime_backdrop,
-  .draw_stats = mph_draw_stats,
-  .draw_stream_overlay = mph_draw_stream_overlay,
+  .draw_ime_backdrop = mph_screen_ime_backdrop_draw,
+  .draw_stats = mph_screen_stats_draw,
+  .draw_stream_overlay = mph_screen_stream_overlay_draw,
 };

@@ -150,7 +150,9 @@ reach only with a PC or a stream, upload `ux0:data/moonlight/screen.req`
 holding one line before launching (`devshot_open_requested_screen()`):
 `flash <text>`, `error <text>`, `confirm <text>`, `help <title>|<text>`
 (`\n` for a line break), or `overlay` (the stream overlays over black for
-10 s). Put `morpheus` before any of them (or alone) to switch to
+10 s; `overlay full` and `overlay poor` show every stats line, or weak
+Wi-Fi with the poor network and sprint badges, with made-up numbers, and
+log the overlay's drawing time when `save_debug_log` is on). Put `morpheus` before any of them (or alone) to switch to
 Morpheus first. Every Homebrew screen must stay identical to the screenshots taken
 before a change.
 
