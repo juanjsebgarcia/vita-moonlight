@@ -311,7 +311,10 @@ static void draw_decorations(const menu_view *view, hb_geom geom) {
       break;
     case UI_SCREEN_CONNECTED:
       if (view->boxart != NULL) {
-        hb_draw_boxart(view->boxart, view->hint);
+        hb_draw_boxart(view->boxart, view->hint, view->extra_hint);
+      } else {
+        // The app list as rows: the square button's hint
+        draw_hint_under(geom, view->hint);
       }
       break;
     case UI_SCREEN_DEADZONE:

@@ -234,6 +234,7 @@ typedef struct menu_view {
   int scroll;          // the theme's own scroll state; display_menu keeps it, from 0
   // Set by update
   ui_hint hint;        // the button hint shown now
+  ui_hint extra_hint;  // a second one shown beside it, or none (text NULL)
   const char *help;    // help for the selected row, for themes that show it beside the rows
   const tabs_view *tabs;
   const boxart_view *boxart;

@@ -481,6 +481,10 @@ int ui_boxart_selected_app(void) {
   return slots[selected].id;
 }
 
+void ui_boxart_remember(int app_id) {
+  remembered_app = app_id;
+}
+
 char *ui_boxart_counter(void) {
   return counter_text;
 }

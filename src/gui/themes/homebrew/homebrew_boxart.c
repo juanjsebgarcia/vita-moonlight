@@ -122,7 +122,7 @@ static void draw_tile(const boxart_view *view, int index) {
   }
 }
 
-void hb_draw_boxart(const boxart_view *view, ui_hint hint) {
+void hb_draw_boxart(const boxart_view *view, ui_hint hint, ui_hint extra_hint) {
   if (view->count == 0) {
     return;
   }
@@ -143,5 +143,11 @@ void hb_draw_boxart(const boxart_view *view, ui_hint hint) {
     int x = WIDTH - 20 - hint_width - 14 - 6;
     x += hb_draw_button_glyph(hint.glyph, x, NAME_BASELINE_Y, 14) + 6;
     hb_draw_rich_text(x, NAME_BASELINE_Y, COLOUR_LABEL, 18, hint.text);
+  }
+  // The second hint on the left, balancing the first
+  if (extra_hint.text != NULL) {
+    int x = 20;
+    x += hb_draw_button_glyph(extra_hint.glyph, x, NAME_BASELINE_Y, 14) + 6;
+    hb_draw_rich_text(x, NAME_BASELINE_Y, COLOUR_LABEL, 18, extra_hint.text);
   }
 }

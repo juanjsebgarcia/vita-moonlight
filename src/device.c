@@ -122,8 +122,39 @@ static int device_ini_handle(void *out, const char *section, const char *name,
   } else if (strcmp(name, "display_name") == 0) {
     strncpy(info->display_name, value, sizeof(info->display_name) - 1);
     info->display_name[sizeof(info->display_name) - 1] = '\0';
+  } else if (strcmp(name, "hidden_app") == 0) {
+    // One line per hidden app
+    device_set_app_hidden(info, INT(value), true);
   }
   return 1;
+}
+
+bool device_app_hidden(const device_info_t *info, int app_id) {
+  for (int i = 0; i < info->hidden_app_count; i++) {
+    if (info->hidden_apps[i] == app_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool device_set_app_hidden(device_info_t *info, int app_id, bool hidden) {
+  for (int i = 0; i < info->hidden_app_count; i++) {
+    if (info->hidden_apps[i] == app_id) {
+      if (!hidden) {
+        info->hidden_apps[i] = info->hidden_apps[--info->hidden_app_count];
+      }
+      return true;
+    }
+  }
+  if (!hidden) {
+    return true;
+  }
+  if (info->hidden_app_count >= DEVICE_MAX_HIDDEN_APPS) {
+    return false;
+  }
+  info->hidden_apps[info->hidden_app_count++] = app_id;
+  return true;
 }
 
 device_info_t* append_device(device_info_t *info) {
@@ -166,6 +197,8 @@ device_info_t* append_device(device_info_t *info) {
   p->prefer_external = info->prefer_external;
   strncpy(p->display_name, info->display_name, sizeof(p->display_name) - 1);
   p->display_name[sizeof(p->display_name) - 1] = '\0';
+  memcpy(p->hidden_apps, info->hidden_apps, sizeof(p->hidden_apps));
+  p->hidden_app_count = info->hidden_app_count;
   vita_debug_log("append_device: device %s is added to the list\n", p->name);
 
   known_devices.count++;
@@ -276,6 +309,10 @@ void save_device_info(const device_info_t *info) {
 
   if (info->display_name[0] != '\0') {
     write_string(fd, "display_name", info->display_name);
+  }
+
+  for (int i = 0; i < info->hidden_app_count; i++) {
+    write_int(fd, "hidden_app", info->hidden_apps[i]);
   }
 
   fclose(fd);

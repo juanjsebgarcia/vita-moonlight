@@ -307,6 +307,12 @@ S(CONNECTED_STREAMING, "Streaming {0}", "{0} = game name; heading")
 S(CONNECTED_RESUME, "Resume", "Go back to the game")
 S(CONNECTED_QUIT_APP, "Quit", "Closes the game on the PC")
 S(CONNECTED_APPS, "Applications", "Heading over the games")
+S(APPS_HINT_HIDE, "Hide app", "Hint beside the square button: take the selected game off the list; keep short")
+S(APPS_HINT_UNHIDE, "Unhide app", "Hint beside the square button: put a hidden game back on the list; keep short")
+S(APPS_HIDDEN_NAME, "{0} (hidden)", "{0} = game name, shown while hidden games are listed")
+S(APPS_SHOW_HIDDEN, "Show hidden apps ({0})", "Row; {0} = how many games are hidden")
+S(APPS_HIDE_HIDDEN, "Stop showing hidden apps", "Row: hides the hidden games again")
+S(APPS_HIDE_FULL, "Can't hide more than {0} apps on one PC.", "Error; {0} = a number")
 
 /* Recommended settings */
 S(REC_ROW_PRIORITY, "What matters most", "Row: a choice of priority")

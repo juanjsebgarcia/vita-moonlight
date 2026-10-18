@@ -26,6 +26,8 @@ void ui_boxart_set_focus(bool focused);
 void ui_boxart_input(const input_data *input);
 // The selected app's id, or 0 if there is none
 int ui_boxart_selected_app(void);
+// The next row opened for the same host starts on this app, if it's there
+void ui_boxart_remember(int app_id);
 // "3 of 12" and arrows, for the menu row that stands for the covers; kept up to date
 char *ui_boxart_counter(void);
 // Stops the download thread, leaving loaded covers in memory. Safe mid-frame.
