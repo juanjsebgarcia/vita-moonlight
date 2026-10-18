@@ -3,6 +3,7 @@
 #include "config.h"
 #include "stats.h"
 #include "gui/guilib.h"
+#include "gui/theme.h"
 #include "input/vita.h"
 
 #include <stdbool.h>
@@ -93,28 +94,35 @@ void devshot_open_requested_screen(void) {
     }
   }
   text[out] = '\0';
-  char *arg = strchr(text, ' ');
+  char *kind = text;
+  // Checking the new theme: switch to it before opening the screen
+  if (strncmp(kind, "morpheus", 8) == 0 && (kind[8] == ' ' || kind[8] == '\0')) {
+    theme_request_new();
+    theme_apply_pending();
+    kind += kind[8] == ' ' ? 9 : 8;
+  }
+  char *arg = strchr(kind, ' ');
   if (arg != NULL) {
     *arg++ = '\0';
   } else {
     arg = text + out;
   }
 
-  if (strcmp(text, "flash") == 0) {
+  if (strcmp(kind, "flash") == 0) {
     for (int i = 0; i < DEVSHOT_HOLD_FRAMES; i++) {
       flash_message("%s", arg);
     }
-  } else if (strcmp(text, "error") == 0) {
+  } else if (strcmp(kind, "error") == 0) {
     display_error("%s", arg);
-  } else if (strcmp(text, "confirm") == 0) {
+  } else if (strcmp(kind, "confirm") == 0) {
     display_confirm(arg);
-  } else if (strcmp(text, "help") == 0) {
+  } else if (strcmp(kind, "help") == 0) {
     char *body = strchr(arg, '|');
     if (body != NULL) {
       *body++ = '\0';
     }
     display_help(arg, body ? body : "");
-  } else if (strcmp(text, "overlay") == 0) {
+  } else if (strcmp(kind, "overlay") == 0) {
     // In memory only: the saved settings are left alone
     int stats_overlay = config.stats_overlay;
     config.stats_overlay = STATS_OVERLAY_FPS;
