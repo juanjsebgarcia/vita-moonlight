@@ -148,9 +148,15 @@ void mph_screen_alert_draw(const alert_view *view) {
                  view->captions);
   }
   // The message is the dialog's primary text (the app's messages have no title)
-  int fit = (int)((frame.h - ALERT_PAD - button_area - BUTTON_INSET) / ALERT_LINE);
-  mph_draw_lines(MPH_T_ROW, &lines, frame.x + ALERT_PAD, frame.y + ALERT_PAD + 18, ALERT_LINE, 0, fit, MPH_C_FG,
-                 MPH_ALIGN_LEFT);
+  // A message shorter than the smallest frame is centred in the room above
+  // the buttons, as Homebrew centres a single line
+  float room = frame.h - ALERT_PAD - button_area - BUTTON_INSET;
+  int fit = (int)(room / ALERT_LINE);
+  float top = frame.y + ALERT_PAD;
+  if (count < fit) {
+    top += roundf((room - count * ALERT_LINE) / 2);
+  }
+  mph_draw_lines(MPH_T_ROW, &lines, frame.x + ALERT_PAD, top + 18, ALERT_LINE, 0, fit, MPH_C_FG, MPH_ALIGN_LEFT);
   frame_end();
 }
 
