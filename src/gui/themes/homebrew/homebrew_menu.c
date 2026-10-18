@@ -60,6 +60,8 @@ static hb_geom menu_geom(const menu_view *view) {
     }
     case UI_SCREEN_KEYBOARD_LAYOUT:
       return hb_geom_centered(320, 120);
+    case UI_SCREEN_SEND_KEYS:
+      return hb_geom_fitted(500, view->row_count);
     default:
       break;
   }
@@ -311,7 +313,7 @@ static void draw_decorations(const menu_view *view, hb_geom geom) {
       break;
     case UI_SCREEN_CONNECTED:
       if (view->boxart != NULL) {
-        hb_draw_boxart(view->boxart, view->hint);
+        hb_draw_boxart(view->boxart, view->hint, geom.total_y);
       }
       break;
     case UI_SCREEN_DEADZONE:

@@ -6,6 +6,7 @@
 #include "guilib.h"
 #include "ime.h"
 #include "ui_boxart.h"
+#include "ui_sendkeys.h"
 #include "ui_settings.h"
 
 #include "../connection.h"
@@ -55,6 +56,7 @@ enum {
   CONNECT_DISCONNECT,
   CONNECT_QUITAPP,
   CONNECT_SETTINGS,
+  CONNECT_SEND_KEYS,
   // The row of box art covers, which stands for every app
   CONNECT_BOXART
 };
@@ -88,6 +90,14 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
     if (id == 0) {
       return 0;
     }
+  }
+
+  if (id == CONNECT_SEND_KEYS) {
+    if (!ui_send_keys_menu()) {
+      return 0;
+    }
+    // Sent: back to the stream, to see what the keys did
+    id = server.currentGame;
   }
 
   int ret;
@@ -311,7 +321,7 @@ int ui_connected_menu() {
     }
   }
 
-  // current menu = 11 + app_count. but little more alloc ;)
+  // current menu = 12 + app_count. but little more alloc ;)
   struct menu_entry menu[app_count + 16];
 
   int idx = 0;
@@ -379,6 +389,10 @@ int ui_connected_menu() {
       MENU_CATEGORY(current_status);
       MENU_ACTION(server.currentGame, (char *)tr(STR_CONNECTED_RESUME), false);
       MENU_ACTION(CONNECT_SETTINGS, (char *)tr(STR_MAIN_SETTINGS), false);
+      // Keys need a stream to go down: not one the PC runs without us yet
+      if (connection_get_status() == LI_MINIMIZED) {
+        MENU_ACTION(CONNECT_SEND_KEYS, (char *)tr(STR_SEND_KEYS), false);
+      }
       MENU_ACTION(CONNECT_QUITAPP, (char *)tr(STR_CONNECTED_QUIT_APP), true);
     }
 

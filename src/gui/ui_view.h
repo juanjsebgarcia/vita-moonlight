@@ -96,6 +96,7 @@ typedef enum {
   UI_SCREEN_SPECIAL_KEY_LIST,  // choosing a corner's key: ui_settings.c
   UI_SCREEN_DEADZONE,          // the rear touch dead zone: ui_settings.c
   UI_SCREEN_KEYBOARD_LAYOUT,   // ui_keyboard.c
+  UI_SCREEN_SEND_KEYS,         // the pause menu's key combinations: ui_sendkeys.c
   UI_SCREEN_COUNT
 } ui_screen_id;
 
