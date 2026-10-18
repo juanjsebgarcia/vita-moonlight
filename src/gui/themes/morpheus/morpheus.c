@@ -11,6 +11,7 @@
 #include "mph_screen_settings.h"
 #include "mph_screen_hosts.h"
 #include "mph_screen_connected.h"
+#include "mph_screen_touch.h"
 
 #include "../../guilib.h"
 #include "../../text.h"
@@ -181,6 +182,9 @@ static void mph_draw_menu(const menu_view *view) {
   switch (view->screen->id) {
     case UI_SCREEN_CONNECTED: mph_screen_connected_draw(view, enter); frame_end(); return;
     default: break;
+  if (mph_screen_touch_draw(view, screen.t0, screen.animate)) {
+    frame_end();
+    return;
   }
   int n = build_rows(view);
   mph_rect rect = list_rect(view);
