@@ -12,6 +12,8 @@
 
 #include <vita2d.h>
 
+#include "theme.h"
+
 #define SCE_IME_DIALOG_MAX_TITLE_LENGTH	(128)
 //#define SCE_IME_DIALOG_MAX_TEXT_LENGTH	(512)
 
@@ -111,6 +113,8 @@ int ime_dialog_type(SceImeType type, char *text, const char *title, const char *
   while (1) {
     vita2d_start_drawing();
     vita2d_clear_screen();
+    // The system draws the keyboard over whatever the theme puts behind it
+    theme_active()->draw_ime_backdrop();
 
     SceCommonDialogStatus status = sceImeDialogGetStatus();
     if (status == IME_DIALOG_RESULT_FINISHED) {

@@ -33,9 +33,10 @@ int keyboard_layout_menu(void) {
         menu[i].id = i;
         menu[i].disabled = false;
         menu[i].checked = i == config.keyboard_layout;
+        menu[i].kind = MENU_ROW_CHECK;
     }
-    menu_geom geom = make_geom_centered(320, 120);
-    int sel = display_menu(menu, KB_LAYOUT_COUNT, &geom, &keyboard_layout_loop, NULL, NULL, menu);
+    menu_screen screen = {.id = UI_SCREEN_KEYBOARD_LAYOUT, .title = tr(STR_SET_KEYBOARD_LAYOUT)};
+    int sel = display_menu(menu, KB_LAYOUT_COUNT, &screen, &keyboard_layout_loop, NULL, menu);
     // El layout ya se aplica en el loop, aquí solo refrescamos el menú principal si es necesario
     (void)sel; // Evita warning de variable no usada
     return 0;

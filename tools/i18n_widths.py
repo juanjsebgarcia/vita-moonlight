@@ -14,7 +14,7 @@ and 10 px otherwise. Button markers such as {start} count as their symbol.
 
 It checks the Settings rows (label, value and arrows, with the widest value
 each can show), the Settings notes, the Recommended settings rows, the tab
-bar, the alert buttons, and the rows of the deadzone editor, the special
+bar, the alert buttons, the host list's new theme hint, and the rows of the deadzone editor, the special
 keys menu and a PC's menus. Values that depend on the player (a PC or app
 name, a typed or stepped number) are checked at their realistic widest.
 Exits 1 if anything doesn't fit.
@@ -228,12 +228,15 @@ def alert_buttons_width(font, t):
 TAB_BAR_ROOM = 780 - 85 - 8 - 180
 # Alert captions are right-aligned in the 400 px box; leave its left 20 px clear
 ALERT_ROOM = 400 - 20
+# The new theme hint is right-aligned under the 500 px host list box
+THEME_HINT_ROOM = 500
 
 
 def other_lines(font, t):
     """(where, width available, width) for the lines that aren't menu rows."""
     return [("Settings tab bar", TAB_BAR_ROOM, tab_bar_width(font, t)),
-            ("Alert buttons OK/Cancel", ALERT_ROOM, alert_buttons_width(font, t))]
+            ("Alert buttons OK/Cancel", ALERT_ROOM, alert_buttons_width(font, t)),
+            ("Host list THEME_TRY_NEW hint", THEME_HINT_ROOM, text_width(font, t("THEME_TRY_NEW")))]
 
 
 def checks(t, language_names):

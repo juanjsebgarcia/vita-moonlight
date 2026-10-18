@@ -237,7 +237,7 @@ int ui_search_device_loop() {
 
 #define MENU_CATEGORY(NAME) \
   do { \
-    menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true }; \
+    menu[idx] = (menu_entry) { .name = (NAME), .disabled = true, .separator = true, .kind = MENU_ROW_HEADER }; \
     idx++; \
   } while (0)
 #define MENU_ENTRY(ID, TAG, NAME, SUFFIX) \
@@ -282,7 +282,13 @@ int ui_search_device_loop() {
   MENU_SEPARATOR();
   MENU_ENTRY(DEVICE_EXIT_SEARCH, DEVICE_VIEW_EXIT_SEARCH, (char *)tr(STR_SEARCH_BACK), "");
 
-  return display_menu(menu, idx, NULL, &ui_search_device_callback, &ui_search_device_back, NULL, &menu);
+  search_view search = {.searching = search_thread_status == SEARCH_THREAD_RUNNING};
+  menu_screen screen = {
+    .id = UI_SCREEN_SEARCH,
+    .title = tr(STR_SEARCH_TITLE),
+    .search = &search,
+  };
+  return display_menu(menu, idx, &screen, &ui_search_device_callback, &ui_search_device_back, &menu);
 }
 
 void ui_search_device() {

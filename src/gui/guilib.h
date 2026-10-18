@@ -1,88 +1,19 @@
 #pragma once
 
+// The UI's flow, shared by every theme: frames, input, list screens and
+// dialogs. What each screen shows is described in ui_view.h; the active
+// theme (theme.h) draws it.
+
 #include <stdbool.h>
 #include <vita2d.h>
 
 #include <psp2/touch.h>
 
+#include "ui_view.h"
+
+// The screen, in pixels
 #define WIDTH 960
 #define HEIGHT 544
-
-#define ICON_LEFT_ARROW   "\xef\x95\x8c"
-#define ICON_RIGHT_ARROW  "\xef\x95\x93"
-#define ICON_LEFT_RIGHT_ARROWS ICON_LEFT_ARROW ICON_RIGHT_ARROW
-#define ICON_NETWORK      "\xef\xa6\x8c"
-#define ICON_SPRINTING    "\xeF\xa5\xaD"
-
-
-// What a row's state means; the UI decides how to show it
-typedef enum {
-  MENU_STATUS_NONE,
-  MENU_STATUS_WARNING,  // something to look at, such as Bluetooth being on
-  MENU_STATUS_ONLINE,   // a PC that answers
-  MENU_STATUS_OFFLINE,  // a PC that doesn't
-  MENU_STATUS_CHANGED,  // a PC that answers at a new address
-} menu_status;
-
-// One row of a menu: what it says and what state it's in, not how it looks
-typedef struct menu_entry {
-  int id;
-  char *name;
-  char *suffix;          // extra text on the right, such as an address
-  char subname[1024];    // the current value, on the right
-  bool disabled, separator;
-  bool adjustable;       // left and right change the value
-  bool checked;          // the current choice among options
-  menu_status status;
-} menu_entry;
-
-typedef struct menu_geom {
-  int x, y, width, height, el, total_y;
-} menu_geom;
-
-// Vita control symbols, drawn as shapes because the UI font has no glyphs for them
-enum {
-  // Face buttons, in their usual colours
-  BUTTON_GLYPH_CROSS,
-  BUTTON_GLYPH_CIRCLE,
-  BUTTON_GLYPH_TRIANGLE,
-  BUTTON_GLYPH_SQUARE,
-  // D-pad, with the named direction highlighted, or all four for BUTTON_GLYPH_DPAD
-  BUTTON_GLYPH_DPAD,
-  BUTTON_GLYPH_DPAD_UP,
-  BUTTON_GLYPH_DPAD_DOWN,
-  BUTTON_GLYPH_DPAD_LEFT,
-  BUTTON_GLYPH_DPAD_RIGHT,
-  // Labelled buttons; these are wider than they are tall
-  BUTTON_GLYPH_L,
-  BUTTON_GLYPH_R,
-  BUTTON_GLYPH_L2,
-  BUTTON_GLYPH_R2,
-  BUTTON_GLYPH_START,
-  BUTTON_GLYPH_SELECT,
-  // Round controls
-  BUTTON_GLYPH_PS,
-  BUTTON_GLYPH_LEFT_STICK,
-  BUTTON_GLYPH_RIGHT_STICK,
-  BUTTON_GLYPH_L3,
-  BUTTON_GLYPH_R3,
-  // Touch surfaces
-  BUTTON_GLYPH_FRONT_TOUCH,
-  BUTTON_GLYPH_REAR_TOUCH,
-  BUTTON_GLYPH_COUNT
-};
-
-// Longest line wrap_text() produces, in bytes
-#define WRAP_LINE_MAX 256
-
-extern vita2d_font *font;
-
-// Every menu row is this tall, and no menu box is taller than the default one
-#define MENU_ROW_HEIGHT 24
-#define MENU_MAX_HEIGHT 400
-
-struct menu_geom make_geom_centered(int w, int h);
-struct menu_geom make_geom_fitted(int w, int rows);
 
 #define SCE_CTRL_HOLD 0x80000000
 
@@ -125,13 +56,25 @@ static inline bool ui_held(const input_data *input, unsigned int intent) {
   return (input->intents & intent) != 0;
 }
 
+// Whether L and R are both held down now. read_input() only reports newly
+// pressed buttons, so combinations check the held state with this.
+bool ui_shoulders_held(void);
+
 typedef int (*gui_loop_callback) (int, void *, const input_data *);
 typedef int (*gui_back_callback) (void *);
-typedef void (*gui_draw_callback) (void);
 
 bool was_button_pressed(short id);
 bool is_button_down(short id);
 bool is_rectangle_touched(const SceTouchData *touch, int lx, int ly, int rx, int ry);
+
+// The clock and battery, for themes' status bars. The battery is read at
+// most every 10 seconds.
+typedef struct ui_status {
+  int hour, minute;
+  int battery_percent;
+  bool battery_charging;
+} ui_status;
+void ui_status_read(ui_status *status);
 
 // The next display_menu opens with the cursor on the row with this id,
 // instead of the first, if it's there and can be selected
@@ -143,13 +86,14 @@ void display_menu_select(int id);
 void ui_start();
 void ui_end();
 
+// Shows a list screen until a callback returns non-zero (which it returns)
+// or cancel is pressed with no back callback, or one that returns 0 (1)
 int display_menu(
         menu_entry menu[],
         int total_elements,
-        menu_geom *geom_ptr,
+        const menu_screen *screen,
         gui_loop_callback loop_callback,
         gui_back_callback back_callback,
-        gui_draw_callback draw_callback,
         void *context
         );
 
@@ -166,27 +110,16 @@ void display_error(char *format, ...);
 // confirm, cancel or triangle
 void display_help(const char *title, const char *message);
 
-// Draws a control symbol size pixels tall whose bottom sits on the text
-// baseline y, and returns its width (labelled buttons are wider than size)
-int draw_button_glyph(int glyph, int x, int y, int size);
-
-// Draws text, with {confirm}, {cancel}, {triangle}, {square}, {start}, {l},
-// {r} and the other button names in braces drawn as the button's symbol, and
-// returns its width. confirm and cancel follow Swap X & O.
-int draw_rich_text(int x, int y, unsigned int color, int size, const char *text);
-int rich_text_width(int size, const char *text);
-
 // Call between frames after the language changes, so text uses the right
-// system font for it (Chinese or Japanese forms of Han characters)
+// system font for it (Chinese or Japanese forms of Han characters), and the
+// theme measures again
 void guilib_language_changed(void);
 
-// Splits text into lines no wider than max_width at the UI font size, breaking
-// at spaces and newlines. Returns the number of lines written to lines.
-int wrap_text(const char *text, int max_width, char lines[][WRAP_LINE_MAX], int max_lines);
-
 void flash_message(char *format, ...);
+// A progress message that shows a pairing PIN, which themes may show apart
+void flash_message_pin(const char *pin, const char *message);
 
-void guilib_init(gui_loop_callback global_loop_cb, gui_draw_callback global_draw_cb);
+void guilib_init(gui_loop_callback global_loop_cb);
 
-// Declaración de display_confirm para uso global
+// Asks a yes or no question; returns 1 for yes
 int display_confirm(const char* message);

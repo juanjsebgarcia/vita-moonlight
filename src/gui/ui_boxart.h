@@ -5,7 +5,7 @@
 #include "client.h"
 #include "guilib.h"
 
-// A PC's apps as a row of box art covers, drawn under the host menu. The covers
+// A PC's apps as a row of box art covers, shown with the host menu. The covers
 // are downloaded on a background thread, kept on the memory card under
 // <key_dir>/boxart/<host>/<appid>.png, and only those near the selection are
 // held in memory, shrunk to tile size.
@@ -14,9 +14,11 @@
 // streaming now, or 0; while one runs the row shows it and nothing else can be
 // chosen. Closes any row that was open.
 void ui_boxart_open(PSERVER_DATA server, const char *host, PAPP_LIST apps, int running_app_id);
-// Draws the row. Use as the menu's draw callback: it also frees and uploads
-// textures, which is only safe before anything is drawn in the frame.
-void ui_boxart_draw(void);
+// Describes the row for the theme to draw (view->boxart, and the refresh
+// hint), easing it towards the selection. Call from the menu's update
+// callback: it also frees and uploads textures, which is only safe before
+// anything is drawn in the frame.
+void ui_boxart_update(menu_view *view);
 // Whether the menu's cursor is on the row, which highlights the selection
 void ui_boxart_set_focus(bool focused);
 // Left and right move along the row, L and R jump five, triangle downloads

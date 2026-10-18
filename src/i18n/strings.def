@@ -231,6 +231,7 @@ S(MAIN_SEARCH, "Search devices ...", "")
 S(MAIN_ADD_MANUALLY, "Add manually ...", "")
 S(MAIN_SETTINGS, "Settings", "")
 S(MAIN_QUIT, "Quit", "Leaves Moonlight")
+S(THEME_TRY_NEW, "Press {r} and {l} to use new theme", "Hint under the PC list: pressing both shoulder buttons switches to the new look until Moonlight is closed. {r} and {l} are drawn as the buttons; keep short")
 
 /* A PC's menu */
 S(HOST_MENU_HEADING, "Host management", "Heading")

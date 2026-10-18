@@ -9,3 +9,17 @@
 // keep drawing while nobody's touching the Vita.
 // Call after each UI frame is swapped onto the screen.
 void devshot_after_swap(void);
+
+// Developer mode only: opens the screen named in <key_dir>screen.req, once,
+// at launch, and deletes the request, so remote checks can capture screens
+// that buttons reach only with a PC or a stream. The file holds one line,
+// "<kind> <text>", with \n in the text for a line break:
+//   flash <text>          a progress message, held for 10 s
+//   error <text>          an alert with an OK button
+//   confirm <text>        an alert with Yes and No
+//   help <title>|<text>   the help dialog
+//   overlay               the stream's overlays (stats in fps mode, the start
+//                         hint, the sprint icon) over black, for 10 s
+// A script uploads the file over FTP, then launches the app.
+// Call after the UI is set up, before the main menu.
+void devshot_open_requested_screen(void);

@@ -21,7 +21,7 @@
 #include "../video.h"
 #include "../config.h"
 #include "../debug.h"
-#include "../gui/guilib.h"
+#include "../gui/theme.h"
 #include "../util.h"
 #include "../input/vita.h"
 #include "vita.h"
@@ -642,47 +642,35 @@ void draw_fps() {
   vitastats_draw();
 }
 
-static void draw_stream_hint(void) {
+void draw_indicators() {
+  stream_overlay_view overlay = {0};
+
+  // The start-of-stream hint, fading out over its last second
   uint64_t now = LiGetMicroseconds();
   if (stream_hint_start_us == 0) {
     stream_hint_start_us = now;
   }
   uint64_t shown_for = now - stream_hint_start_us;
-  if (shown_for >= STREAM_HINT_DURATION_US) {
-    return;
+  if (shown_for < STREAM_HINT_DURATION_US) {
+    uint64_t remaining = STREAM_HINT_DURATION_US - shown_for;
+    overlay.hint = tr(STR_STREAM_HINT);
+    overlay.hint_opacity = remaining < STREAM_HINT_FADE_US ? (float)remaining / STREAM_HINT_FADE_US : 1.0f;
   }
 
-  // Fade out over the last second
-  uint64_t remaining = STREAM_HINT_DURATION_US - shown_for;
-  float opacity = remaining < STREAM_HINT_FADE_US ? (float)remaining / STREAM_HINT_FADE_US : 1.0f;
+  overlay.poor_network = poor_net_indicator.activated;
+  overlay.poor_network_alpha = poor_net_indicator.alpha;
+  overlay.sprinting = dc_tracker.currently_sprinting;
 
-  const int font_size = 20;
-  const char *hint = tr(STR_STREAM_HINT);
-  int text_width = rich_text_width(font_size, hint);
-  int box_width = text_width + 32;
-  int box_height = 36;
-  int box_x = (SCREEN_WIDTH - box_width) / 2;
-  int box_y = SCREEN_HEIGHT - box_height - 24;
-  vita2d_draw_rectangle(box_x, box_y, box_width, box_height, RGBA8(0, 0, 0, (uint8_t)(0xB0 * opacity)));
-  draw_rich_text(box_x + 16, box_y + 25, RGBA8(0xFF, 0xFF, 0xFF, (uint8_t)(0xFF * opacity)), font_size, hint);
-}
+  theme_active()->draw_stream_overlay(&overlay);
 
-void draw_indicators() {
-  draw_stream_hint();
-
+  // The poor network icon pulses
   if (poor_net_indicator.activated) {
-    vita2d_font_draw_text(font, 40, 500, RGBA8(0xFF, 0xFF, 0xFF, poor_net_indicator.alpha), 64, ICON_NETWORK);
     poor_net_indicator.alpha += (0x4 * (poor_net_indicator.plus ? 1 : -1));
     if (poor_net_indicator.alpha == 0) {
       poor_net_indicator.plus = !poor_net_indicator.plus;
       poor_net_indicator.alpha += (0x4 * (poor_net_indicator.plus ? 1 : -1));
     }
   }
-
-  if (dc_tracker.currently_sprinting) {
-    vita2d_font_draw_text(font, 40, 50, RGBA8(0xFF, 0xFF, 0xFF, 0xAA), 48, ICON_SPRINTING);
-  }
-
 }
 
 void vitavideo_start() {

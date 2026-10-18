@@ -25,15 +25,9 @@
 #include <psp2/kernel/threadmgr.h>
 #include <vita2d.h>
 
-// Tile size on screen. Sunshine's covers are 3:4, usually 600x800.
-#define TILE_W 150
-#define TILE_H 200
-#define TILE_GAP 18
-#define TILE_SPACING (TILE_W + TILE_GAP)
-// The selected tile is drawn this much larger
-#define SELECTED_SCALE 1.12f
-// Covers are shrunk once, when loaded, to the selected tile's size: about
-// 150 KB of texture each instead of 1.9 MB for a full 600x800 cover
+// Covers are shrunk once, when loaded, to Homebrew's selected tile size
+// (150x200 grown by 1.12): about 150 KB of texture each instead of 1.9 MB
+// for a full 600x800 cover
 #define TEX_W 168
 #define TEX_H 224
 // Covers held in memory either side of the selection: the 7 that fit on
@@ -49,23 +43,10 @@
 #define FETCH_TIMEOUT_SECONDS 10
 // At most this many textures are created per frame, to keep scrolling smooth
 #define UPLOADS_PER_FRAME 2
-// Where the row sits: the bottom of the screen, under the menu
-#define ROW_CENTRE_Y 390
-#define NAME_BASELINE_Y 530
-#define LABEL_LINES 3
-#define LABEL_LINE_HEIGHT 22
-#define LABEL_LINE_MAX 64
-
 // The loader runs below the menu's priority (higher numbers are lower on the
 // Vita), with room on its stack for TLS and PNG decoding
 #define LOADER_PRIORITY (0x10000100 + 16)
 #define LOADER_STACK_SIZE (256 * 1024)
-
-#define COLOUR_CARD RGBA8(0x2A, 0x2A, 0x2A, 0xFF)
-#define COLOUR_LABEL RGBA8(0xDD, 0xDD, 0xDD, 0xFF)
-#define COLOUR_DIM RGBA8(0x00, 0x00, 0x00, 0xA0)
-#define COLOUR_FOCUS 0xff00ff00 // the menu's selection green
-#define COLOUR_SELECTED RGBA8(0xAA, 0xAA, 0xAA, 0xFF)
 
 enum {
   FETCH_UNKNOWN, // not looked for yet
@@ -88,10 +69,6 @@ typedef struct {
 
   // Main thread only
   vita2d_texture *texture;
-  bool label_ready;
-  int label_count;
-  char label[LABEL_LINES][LABEL_LINE_MAX];
-  int label_width[LABEL_LINES];
 } cover_slot;
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -109,6 +86,8 @@ static bool locked;
 static int running_id;
 static bool refresh_requested;
 static char counter_text[48];
+// Bumped whenever the covers are replaced, so themes can drop what they cached
+static unsigned int generation;
 
 // The selection is kept across menu rebuilds (after a stream, say) for the same host
 static char remembered_host[256];
@@ -395,6 +374,7 @@ void ui_boxart_close(void) {
 
 void ui_boxart_open(PSERVER_DATA server, const char *host, PAPP_LIST apps, int running_app_id) {
   ui_boxart_close();
+  generation++;
 
   int count = 0;
   for (PAPP_LIST app = apps; app != NULL; app = app->next) {
@@ -561,74 +541,17 @@ static void update_textures(void) {
   pthread_mutex_unlock(&lock);
 }
 
-static void prepare_label(cover_slot *slot) {
-  char lines[LABEL_LINES + 1][WRAP_LINE_MAX];
-  int count = wrap_text(slot->name, TILE_W - 16, lines, LABEL_LINES + 1);
-  if (count > LABEL_LINES) {
-    // Longer names end in an ellipsis on the last line
-    count = LABEL_LINES;
-    size_t len = strlen(lines[count - 1]);
-    snprintf(lines[count - 1] + (len > WRAP_LINE_MAX - 4 ? WRAP_LINE_MAX - 4 : len), 4, "...");
-  }
-  slot->label_count = count;
-  for (int i = 0; i < count; i++) {
-    snprintf(slot->label[i], LABEL_LINE_MAX, "%s", lines[i]);
-    slot->label_width[i] = rich_text_width(18, slot->label[i]);
-  }
-  slot->label_ready = true;
+static const boxart_cover *cover_at(int index) {
+  // Valid until the next call
+  static boxart_cover cover;
+  cover = (boxart_cover){slots[index].id, slots[index].name, slots[index].texture};
+  return &cover;
 }
 
-static void draw_outline(float x, float y, float w, float h, int thickness, unsigned int colour) {
-  vita2d_draw_rectangle(x - thickness, y - thickness, w + thickness * 2, thickness, colour);
-  vita2d_draw_rectangle(x - thickness, y + h, w + thickness * 2, thickness, colour);
-  vita2d_draw_rectangle(x - thickness, y, thickness, h, colour);
-  vita2d_draw_rectangle(x + w, y, thickness, h, colour);
-}
-
-static void draw_tile(int index) {
-  cover_slot *slot = &slots[index];
-  float distance = index - view_position;
-  float cx = WIDTH / 2.0f + distance * TILE_SPACING;
-  if (cx < -TILE_W || cx > WIDTH + TILE_W) {
-    return;
-  }
-  // Grows smoothly as it slides into the middle
-  float closeness = 1.0f - fminf(fabsf(distance), 1.0f);
-  float scale = 1.0f + (SELECTED_SCALE - 1.0f) * closeness;
-  float w = TILE_W * scale;
-  float h = TILE_H * scale;
-  float x = cx - w / 2.0f;
-  float y = ROW_CENTRE_Y - h / 2.0f;
-
-  vita2d_draw_rectangle(x, y, w, h, COLOUR_CARD);
-  if (slot->texture != NULL) {
-    float tw = vita2d_texture_get_width(slot->texture);
-    float th = vita2d_texture_get_height(slot->texture);
-    float s = fminf(w / tw, h / th);
-    vita2d_draw_texture_scale(slot->texture, x + (w - tw * s) / 2.0f, y + (h - th * s) / 2.0f, s, s);
-  } else {
-    // The app's name on a plain card, while its cover loads or if it has none
-    if (!slot->label_ready) {
-      prepare_label(slot);
-    }
-    int top = ROW_CENTRE_Y - slot->label_count * LABEL_LINE_HEIGHT / 2 + 16;
-    for (int i = 0; i < slot->label_count; i++) {
-      draw_rich_text((int)(cx - slot->label_width[i] / 2.0f), top + i * LABEL_LINE_HEIGHT,
-                            COLOUR_LABEL, 18, slot->label[i]);
-    }
-  }
-
-  if (locked && slot->id != running_id) {
-    // Another app is streaming, so these can't be started
-    vita2d_draw_rectangle(x, y, w, h, COLOUR_DIM);
-  }
-  if (index == selected) {
-    draw_outline(x, y, w, h, 3, focused ? COLOUR_FOCUS : COLOUR_SELECTED);
-  }
-}
-
-void ui_boxart_draw(void) {
+void ui_boxart_update(menu_view *view) {
   if (slots == NULL || slot_count == 0) {
+    view->boxart = NULL;
+    view->hint = (ui_hint){BUTTON_GLYPH_NONE, NULL};
     return;
   }
   update_textures();
@@ -639,23 +562,19 @@ void ui_boxart_draw(void) {
     view_position = selected;
   }
 
-  for (int i = 0; i < slot_count; i++) {
-    if (i != selected) {
-      draw_tile(i);
-    }
-  }
-  // Last, so its outline sits on top of its neighbours
-  draw_tile(selected);
-
-  const char *name = slots[selected].name;
-  int name_width = rich_text_width(18, name);
-  draw_rich_text(WIDTH / 2 - name_width / 2, NAME_BASELINE_Y, 0xffffffff, 18, name);
-
-  if (focused && !locked) {
-    const char *hint = tr(STR_BOXART_REFRESH);
-    int hint_width = rich_text_width(18, hint);
-    int x = WIDTH - 20 - hint_width - 14 - 6;
-    x += draw_button_glyph(BUTTON_GLYPH_TRIANGLE, x, NAME_BASELINE_Y, 14) + 6;
-    draw_rich_text(x, NAME_BASELINE_Y, COLOUR_LABEL, 18, hint);
-  }
+  static boxart_view covers;
+  covers = (boxart_view){
+    .count = slot_count,
+    .selected = selected,
+    .position = view_position,
+    .focused = focused,
+    .locked = locked,
+    .running_id = running_id,
+    .counter = counter_text,
+    .generation = generation,
+    .cover = cover_at,
+  };
+  view->boxart = &covers;
+  view->hint = focused && !locked ? (ui_hint){BUTTON_GLYPH_TRIANGLE, tr(STR_BOXART_REFRESH)}
+                                  : (ui_hint){BUTTON_GLYPH_NONE, NULL};
 }
