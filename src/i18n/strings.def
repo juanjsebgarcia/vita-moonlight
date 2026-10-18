@@ -306,6 +306,7 @@ S(CONNECTED_UNKNOWN_APP, "unknown", "In place of a game name")
 S(CONNECTED_STREAMING, "Streaming {0}", "{0} = game name; heading")
 S(CONNECTED_RESUME, "Resume", "Go back to the game")
 S(CONNECTED_QUIT_APP, "Quit", "Closes the game on the PC")
+S(CONNECTED_QUIT_ASK, "Quit {0}?\nThe game closes on your PC, and anything not saved in it is lost.", "{0} = game name; asked before Quit")
 S(CONNECTED_APPS, "Applications", "Heading over the games")
 
 /* Recommended settings */
