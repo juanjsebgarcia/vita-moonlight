@@ -116,6 +116,7 @@ add_executable(${PROJECT_NAME}.elf
 	src/gui/ui_recommended.c
 	src/gui/ui_boxart.c
 	src/gui/ui_connect.c
+	src/gui/ui_sendkeys.c
 	src/gui/ui_device.c
 	src/gui/ui_check.c
 

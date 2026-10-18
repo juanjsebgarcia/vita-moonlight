@@ -60,6 +60,8 @@ static hb_geom menu_geom(const menu_view *view) {
     }
     case UI_SCREEN_KEYBOARD_LAYOUT:
       return hb_geom_centered(320, 120);
+    case UI_SCREEN_SEND_KEYS:
+      return hb_geom_fitted(500, view->row_count);
     default:
       break;
   }

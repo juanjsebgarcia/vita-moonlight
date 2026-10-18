@@ -59,8 +59,7 @@ static void track_screen(ui_screen_id id) {
   screen.shown = true;
 }
 
-// A plain list, for a screen without a layout of its own (every screen has
-// one today)
+// A plain list, for a screen without a layout of its own (Send keys)
 static mph_list_state list;
 static float list_seen = -1;
 static mph_row rows[MPH_LIST_MAX];
