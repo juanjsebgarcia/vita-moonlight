@@ -5,6 +5,8 @@
 #include <string.h>
 #include "../keyboardsystem.h"
 #include "../connection.h"
+#include "../connection_overlay.h"
+#include "../stats.h"
 #include "../debug.h"
 #include <psp2/kernel/threadmgr.h>
 
@@ -61,4 +63,34 @@ bool process_physical_shortcuts(const SceCtrlData* pad, const SceCtrlData* pad_o
         shortcut_state = 0;
     }
     return false;
+}
+
+void process_stats_shortcut(SceCtrlData* pad) {
+    static uint32_t previous = 0;
+    // Set when the pair fires, until START and RIGHT are both up again
+    static bool held_back = false;
+    const uint32_t pair = SCE_CTRL_START | SCE_CTRL_RIGHT;
+    uint32_t buttons = pad->buttons;
+    bool pressed_now = (buttons & pair) & ~previous;
+    previous = buttons;
+
+    // The keyboard and the pause menu have the buttons to themselves, and
+    // START + L1 + R1 (pause) wins over this pair
+    bool pause_chord = (buttons & SCE_CTRL_START) && (buttons & SCE_CTRL_L1) && (buttons & SCE_CTRL_R1);
+    if (keyboardsystem_is_open() || pause_overlay_is_open() || pause_chord) {
+        held_back = false;
+        return;
+    }
+    // Both down, one of them just now: holding START and tapping RIGHT
+    // again moves on again
+    if ((buttons & pair) == pair && pressed_now) {
+        vitastats_next_mode();
+        held_back = true;
+    }
+    if (held_back) {
+        if ((buttons & pair) == 0) {
+            held_back = false;
+        }
+        pad->buttons &= ~pair;
+    }
 }

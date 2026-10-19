@@ -625,9 +625,7 @@ int global_loop(int cursor, void *ctx, const input_data *input) {
       sceKernelDelayThread(500 * 1000);
       connection_resume();
 
-      while (connection_is_connected()) {
-        sceKernelDelayThread(500 * 1000);
-      }
+      ui_connect_wait_stream();
     }
   }
   return 0;

@@ -256,6 +256,12 @@ static bool stats_overlay_change(int step) {
   return true;
 }
 
+// The modes, then the in-stream shortcut, which has its own string so the
+// translations of the first part still apply
+static void stats_overlay_help(char *out, size_t size) {
+  snprintf(out, size, "%s %s", tr(STR_SET_SHOW_FPS_HELP), tr(STR_SET_SHOW_FPS_SHORTCUT));
+}
+
 static void app_list_value(char *out, size_t size) {
   snprintf(out, size, "%s", tr(config.app_list_style == APP_LIST_TEXT ? STR_APP_LIST_TEXT : STR_APP_LIST_BOXART));
 }
@@ -541,7 +547,7 @@ const setting_def SETTINGS[] = {
    .help = STR_SET_JP_LAYOUT_HELP},
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_CHOICE, .flags = SETTING_CONFIRM_STEPS,
    .label = STR_SET_SHOW_FPS, .value = stats_overlay_value, .change = stats_overlay_change,
-   .help = STR_SET_SHOW_FPS_HELP},
+   .help_with = stats_overlay_help},
   {.tab = SETTINGS_TAB_SYSTEM, .kind = SETTING_CHOICE, .flags = SETTING_CONFIRM_STEPS,
    .label = STR_SET_APP_LIST_STYLE, .value = app_list_value, .change = app_list_change,
    .help = STR_SET_APP_LIST_STYLE_HELP},

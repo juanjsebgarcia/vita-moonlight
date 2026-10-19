@@ -16,6 +16,7 @@
 #include "../device.h"
 #include "../debug.h"
 #include "../netcount.h"
+#include "../stats.h"
 
 #include "client.h"
 #include "errors.h"
@@ -41,6 +42,16 @@
 #include "../session.h"
 
 int pos[2];
+
+void ui_connect_wait_stream(void) {
+  while (connection_is_connected()) {
+    sceKernelDelayThread(500 * 1000);
+  }
+  // The stats overlay mode, if the shortcut changed it mid-stream
+  if (vitastats_take_mode_change()) {
+    ui_settings_save_config();
+  }
+}
 
 void ui_connect_stream(int appId) {
   char err[512];
@@ -213,9 +224,7 @@ int ui_connect_loop(int id, void *context, const input_data *input) {
       }
 
 //mainloop:
-      while (connection_is_connected()) {
-        sceKernelDelayThread(500 * 1000);
-      }
+      ui_connect_wait_stream();
 
       int status = connection_get_status();
 
@@ -570,9 +579,7 @@ void ui_connect_restart_stream(void) {
   vitainput_config(config);
   // A resume carries the new resolution, frame rate and bitrate
   ui_connect_stream(app_id);
-  while (connection_is_connected()) {
-    sceKernelDelayThread(500 * 1000);
-  }
+  ui_connect_wait_stream();
 }
 
 void ui_connect_resume() {

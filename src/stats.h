@@ -45,3 +45,13 @@ void vitastats_tick(void);
 // Draws the overlay for the current config.stats_overlay mode. Call between
 // vita2d_start_drawing() and vita2d_end_drawing().
 void vitastats_draw(void);
+
+// The in-stream shortcut (START + RIGHT): moves config.stats_overlay to the
+// next mode and names it on screen for a moment. From the input thread.
+void vitastats_next_mode(void);
+// The note naming the mode just chosen, with its opacity as it fades, or NULL
+// when there's none to show. From the video thread, on every frame.
+const char *vitastats_mode_note(float *opacity);
+// Whether the shortcut changed the mode since the last call, so the caller
+// saves the config (the input thread shouldn't wait on the memory card)
+bool vitastats_take_mode_change(void);

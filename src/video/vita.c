@@ -656,6 +656,13 @@ void draw_indicators() {
     overlay.hint = tr(STR_STREAM_HINT);
     overlay.hint_opacity = remaining < STREAM_HINT_FADE_US ? (float)remaining / STREAM_HINT_FADE_US : 1.0f;
   }
+  // A stats mode just chosen with the shortcut is named in the hint's place
+  float note_opacity;
+  const char *note = vitastats_mode_note(&note_opacity);
+  if (note != NULL) {
+    overlay.hint = note;
+    overlay.hint_opacity = note_opacity;
+  }
 
   overlay.poor_network = poor_net_indicator.activated;
   overlay.poor_network_alpha = poor_net_indicator.alpha;

@@ -19,6 +19,7 @@
 #include "config.h"
 #include "debug.h"
 #include "gui/theme.h"
+#include "i18n/i18n.h"
 
 #include <pthread.h>
 #include <stdio.h>
@@ -30,6 +31,9 @@
 #define STATS_LINE_LENGTH 80
 // Below this the Wi-Fi reading is shown as weak; frame loss starts to climb
 #define STATS_WEAK_WIFI_PERCENT 60
+// The note after the shortcut changes the mode, fading out at the end
+#define STATS_NOTE_DURATION_US 2000000
+#define STATS_NOTE_FADE_US 500000
 
 typedef struct {
   uint64_t sum_us;
@@ -74,11 +78,23 @@ static int wifi_percent = -1;
 static int wifi_line = -1;
 // Bumped whenever lines change, so the draw only re-measures text when needed
 static int lines_version = 0;
+// When the shortcut last changed the mode (0 for not this stream), and whether
+// the config file still has the old one
+static uint64_t mode_changed_us = 0;
+static bool mode_unsaved = false;
+// Set when the shortcut turns counting on: the next tick starts the packet
+// counters' baseline afresh, so they cover the same time as the frames
+static bool window_restarted = false;
+
+// The overlay mode, which the shortcut changes from the input thread
+static int stats_mode(void) {
+  return __atomic_load_n(&config.stats_overlay, __ATOMIC_RELAXED);
+}
 
 // Nothing is collected unless someone is looking: the overlay is on, or the
 // numbers are going to the log. Read on every frame, so kept trivial.
 static bool stats_active(void) {
-  return config.stats_overlay != STATS_OVERLAY_OFF || config.save_debug_log;
+  return stats_mode() != STATS_OVERLAY_OFF || config.save_debug_log;
 }
 
 static void timing_add(timing *t, uint64_t us) {
@@ -110,7 +126,55 @@ void vitastats_reset(void) {
   last_tick_us = LiGetMicroseconds();
   line_count = 0;
   rendered_fps = 0;
+  mode_changed_us = 0;
   pthread_mutex_unlock(&stats_mutex);
+}
+
+void vitastats_next_mode(void) {
+  pthread_mutex_lock(&stats_mutex);
+  if (!stats_active()) {
+    // Nothing was counted while it was off: start a fresh window, so the
+    // first figures don't take the frames since then as lost
+    memset(&current, 0, sizeof(current));
+    last_frame_number = 0;
+    frame_pipeline_us = 0;
+    last_tick_us = LiGetMicroseconds();
+    line_count = 0;
+    rendered_fps = 0;
+    window_restarted = true;
+  }
+  int mode = (stats_mode() + 1) % STATS_OVERLAY_COUNT;
+  __atomic_store_n(&config.stats_overlay, mode, __ATOMIC_RELAXED);
+  mode_changed_us = LiGetMicroseconds();
+  mode_unsaved = true;
+  pthread_mutex_unlock(&stats_mutex);
+  vita_debug_log("[STATS] overlay mode %d, from the shortcut", mode);
+}
+
+const char *vitastats_mode_note(float *opacity) {
+  static const str_id notes[STATS_OVERLAY_COUNT] = {STR_STATS_NOTE_OFF, STR_STATS_NOTE_FPS, STR_STATS_NOTE_FULL};
+  pthread_mutex_lock(&stats_mutex);
+  uint64_t changed_us = mode_changed_us;
+  int mode = stats_mode();
+  pthread_mutex_unlock(&stats_mutex);
+  if (changed_us == 0) {
+    return NULL;
+  }
+  uint64_t shown_for = LiGetMicroseconds() - changed_us;
+  if (shown_for >= STATS_NOTE_DURATION_US) {
+    return NULL;
+  }
+  uint64_t remaining = STATS_NOTE_DURATION_US - shown_for;
+  *opacity = remaining < STATS_NOTE_FADE_US ? (float)remaining / STATS_NOTE_FADE_US : 1.0f;
+  return tr(notes[mode]);
+}
+
+bool vitastats_take_mode_change(void) {
+  pthread_mutex_lock(&stats_mutex);
+  bool unsaved = mode_unsaved;
+  mode_unsaved = false;
+  pthread_mutex_unlock(&stats_mutex);
+  return unsaved;
 }
 
 void vitastats_frame_received(const DECODE_UNIT *du, uint64_t submit_us) {
@@ -177,9 +241,11 @@ void vitastats_frame_dropped_by_pacer(void) {
 }
 
 void vitastats_tick(void) {
-  uint64_t now_us = LiGetMicroseconds();
-
   pthread_mutex_lock(&stats_mutex);
+  // Read under the lock, as the shortcut can restart the window meanwhile
+  uint64_t now_us = LiGetMicroseconds();
+  bool restarted = window_restarted;
+  window_restarted = false;
   window w = current;
   memset(&current, 0, sizeof(current));
   uint64_t elapsed_us = now_us - last_tick_us;
@@ -206,6 +272,11 @@ void vitastats_tick(void) {
   const RTP_VIDEO_STATS *rtp_ptr = LiGetRTPVideoStats();
   if (rtp_ptr != NULL) {
     rtp = *rtp_ptr;
+  }
+  // Counting just started mid-stream: the packets since it last stopped
+  // aren't this window's, so this one reports none
+  if (restarted) {
+    last_rtp_stats = rtp;
   }
   uint32_t fec_recovered = rtp.packetCountFecRecovered - last_rtp_stats.packetCountFecRecovered;
   uint32_t fec_failed = rtp.packetCountFecFailed - last_rtp_stats.packetCountFecFailed;
@@ -300,7 +371,8 @@ void vitastats_tick(void) {
 }
 
 void vitastats_draw(void) {
-  if (config.stats_overlay == STATS_OVERLAY_OFF) {
+  int mode = stats_mode();
+  if (mode == STATS_OVERLAY_OFF) {
     return;
   }
 
@@ -328,7 +400,7 @@ void vitastats_draw(void) {
   pthread_mutex_unlock(&stats_mutex);
 
   stats_view view = {
-    .full = config.stats_overlay != STATS_OVERLAY_FPS,
+    .full = mode != STATS_OVERLAY_FPS,
     .fps = fps,
     .target_fps = config.stream.fps,
     .wifi_percent = wifi,
