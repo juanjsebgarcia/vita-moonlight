@@ -41,6 +41,7 @@ static OpusMSDecoder* decoder = NULL;
 
 static short buffer[BUFFER_SIZE];
 static bool decode_thread_logged = false;
+volatile unsigned int vitaaudio_packets = 0;
 
 static void vita_renderer_cleanup() {
   if (decoder != NULL) {
@@ -77,6 +78,7 @@ static int vita_renderer_init(int audioConfiguration, POPUS_MULTISTREAM_CONFIGUR
 static void vita_renderer_decode_and_play_sample(char* data, int length) {
   if (!data)
     return;
+  vitaaudio_packets++;
 
   if (!decode_thread_logged) {
     // With CAPABILITY_DIRECT_SUBMIT this runs on common-c's AudioRecv thread

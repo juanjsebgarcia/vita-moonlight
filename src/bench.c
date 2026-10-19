@@ -20,6 +20,7 @@
 #include "connection.h"
 #include "debug.h"
 #include "netcount.h"
+#include "audio/vita.h"
 #include "device.h"
 #include "gui/guilib.h"
 #include "gui/ui_connect.h"
@@ -67,6 +68,7 @@ static const float CURSOR_TARGET_X[2] = {0.930f, 0.965f};
 // Windows virtual key codes, which is what GameStream hosts expect
 #define VK_SPACE 0x20
 #define VK_R 0x52
+#define VK_M 0x4d
 
 #define CONNECT_TIMEOUT_US (20 * 1000000ULL)
 // A browser started by Sunshine can take a while to show the page
@@ -163,6 +165,8 @@ static struct {
   // for a keyframe after a frame couldn't be rebuilt
   uint32_t freezes;
   uint64_t bytes;
+  // vitaaudio_packets when measuring started
+  unsigned int audio_packets_start;
   uint32_t ticks_read, ticks_unreadable, ticks_repeated, ticks_skipped, ticks_backwards;
   // Total forward ticks between frames, to work out the page's tick rate
   uint32_t ticks_advanced;
@@ -580,6 +584,7 @@ static void reset_measurements(void) {
   state.frames_received = state.frames_rendered = state.frames_lost = state.idr_frames = 0;
   state.freezes = 0;
   state.bytes = 0;
+  state.audio_packets_start = vitaaudio_packets;
   state.ticks_read = state.ticks_unreadable = state.ticks_repeated = 0;
   state.ticks_skipped = state.ticks_backwards = 0;
   state.ticks_advanced = 0;
@@ -595,10 +600,14 @@ static void reset_measurements(void) {
   pthread_mutex_unlock(&bench_mutex);
 }
 
-static void send_key(short key) {
-  LiSendKeyboardEvent(key, KEY_ACTION_DOWN, 0);
+static void send_key_with(short key, char modifiers) {
+  LiSendKeyboardEvent(key, KEY_ACTION_DOWN, modifiers);
   sceKernelDelayThread(KEY_HOLD_US);
-  LiSendKeyboardEvent(key, KEY_ACTION_UP, 0);
+  LiSendKeyboardEvent(key, KEY_ACTION_UP, modifiers);
+}
+
+static void send_key(short key) {
+  send_key_with(key, 0);
 }
 
 // Which input path the timed presses use, so they can be compared: a key goes
@@ -798,12 +807,18 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   fprintf(f, ",\n  \"seconds\": %.1f,\n", seconds);
   fprintf(f, "  \"settings\": {\"width\": %d, \"height\": %d, \"fps\": %d, \"bitrate_kbps\": %d, "
              "\"packet_size\": %d, \"direct_decode\": %s, \"input_sync\": %s, \"boost_clocks\": %s, "
-             "\"frame_pacer\": %s, \"vblank_wait\": %s, \"stats_overlay\": %d, \"debug_log\": %s, \"decode_yuv\": %s},\n",
+             "\"frame_pacer\": %s, \"vblank_wait\": %s, \"stats_overlay\": %d, \"debug_log\": %s, \"decode_yuv\": %s, "
+             "\"page_audio\": %s},\n",
           config.stream.width, config.stream.height, config.stream.fps, config.stream.bitrate,
           config.stream.packetSize, config.direct_decode ? "true" : "false",
           config.input_sync_to_controller ? "true" : "false", config.boost_clocks ? "true" : "false",
           config.enable_frame_pacer ? "true" : "false", config.enable_vita_vblank_wait ? "true" : "false",
-          config.stats_overlay, config.save_debug_log ? "true" : "false", config.decode_yuv ? "true" : "false");
+          config.stats_overlay, config.save_debug_log ? "true" : "false", config.decode_yuv ? "true" : "false",
+          config.bench_audio ? "true" : "false");
+  // Packets that reached the Opus decoder; 0 means the host sent no audio
+  unsigned int audio_packets = vitaaudio_packets - state.audio_packets_start;
+  fprintf(f, "  \"audio\": {\"packets\": %u, \"per_second\": %.1f},\n", audio_packets,
+          seconds > 0 ? audio_packets / seconds : 0);
   fprintf(f, "  \"frames\": {\"received\": %u, \"rendered\": %u, \"fps_received\": %.2f, \"fps_rendered\": %.2f, "
              "\"lost_network\": %u, \"idr\": %u, \"replaced_before_shown\": %u, \"freezes\": %u},\n",
           state.frames_received, state.frames_rendered,
@@ -1053,6 +1068,10 @@ int vitabench_run(bool automated) {
       snprintf(error, sizeof(error), "The benchmark page didn't appear within %llu s. Is %s showing bench.html?",
                PAGE_TIMEOUT_US / 1000000, app_name);
       goto done;
+    }
+    // Shift+M only ever turns the page's audio on, never off
+    if (config.bench_audio) {
+      send_key_with(VK_M, MODIFIER_SHIFT);
     }
     // Restart the page's animation, so every run shows the same pictures
     send_key(VK_R);
