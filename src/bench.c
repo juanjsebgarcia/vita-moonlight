@@ -165,8 +165,6 @@ static struct {
   // for a keyframe after a frame couldn't be rebuilt
   uint32_t freezes;
   uint64_t bytes;
-  // vitaaudio_packets when measuring started
-  unsigned int audio_packets_start;
   uint32_t ticks_read, ticks_unreadable, ticks_repeated, ticks_skipped, ticks_backwards;
   // Total forward ticks between frames, to work out the page's tick rate
   uint32_t ticks_advanced;
@@ -584,7 +582,6 @@ static void reset_measurements(void) {
   state.frames_received = state.frames_rendered = state.frames_lost = state.idr_frames = 0;
   state.freezes = 0;
   state.bytes = 0;
-  state.audio_packets_start = vitaaudio_packets;
   state.ticks_read = state.ticks_unreadable = state.ticks_repeated = 0;
   state.ticks_skipped = state.ticks_backwards = 0;
   state.ticks_advanced = 0;
@@ -720,6 +717,10 @@ typedef struct {
   // (common-c's counters), and those it sent and that arrived, from the RTP
   // sequence numbers (src/netcount.c)
   RTP_VIDEO_STATS rtp_start, rtp_end;
+  // Audio packets decoded while measuring (vitaaudio_packet_count)
+  unsigned int audio_start, audio_end;
+  // Whether the page's test audio was turned on (only on the page's input modes)
+  bool page_audio;
   // The battery while measuring, to compare settings by power use. Only
   // meaningful on battery: charging or a charger plugged in spoils it.
   int battery_mah_start, battery_mah_end;
@@ -814,9 +815,9 @@ static void write_report(FILE *f, const char *started, const char *host, const c
           config.input_sync_to_controller ? "true" : "false", config.boost_clocks ? "true" : "false",
           config.enable_frame_pacer ? "true" : "false", config.enable_vita_vblank_wait ? "true" : "false",
           config.stats_overlay, config.save_debug_log ? "true" : "false", config.decode_yuv ? "true" : "false",
-          config.bench_audio ? "true" : "false");
+          link->page_audio ? "true" : "false");
   // Packets that reached the Opus decoder; 0 means the host sent no audio
-  unsigned int audio_packets = vitaaudio_packets - state.audio_packets_start;
+  unsigned int audio_packets = link->audio_end - link->audio_start;
   fprintf(f, "  \"audio\": {\"packets\": %u, \"per_second\": %.1f},\n", audio_packets,
           seconds > 0 ? audio_packets / seconds : 0);
   fprintf(f, "  \"frames\": {\"received\": %u, \"rendered\": %u, \"fps_received\": %.2f, \"fps_rendered\": %.2f, "
@@ -1069,9 +1070,12 @@ int vitabench_run(bool automated) {
                PAGE_TIMEOUT_US / 1000000, app_name);
       goto done;
     }
-    // Shift+M only ever turns the page's audio on, never off
+    // Shift+M only ever turns the page's audio on, never off. Only here: the
+    // cursor and none modes may not be showing the page (cursor mode is meant
+    // for a dark Desktop), where the key would type into whatever has focus.
     if (config.bench_audio) {
       send_key_with(VK_M, MODIFIER_SHIFT);
+      link.page_audio = true;
     }
     // Restart the page's animation, so every run shows the same pictures
     send_key(VK_R);
@@ -1099,6 +1103,7 @@ int vitabench_run(bool automated) {
     link.rtp_start = *rtp;
   }
   netcount_read(&link.net_start);
+  link.audio_start = vitaaudio_packet_count();
   link.battery_mah_start = scePowerGetBatteryRemainCapacity();
   link.battery_percent_start = scePowerGetBatteryLifePercent();
   link.battery_mv_start = scePowerGetBatteryVolt();
@@ -1159,6 +1164,7 @@ int vitabench_run(bool automated) {
     sceKernelDelayThread(POLL_US);
   }
   measured_seconds = (LiGetMicroseconds() - start) / 1000000.0f;
+  link.audio_end = vitaaudio_packet_count();
   rtp = LiGetRTPVideoStats();
   if (rtp != NULL) {
     link.rtp_end = *rtp;

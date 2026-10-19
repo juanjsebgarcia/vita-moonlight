@@ -210,4 +210,4 @@ These live in `moonlight.conf`, and the menu sets the first two:
 | `bench_autorun` | `false` | Run once at launch and exit; cleared before the run starts |
 | `bench_quit_app` | `true` | Quit the app on the computer when the run ends |
 | `bench_input` | `key` | What the timed presses send: `key`, `mouse`, `gamepad` or `cursor` |
-| `bench_audio` | `false` | Turn the page's test audio on (Shift+M) before the run, so audio is part of what's measured |
+| `bench_audio` | `false` | Turn the page's test audio on (Shift+M) before the run, so audio is part of what's measured. Ignored with `bench_input = cursor` or `none`, which may not be showing the page; `settings.page_audio` in the report says whether it was turned on |
