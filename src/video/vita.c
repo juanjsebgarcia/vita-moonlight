@@ -129,8 +129,8 @@ static bool decode_yuv = false;
 // When the first frame of this stream was drawn, or 0 before that
 static uint64_t stream_hint_start_us = 0;
 
-// The low battery warning, shown for a few seconds when the power thread
-// has a new one
+// The low battery warning, shown for a few seconds from when the power
+// thread gave it
 #define BATTERY_NOTICE_DURATION_US 6000000
 #define BATTERY_NOTICE_FADE_US 1000000
 static unsigned int battery_notice_count = 0;
@@ -670,7 +670,9 @@ void draw_indicators() {
   vitapower_battery_warning battery = vitapower_battery_warning_latest();
   if (battery.count != battery_notice_count) {
     battery_notice_count = battery.count;
-    battery_notice_start_us = now;
+    // Shown for what's left of its time, so one given while paused (the
+    // video thread isn't drawing) has gone by when the stream resumes
+    battery_notice_start_us = battery.age_us < BATTERY_NOTICE_DURATION_US ? now - battery.age_us : 0;
     char percent[12], minutes[12];
     snprintf(percent, sizeof(percent), "%d", battery.percent);
     if (battery.minutes > 0) {
