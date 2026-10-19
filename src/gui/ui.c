@@ -280,7 +280,8 @@ void ui_host_manage_menu(device_info_t *info) {
   // The same, as meaning, for themes that show it as a mark
   menu_status status = MENU_STATUS_NONE;
   if (host_idx >= 0) {
-    struct host_status st = g_host_status[host_idx];
+    // Only the first MAX_HOSTS are scanned
+    struct host_status st = host_idx < MAX_HOSTS ? g_host_status[host_idx] : (struct host_status){.status = HOST_OFFLINE};
     if (pending_ip_update_idx == host_idx && pending_ip_update[0] != '\0') {
       snprintf(status_text, sizeof(status_text), "%s", tr(STR_HOST_STATUS_IP_CHANGED));
       status = MENU_STATUS_CHANGED;
@@ -357,7 +358,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
   if (first_scan_pending && g_host_status_changed && g_host_scan_thread_status != 1) {
     // Si hay IP cambiada, no forzar refresco/reinicio del menú
     int ip_changed = 0;
-    for (int i = 0; i < known_devices.count; i++) {
+    for (int i = 0; i < known_devices.count && i < MAX_HOSTS; i++) {
       struct host_status st = g_host_status[i];
       if (st.status == HOST_IP_CHANGED && strcmp(known_devices.devices[i].internal, st.current_ip) != 0) {
         ip_changed = 1;
@@ -384,6 +385,14 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
   if (!ui_pressed(input, UI_INTENT_CONFIRM)) {
     return 0;
   }
+  if (cursor == MAIN_MENU_CONTINUE) {
+    device_info_t *info = host_last_played();
+    if (info != NULL) {
+      stop_host_scan();
+      ui_connect_continue(info);
+    }
+    return 2;
+  }
   // Permitir acceder al menú de gestión de host siempre, incluso si está offline o la IP cambió
   if (cursor >= MAIN_MENU_CONNECT_PAIRED && cursor < MAIN_MENU_QUIT) {
     int host_idx = cursor - MAIN_MENU_CONNECT_PAIRED;
@@ -400,7 +409,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
     device_info_t *info = &known_devices.devices[cursor - MAIN_MENU_CONNECT_PAIRED];
     int host_idx = cursor - MAIN_MENU_CONNECT_PAIRED;
     struct host_status st;
-    st = g_host_status[host_idx];
+    st = host_idx < MAX_HOSTS ? g_host_status[host_idx] : (struct host_status){.status = HOST_OFFLINE};
     vita_debug_log("[UI] (LOOP) host_idx=%d, hilo_estado=%d, st.status=%d, st.current_ip=%s", host_idx, g_host_scan_thread_status, st.status, st.current_ip);
 
     if (st.status == HOST_IP_CHANGED && strcmp(info->internal, st.current_ip) != 0) {
@@ -509,7 +518,14 @@ int ui_main_menu() {
     stop_host_scan(); // Detener escaneo si por alguna razón sigue activo
   }
 
-  menu_entry menu[16];
+  // The title, Continue, two headings, a separator, the four other rows and
+  // the PCs, with room to spare. About 1 KB a row, so on the heap.
+  int menu_size = known_devices.count + 12;
+  menu_entry *menu = calloc(menu_size, sizeof(menu_entry));
+  if (menu == NULL) {
+    display_error("%s", tr(STR_CONNECT_NO_MEMORY));
+    return 2;
+  }
   int idx = 0;
 
 #define MENU_TITLE(NAME) \
@@ -549,6 +565,25 @@ int ui_main_menu() {
   //}
 
   static char last_ip_logged[256] = "";
+  // The app last streamed, to start again with one press, while its PC is
+  // paired and answers at its address
+  char continue_row[640] = "";
+  char continue_title[320] = "";
+  const char *continue_host = NULL;
+  if (!ui_connect_connected()) {
+    device_info_t *last = host_last_played();
+    int last_idx = last != NULL ? (int)(last - known_devices.devices) : -1;
+    if (last_idx >= 0 && last_idx < MAX_HOSTS && g_host_status[last_idx].status == HOST_ONLINE &&
+        !(pending_ip_update_idx == last_idx && pending_ip_update[0] != '\0')) {
+      continue_host = device_label(last);
+      TR_FMT(continue_row, sizeof(continue_row), STR_MAIN_CONTINUE, last->last_app_name, continue_host);
+      TR_FMT(continue_title, sizeof(continue_title), STR_MAIN_CONTINUE_APP, last->last_app_name);
+      MENU_ENTRY(MAIN_MENU_CONTINUE, continue_row, false);
+      menu[idx - 1].kind = MENU_ROW_ACTION;
+      menu[idx - 1].status = MENU_STATUS_ONLINE;
+    }
+  }
+
   if (ui_connect_connected()) {
     MENU_SEPARATOR((char *)tr(STR_MAIN_CURRENT_CONNECTION));
     ui_connect_address(addr);
@@ -569,8 +604,8 @@ int ui_main_menu() {
         if (!cur->paired) {
           continue;
         }
-        struct host_status st;
-        st = g_host_status[i];
+        // Only the first MAX_HOSTS are scanned
+        struct host_status st = i < MAX_HOSTS ? g_host_status[i] : (struct host_status){.status = HOST_OFFLINE};
 
         MENU_ENTRY(MAIN_MENU_CONNECT_PAIRED + i, (char *)device_label(cur), false);
         menu_entry *row = &menu[idx - 1];
@@ -606,6 +641,8 @@ int ui_main_menu() {
     .connected = ui_connect_connected(),
     .connection_label = addr[0] ? device_label_for_address(addr, addr) : NULL,
     .connection_address = addr[0] ? addr : NULL,
+    .continue_title = continue_host != NULL ? continue_title : NULL,
+    .continue_host = continue_host,
   };
   menu_screen screen = {
     .id = UI_SCREEN_MAIN,
@@ -613,7 +650,9 @@ int ui_main_menu() {
     .update = main_menu_update,
     .main = &main,
   };
-  return display_menu(menu, idx, &screen, &ui_main_menu_loop, &ui_main_menu_back, NULL);
+  int ret = display_menu(menu, idx, &screen, &ui_main_menu_loop, &ui_main_menu_back, NULL);
+  free(menu);
+  return ret;
 }
 
 int global_loop(int cursor, void *ctx, const input_data *input) {

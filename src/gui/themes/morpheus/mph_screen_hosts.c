@@ -306,7 +306,12 @@ void mph_screen_main_draw(const menu_view *view, const mph_enter *enter) {
           }
           break;
         case IT_CARD: {
-          bool sub = e->subname[0] != '\0';
+          // Continue reads as the app, with its PC beneath
+          const main_view *main = view->screen->main;
+          bool resume_card = e->id == MAIN_MENU_CONTINUE && main != NULL && main->continue_title != NULL;
+          const char *title = resume_card ? main->continue_title : e->name;
+          const char *detail = resume_card ? main->continue_host : e->subname;
+          bool sub = detail != NULL && detail[0] != '\0';
           if (pass == 0) {
             mph_surface(r, MPH_R_CARD);
             mph_status_mark(e->status, r.x + r.w - 22, r.y + 28, false);
@@ -314,10 +319,10 @@ void mph_screen_main_draw(const menu_view *view, const mph_enter *enter) {
             mph_icon(it->icon, r.x + 14, r.y + 13, MPH_C_DIM);
           } else {
             float right = e->status != MENU_STATUS_NONE ? 36 : 16;
-            mph_text_fit(MPH_T_BTN, r.x + 60, r.y + (sub ? 25 : 33), r.w - 60 - right, MPH_C_FG, e->name);
+            mph_text_fit(MPH_T_BTN, r.x + 60, r.y + (sub ? 25 : 33), r.w - 60 - right, MPH_C_FG, title);
             if (sub) {
               mph_text_fit(MPH_T_META, r.x + 60, r.y + 43, r.w - 60 - right,
-                           e->status == MENU_STATUS_CHANGED ? MPH_C_LIVE : MPH_C_DIM, e->subname);
+                           e->status == MENU_STATUS_CHANGED ? MPH_C_LIVE : MPH_C_DIM, detail);
             }
           }
           break;

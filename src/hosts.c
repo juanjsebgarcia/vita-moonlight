@@ -126,3 +126,49 @@ void host_set_label(device_info_t *info, const char *label) {
   }
   save_device_info(info);
 }
+
+unsigned int host_app_name_hash(const char *app_name) {
+  // FNV-1a
+  unsigned int hash = 2166136261u;
+  for (const unsigned char *c = (const unsigned char *)app_name; *c; c++) {
+    hash = (hash ^ *c) * 16777619u;
+  }
+  return hash != 0 ? hash : 1;
+}
+
+void host_remember_app(device_info_t *info, int app_id, const char *app_name) {
+  // After every other PC's, so this one is the latest
+  unsigned int latest = 0;
+  for (int i = 0; i < known_devices.count; i++) {
+    if (known_devices.devices[i].last_played > latest) {
+      latest = known_devices.devices[i].last_played;
+    }
+  }
+  if (info->last_played != latest || latest == 0) {
+    info->last_played = latest + 1;
+  }
+  info->last_app_id = app_id;
+  info->last_app_hash = host_app_name_hash(app_name);
+  snprintf(info->last_app_name, sizeof(info->last_app_name), "%s", app_name);
+  // It's saved as one line of device.ini: a line break in the name would
+  // start a setting of its own there
+  for (char *c = info->last_app_name; *c; c++) {
+    if ((unsigned char)*c < 0x20) {
+      *c = ' ';
+    }
+  }
+  vita_debug_log("[HOSTS] last app on %s: %s (%d)", info->name, app_name, app_id);
+  save_device_info(info);
+}
+
+device_info_t *host_last_played(void) {
+  device_info_t *last = NULL;
+  for (int i = 0; i < known_devices.count; i++) {
+    device_info_t *d = &known_devices.devices[i];
+    if (d->paired && d->last_played != 0 && d->last_app_name[0] != '\0' &&
+        (last == NULL || d->last_played > last->last_played)) {
+      last = d;
+    }
+  }
+  return last;
+}
