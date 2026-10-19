@@ -99,5 +99,5 @@ void setting_value(const setting_def *setting, char *out, size_t size);
 void setting_help(const setting_def *setting, char *out, size_t size);
 
 // The bitrate's Custom state: the Bitrate row is on Custom, which enables
-// the Custom bitrate row, whenever the value isn't one of the steps
+// the Custom bitrate row, whenever it isn't Automatic or one of the steps
 void settings_sync_bitrate(void);

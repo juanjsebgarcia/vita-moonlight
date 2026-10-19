@@ -228,7 +228,7 @@ void config_save(const char* filename, PCONFIGURATION config) {
     write_config_int(fd, "height", config->stream.height);
   if (config->stream.fps != 60)
     write_config_int(fd, "fps", config->stream.fps);
-  if (config->stream.bitrate != -1)
+  if (!config->bitrate_auto)
     write_config_int(fd, "bitrate", config->stream.bitrate);
   if (config->stream.packetSize != DEFAULT_PACKET_SIZE)
     write_config_int(fd, "packetsize", config->stream.packetSize);
@@ -310,6 +310,21 @@ void update_layout() {
   }
 }
 
+int config_auto_bitrate(int height, int fps) {
+  if (height >= 1080 && fps >= 60)
+    return 20000;
+  else if (height >= 1080 || fps >= 60)
+    return 10000;
+  else
+    return 5000;
+}
+
+void config_follow_auto_bitrate(PCONFIGURATION config) {
+  if (config->bitrate_auto) {
+    config->stream.bitrate = config_auto_bitrate(config->stream.height, config->stream.fps);
+  }
+}
+
 void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   LiInitializeStreamConfiguration(&config->stream);
 
@@ -317,6 +332,7 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->stream.height = 720;
   config->stream.fps = 60;
   config->stream.bitrate = -1;
+  config->bitrate_auto = true;
   config->stream.packetSize = DEFAULT_PACKET_SIZE;
   config->stream.streamingRemotely = 0;
   config->stream.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
@@ -421,14 +437,14 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   if (config->stream.fps == -1)
     config->stream.fps = config->stream.height >= 1080 ? 30 : 60;
 
-  if (config->stream.bitrate == -1) {
-    if (config->stream.height >= 1080 && config->stream.fps >= 60)
-      config->stream.bitrate = 20000;
-    else if (config->stream.height >= 1080 || config->stream.fps >= 60)
-      config->stream.bitrate = 10000;
-    else
-      config->stream.bitrate = 5000;
+  // No bitrate saved means Automatic; one out of range goes back to it
+  config->bitrate_auto = config->stream.bitrate == -1;
+  if (!config->bitrate_auto &&
+      (config->stream.bitrate < BITRATE_MIN_KBPS || config->stream.bitrate > BITRATE_MAX_KBPS)) {
+    vita_debug_log("bitrate %d out of range, using Automatic", config->stream.bitrate);
+    config->bitrate_auto = true;
   }
+  config_follow_auto_bitrate(config);
 
   if (config->bench_seconds < BENCH_MIN_SECONDS || config->bench_seconds > BENCH_MAX_SECONDS) {
     config->bench_seconds = BENCH_DEFAULT_SECONDS;

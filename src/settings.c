@@ -135,6 +135,7 @@ static bool resolution_change(int step) {
   const int *res = RESOLUTIONS[supported_resolutions[step_clamped(current, supported_resolution_count, step)]];
   config.stream.width = res[0];
   config.stream.height = res[1];
+  config_follow_auto_bitrate(&config);
   return true;
 }
 
@@ -153,6 +154,7 @@ static bool fps_change(int step) {
     }
   }
   config.stream.fps = FRAME_RATES[step_clamped(current, FRAME_RATE_COUNT, step)];
+  config_follow_auto_bitrate(&config);
   return true;
 }
 
@@ -160,12 +162,15 @@ static bool fps_change(int step) {
  * Bitrate
  */
 
-// The Bitrate row's steps, in kbps, then Custom, which enables the Custom
+// The Bitrate row's positions: Automatic, which follows the resolution and
+// frame rate, then the steps in kbps, then Custom, which enables the Custom
 // bitrate row for any value in kbps, as the setting has always been entered.
 // A saved value that isn't a step opens on Custom unchanged, so upgrading
 // never alters anyone's bitrate.
 static const int BITRATE_STEPS_KBPS[] = {5000, 10000, 15000, 20000, 25000, 30000};
 #define BITRATE_STEP_COUNT ((int)(sizeof(BITRATE_STEPS_KBPS) / sizeof(BITRATE_STEPS_KBPS[0])))
+#define BITRATE_POSITION_CUSTOM (BITRATE_STEP_COUNT + 1)
+#define BITRATE_POSITION_COUNT (BITRATE_STEP_COUNT + 2)
 static bool bitrate_custom = false;
 
 static int bitrate_step_index(int kbps) {
@@ -178,12 +183,12 @@ static int bitrate_step_index(int kbps) {
 }
 
 void settings_sync_bitrate(void) {
-  bitrate_custom = bitrate_step_index(config.stream.bitrate) < 0;
+  bitrate_custom = !config.bitrate_auto && bitrate_step_index(config.stream.bitrate) < 0;
 }
 
 static void bitrate_value(char *out, size_t size) {
   int kbps = config.stream.bitrate;
-  char number[16];
+  char number[16], mbps[32];
   if (bitrate_custom) {
     snprintf(out, size, "%s", tr(STR_SET_VALUE_CUSTOM));
     return;
@@ -192,19 +197,30 @@ static void bitrate_value(char *out, size_t size) {
   } else {
     snprintf(number, sizeof(number), "%.1f", kbps / 1000.0f);
   }
-  TR_FMT(out, size, STR_UNIT_MBPS, number);
+  TR_FMT(mbps, sizeof(mbps), STR_UNIT_MBPS, number);
+  if (config.bitrate_auto) {
+    TR_FMT(out, size, STR_SET_BITRATE_AUTO, mbps);
+  } else {
+    snprintf(out, size, "%s", mbps);
+  }
 }
 
 static bool bitrate_change(int step) {
-  // The steps, then Custom as the last position
-  int position = bitrate_custom ? BITRATE_STEP_COUNT : bitrate_step_index(config.stream.bitrate);
-  if (position < 0) {
-    position = BITRATE_STEP_COUNT;
+  int position;
+  if (config.bitrate_auto) {
+    position = 0;
+  } else if (bitrate_custom || bitrate_step_index(config.stream.bitrate) < 0) {
+    position = BITRATE_POSITION_CUSTOM;
+  } else {
+    position = bitrate_step_index(config.stream.bitrate) + 1;
   }
-  position = (position + (step < 0 ? BITRATE_STEP_COUNT : 1)) % (BITRATE_STEP_COUNT + 1);
-  bitrate_custom = position == BITRATE_STEP_COUNT;
-  if (!bitrate_custom) {
-    config.stream.bitrate = BITRATE_STEPS_KBPS[position];
+  position = (position + (step < 0 ? BITRATE_POSITION_COUNT - 1 : 1)) % BITRATE_POSITION_COUNT;
+  config.bitrate_auto = position == 0;
+  bitrate_custom = position == BITRATE_POSITION_CUSTOM;
+  if (config.bitrate_auto) {
+    config_follow_auto_bitrate(&config);
+  } else if (!bitrate_custom) {
+    config.stream.bitrate = BITRATE_STEPS_KBPS[position - 1];
   }
   return true;
 }

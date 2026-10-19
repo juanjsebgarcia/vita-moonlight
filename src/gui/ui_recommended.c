@@ -157,7 +157,9 @@ static void apply(int connection) {
   config.stream.width = p.width;
   config.stream.height = p.height;
   config.stream.fps = p.fps;
+  // The tested bitrate, kept if the resolution or frame rate changes later
   config.stream.bitrate = p.bitrate_kbps;
+  config.bitrate_auto = false;
   config.boost_clocks = p.boost_clocks;
   // The lowest-latency choices, whatever else
   config.enable_frame_pacer = false;
