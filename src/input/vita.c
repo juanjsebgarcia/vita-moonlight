@@ -280,6 +280,10 @@ inline uint8_t read_frontscreen() {
 // e.g. sending L1 and R1 when the shoulder buttons are swapped
 #define TRIGGER_PRESSED_THRESHOLD 0x20
 
+static inline bool is_analog(uint32_t defined) {
+  return (defined & INPUT_TYPE_MASK) == INPUT_TYPE_ANALOG;
+}
+
 static inline uint32_t trigger_pressed(const SceCtrlData *data, uint32_t dev_val) {
   switch (dev_val) {
     case LEFT_TRIGGER:
@@ -697,7 +701,9 @@ void process_triggers() {
     if (is_pressed(map.btn_thumbl)) {
       curr.button |= LB_FLAG;
     }
-    if (is_pressed(map.btn_tl)) {
+    // An analog trigger (a PS TV pad's L2) already sent its own pressure
+    // from read_analog(), which full pressure mustn't overwrite
+    if (!is_analog(map.btn_tl) && is_pressed(map.btn_tl)) {
       curr.lt = 0xff;
       // No modificar curr.button aquí
     }
@@ -705,7 +711,7 @@ void process_triggers() {
     if (is_pressed(map.btn_thumbr)) {
       curr.button |= RB_FLAG;
     }
-    if (is_pressed(map.btn_tr)) {
+    if (!is_analog(map.btn_tr) && is_pressed(map.btn_tr)) {
       curr.rt = 0xff;
       // No modificar curr.button aquí
     }
