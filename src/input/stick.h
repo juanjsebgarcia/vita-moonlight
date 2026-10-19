@@ -4,8 +4,8 @@
 // centre, then a response curve. Both sticks, and any pad attached to a PS TV,
 // go through it.
 
-// config.stick_deadzone, in percent: a little, for the Vita's slight drift
-#define STICK_DEADZONE_DEFAULT 5
+// config.stick_deadzone, in percent: off, so the sticks feel as they always have
+#define STICK_DEADZONE_DEFAULT 0
 #define STICK_DEADZONE_MAX 50
 
 // Values for config.stick_curve
