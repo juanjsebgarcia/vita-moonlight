@@ -13,6 +13,7 @@ It's one self-contained HTML file with no dependencies, so it works the same on 
 
   Its layout is described in [Layout contract](#layout-contract).
 - **A small HUD,** bottom left, showing the mode, resolution, time, tick, drawn frames, browser fps and input count. Press H to hide it.
+- **Test audio, off until you press M.** Browsers won't play sound until a key is pressed, so it isn't on by default. It's built to be hard to compress, so the stream carries a full audio track: seeded stereo noise, a detuned sawtooth chord under a sweeping filter, and an FM voice, mixed differently in each ear. It's the same every run. Without it the page is silent, and Sunshine sends no audio packets at all while nothing on the computer plays sound.
 
 **Reproducibility:** everything is drawn from the tick since the last reset and a fixed seed, so a given tick always shows the same picture, and input never changes the scene. Only the marker reacts. That's what lets frame grabs from different runs be compared picture for picture.
 
@@ -20,9 +21,10 @@ It's one self-contained HTML file with no dependencies, so it works the same on 
 
 | Input | Effect |
 |---|---|
-| R | Reset: time and the tick counter go back to zero |
+| R | Reset: time and the tick counter go back to zero, and the test audio (if on) restarts from its beginning |
 | H | Show or hide the HUD |
 | F | Toggle browser fullscreen |
+| M | Test audio on or off (Shift+M only turns it on, Ctrl+M only off) |
 | Any other key, a gamepad button, a click or a touch | Lights the input marker for 100 ms |
 
 ## URL parameters
@@ -128,7 +130,7 @@ The Vita side lives behind a hidden **developer mode**, so it stays out of norma
    **Benchmark duration** sets how long it measures (30, 60, 120 or 300 s).
 4. Press ✕ on **Run benchmark**. The Vita:
    1. starts the app and waits up to 45 s for the page to appear (it checks the reference blocks)
-   2. presses R to reset the page
+   2. presses Shift+M (with `bench_audio = true`) or Ctrl+M, so the test audio is on or off whatever an earlier run left, then R to reset the page
    3. measures for the set duration, pressing Space about once a second to time input lag
    4. ends the stream, quits the app on the computer, and shows a summary
 
@@ -182,6 +184,7 @@ To compare **builds** rather than settings, deploy each build with `tools/vita.s
 | `ok`, `error` | Whether the run completed, and why not |
 | `label`, `started`, `host`, `app`, `seconds`, `version` | What ran, where and for how long |
 | `settings` | The settings that matter for performance |
+| `audio` | Audio packets that reached the decoder during the measurement, and per second (about 200 with sound playing; 0 means the computer sent none) |
 | `frames` | Frames received and drawn, fps, frames lost on the network, IDR frames |
 | `page` | From the barcode: ticks read, unreadable frames, `repeated` (the same picture twice), `skipped` (ticks the Vita never saw), the measured `tick_rate`, `expected_skips_from_rate`, and `skipped_beyond_rate` |
 | `input_lag_ms` | Presses sent, seen and missed; p50, p95, min and max from sending a key to the first frame on screen with the marker lit |
@@ -207,3 +210,4 @@ These live in `moonlight.conf`, and the menu sets the first two:
 | `bench_autorun` | `false` | Run once at launch and exit; cleared before the run starts |
 | `bench_quit_app` | `true` | Quit the app on the computer when the run ends |
 | `bench_input` | `key` | What the timed presses send: `key`, `mouse`, `gamepad` or `cursor` |
+| `bench_audio` | `false` | Turn the page's test audio on (Shift+M; Ctrl+M when false) before the run, so audio is part of what's measured. Ignored with `bench_input = cursor` or `none`, which may not be showing the page; `settings.page_audio` in the report says whether it was turned on |

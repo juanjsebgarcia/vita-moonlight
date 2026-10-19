@@ -20,6 +20,7 @@
 #include "connection.h"
 #include "debug.h"
 #include "netcount.h"
+#include "audio/vita.h"
 #include "device.h"
 #include "gui/guilib.h"
 #include "gui/ui_connect.h"
@@ -67,6 +68,7 @@ static const float CURSOR_TARGET_X[2] = {0.930f, 0.965f};
 // Windows virtual key codes, which is what GameStream hosts expect
 #define VK_SPACE 0x20
 #define VK_R 0x52
+#define VK_M 0x4d
 
 #define CONNECT_TIMEOUT_US (20 * 1000000ULL)
 // A browser started by Sunshine can take a while to show the page
@@ -595,10 +597,14 @@ static void reset_measurements(void) {
   pthread_mutex_unlock(&bench_mutex);
 }
 
-static void send_key(short key) {
-  LiSendKeyboardEvent(key, KEY_ACTION_DOWN, 0);
+static void send_key_with(short key, char modifiers) {
+  LiSendKeyboardEvent(key, KEY_ACTION_DOWN, modifiers);
   sceKernelDelayThread(KEY_HOLD_US);
-  LiSendKeyboardEvent(key, KEY_ACTION_UP, 0);
+  LiSendKeyboardEvent(key, KEY_ACTION_UP, modifiers);
+}
+
+static void send_key(short key) {
+  send_key_with(key, 0);
 }
 
 // Which input path the timed presses use, so they can be compared: a key goes
@@ -711,6 +717,10 @@ typedef struct {
   // (common-c's counters), and those it sent and that arrived, from the RTP
   // sequence numbers (src/netcount.c)
   RTP_VIDEO_STATS rtp_start, rtp_end;
+  // Audio packets decoded while measuring (vitaaudio_packet_count)
+  unsigned int audio_start, audio_end;
+  // Whether the page's test audio was turned on (only on the page's input modes)
+  bool page_audio;
   // The battery while measuring, to compare settings by power use. Only
   // meaningful on battery: charging or a charger plugged in spoils it.
   int battery_mah_start, battery_mah_end;
@@ -798,12 +808,18 @@ static void write_report(FILE *f, const char *started, const char *host, const c
   fprintf(f, ",\n  \"seconds\": %.1f,\n", seconds);
   fprintf(f, "  \"settings\": {\"width\": %d, \"height\": %d, \"fps\": %d, \"bitrate_kbps\": %d, "
              "\"packet_size\": %d, \"direct_decode\": %s, \"input_sync\": %s, \"boost_clocks\": %s, "
-             "\"frame_pacer\": %s, \"vblank_wait\": %s, \"stats_overlay\": %d, \"debug_log\": %s, \"decode_yuv\": %s},\n",
+             "\"frame_pacer\": %s, \"vblank_wait\": %s, \"stats_overlay\": %d, \"debug_log\": %s, \"decode_yuv\": %s, "
+             "\"page_audio\": %s},\n",
           config.stream.width, config.stream.height, config.stream.fps, config.stream.bitrate,
           config.stream.packetSize, config.direct_decode ? "true" : "false",
           config.input_sync_to_controller ? "true" : "false", config.boost_clocks ? "true" : "false",
           config.enable_frame_pacer ? "true" : "false", config.enable_vita_vblank_wait ? "true" : "false",
-          config.stats_overlay, config.save_debug_log ? "true" : "false", config.decode_yuv ? "true" : "false");
+          config.stats_overlay, config.save_debug_log ? "true" : "false", config.decode_yuv ? "true" : "false",
+          link->page_audio ? "true" : "false");
+  // Packets that reached the Opus decoder; 0 means the host sent no audio
+  unsigned int audio_packets = link->audio_end - link->audio_start;
+  fprintf(f, "  \"audio\": {\"packets\": %u, \"per_second\": %.1f},\n", audio_packets,
+          seconds > 0 ? audio_packets / seconds : 0);
   fprintf(f, "  \"frames\": {\"received\": %u, \"rendered\": %u, \"fps_received\": %.2f, \"fps_rendered\": %.2f, "
              "\"lost_network\": %u, \"idr\": %u, \"replaced_before_shown\": %u, \"freezes\": %u},\n",
           state.frames_received, state.frames_rendered,
@@ -1054,7 +1070,13 @@ int vitabench_run(bool automated) {
                PAGE_TIMEOUT_US / 1000000, app_name);
       goto done;
     }
-    // Restart the page's animation, so every run shows the same pictures
+    // Shift+M turns the page's audio on and Ctrl+M off, whatever an earlier
+    // run left (with bench_quit_app = false the page carries over). Only here:
+    // the cursor and none modes may not be showing the page (cursor mode is
+    // meant for a dark Desktop), where the key would type into whatever has focus.
+    send_key_with(VK_M, config.bench_audio ? MODIFIER_SHIFT : MODIFIER_CTRL);
+    link.page_audio = config.bench_audio;
+    // Restart the page's animation (and its audio), so every run is the same
     send_key(VK_R);
     sceKernelDelayThread(RESET_SETTLE_US);
   }
@@ -1080,6 +1102,7 @@ int vitabench_run(bool automated) {
     link.rtp_start = *rtp;
   }
   netcount_read(&link.net_start);
+  link.audio_start = vitaaudio_packet_count();
   link.battery_mah_start = scePowerGetBatteryRemainCapacity();
   link.battery_percent_start = scePowerGetBatteryLifePercent();
   link.battery_mv_start = scePowerGetBatteryVolt();
@@ -1140,6 +1163,7 @@ int vitabench_run(bool automated) {
     sceKernelDelayThread(POLL_US);
   }
   measured_seconds = (LiGetMicroseconds() - start) / 1000000.0f;
+  link.audio_end = vitaaudio_packet_count();
   rtp = LiGetRTPVideoStats();
   if (rtp != NULL) {
     link.rtp_end = *rtp;

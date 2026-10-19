@@ -126,11 +126,106 @@ function reset() {
   frame = 0;
   tick = 0;
   markerUntilMs = 0;
+  // Audio restarts from its beginning too, so it lines up with the picture
+  if (audio) {
+    setAudio(false);
+    setAudio(true);
+  }
 }
 
 function onInput() {
   inputs++;
   markerUntilMs = performance.now() + MARKER_MS;
+}
+
+// Test audio, so the stream carries a full audio track. Browsers only allow
+// sound after a key press or click, so it starts on M rather than on load.
+// It's deliberately hard to compress, so Opus has plenty to encode: seeded
+// stereo noise, a detuned sawtooth chord under a sweeping filter, and an FM
+// voice, mixed differently in each ear. The same every run, like the picture.
+const AUDIO_NOISE_SECONDS = 4;
+const AUDIO_CHORD_HZ = [110, 164.81, 220, 261.63, 329.63, 440];
+let audio = null;
+
+function startAudio() {
+  const ac = new AudioContext();
+  const out = ac.createDynamicsCompressor();
+  const master = ac.createGain();
+  master.gain.value = 0.3;
+  out.connect(master).connect(ac.destination);
+
+  // Noise: its own seed, so the visuals' random sequence doesn't change
+  const noiseRandom = makeRandom(SEED ^ 0x61756469); // "audi"
+  const length = ac.sampleRate * AUDIO_NOISE_SECONDS;
+  const noise = ac.createBuffer(2, length, ac.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const data = noise.getChannelData(c);
+    for (let i = 0; i < length; i++) {
+      data[i] = noiseRandom() * 2 - 1;
+    }
+  }
+  const noiseSource = ac.createBufferSource();
+  noiseSource.buffer = noise;
+  noiseSource.loop = true;
+  const noiseGain = ac.createGain();
+  noiseGain.gain.value = 0.15;
+  noiseSource.connect(noiseGain).connect(out);
+
+  // Chord: each note slightly detuned and panned, under a filter that sweeps
+  // from dull to bright every five seconds
+  const filter = ac.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 3000;
+  filter.Q.value = 6;
+  const sweep = ac.createOscillator();
+  sweep.frequency.value = 0.2;
+  const sweepDepth = ac.createGain();
+  sweepDepth.gain.value = 2500;
+  sweep.connect(sweepDepth).connect(filter.frequency);
+  filter.connect(out);
+  const sources = [noiseSource, sweep];
+  AUDIO_CHORD_HZ.forEach((hz, i) => {
+    const osc = ac.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.value = hz;
+    osc.detune.value = (i % 2 ? 1 : -1) * (4 + i * 3);
+    const pan = ac.createStereoPanner();
+    pan.pan.value = (i / (AUDIO_CHORD_HZ.length - 1)) * 1.6 - 0.8;
+    const gain = ac.createGain();
+    gain.gain.value = 0.06;
+    osc.connect(gain).connect(pan).connect(filter);
+    sources.push(osc);
+  });
+
+  // FM voice: a carrier whose modulator itself wanders, for moving sidebands
+  const carrier = ac.createOscillator();
+  carrier.frequency.value = 330;
+  const modulator = ac.createOscillator();
+  modulator.frequency.value = 220;
+  const modDepth = ac.createGain();
+  modDepth.gain.value = 600;
+  const wander = ac.createOscillator();
+  wander.frequency.value = 0.37;
+  const wanderDepth = ac.createGain();
+  wanderDepth.gain.value = 90;
+  wander.connect(wanderDepth).connect(modulator.frequency);
+  modulator.connect(modDepth).connect(carrier.frequency);
+  const fmGain = ac.createGain();
+  fmGain.gain.value = 0.12;
+  carrier.connect(fmGain).connect(out);
+  sources.push(carrier, modulator, wander);
+
+  sources.forEach((source) => source.start());
+  return ac;
+}
+
+function setAudio(on) {
+  if (on && !audio) {
+    audio = startAudio();
+  } else if (!on && audio) {
+    audio.close();
+    audio = null;
+  }
 }
 
 function drawPlasma(t, top) {
@@ -275,7 +370,8 @@ function drawHud(t) {
   const lines = [
     `Moonlight Bench  mode=${MODE}  ${width}x${height}`,
     `t=${t.toFixed(1)}s  tick=${tick}@${TICK_RATE}  drawn=${frame}  fps=${fps.toFixed(0)}  inputs=${inputs}`,
-    "R reset  H hide  F fullscreen  any other key: marker",
+    `audio=${audio ? "on" : "off"}`,
+    "R reset  H hide  F fullscreen  M audio  any other key: marker",
   ];
   const size = Math.max(12, Math.round(height * 0.022));
   ctx.font = `${size}px monospace`;
@@ -353,6 +449,10 @@ window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   if (key === "r") {
     reset();
+  } else if (key === "m") {
+    // Shift+M only turns it on and Ctrl+M only off, so automation never
+    // depends on what the last run left; plain M toggles
+    setAudio(event.ctrlKey ? false : event.shiftKey || !audio);
   } else if (key === "h") {
     showHud = !showHud;
   } else if (key === "f") {
