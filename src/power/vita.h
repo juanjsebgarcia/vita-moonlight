@@ -34,7 +34,7 @@ typedef struct {
   unsigned int count;
   int percent;
   int minutes;      // the system's estimate of the time left, or -1 when it has none
-  uint32_t age_us;  // how long ago it was given
+  uint32_t age_us;  // how long ago it was given, saturating at UINT32_MAX
 } vitapower_battery_warning;
 
 vitapower_battery_warning vitapower_battery_warning_latest();

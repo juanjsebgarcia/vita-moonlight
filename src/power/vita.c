@@ -57,9 +57,10 @@ static bool battery_warned[BATTERY_THRESHOLD_COUNT] = {false};
 // The latest warning, packed into one word so the video thread reads it
 // whole: bits 0-11 a count, 12-18 the percent, 19-29 the minutes left plus
 // one (0 when the system has no estimate). And when it was published, in
-// sceKernelGetProcessTimeLow() microseconds, written first.
+// sceKernelGetProcessTimeWide() microseconds (64-bit, so it never wraps),
+// written first.
 static uint32_t battery_warning_word = 0;
-static uint32_t battery_warning_us = 0;
+static uint64_t battery_warning_us = 0;
 
 static void boost_clocks() {
   if (clocks_boosted) {
@@ -123,7 +124,7 @@ static void check_battery(bool streaming) {
   int minutes = scePowerGetBatteryLifeTime();
   uint32_t minutes_field = minutes > 0 && minutes <= 24 * 60 ? (uint32_t)minutes + 1 : 0;
   uint32_t count = (__atomic_load_n(&battery_warning_word, __ATOMIC_RELAXED) + 1) & 0xFFF;
-  __atomic_store_n(&battery_warning_us, sceKernelGetProcessTimeLow(), __ATOMIC_RELAXED);
+  __atomic_store_n(&battery_warning_us, sceKernelGetProcessTimeWide(), __ATOMIC_RELAXED);
   __atomic_store_n(&battery_warning_word, count | (uint32_t)percent << 12 | minutes_field << 19, __ATOMIC_RELEASE);
   vita_debug_log("Battery low: %d%% (%d min left), warned at %d%%", percent, minutes,
                  battery_thresholds[crossed]);
@@ -131,12 +132,13 @@ static void check_battery(bool streaming) {
 
 vitapower_battery_warning vitapower_battery_warning_latest() {
   uint32_t word = __atomic_load_n(&battery_warning_word, __ATOMIC_ACQUIRE);
+  // At or after this warning's own time: a later warning only makes it newer
+  uint64_t age = sceKernelGetProcessTimeWide() - __atomic_load_n(&battery_warning_us, __ATOMIC_RELAXED);
   vitapower_battery_warning latest = {
     .count = word & 0xFFF,
     .percent = (word >> 12) & 0x7F,
     .minutes = (int)((word >> 19) & 0x7FF) - 1,
-    // At or after this warning's own time: a later warning only makes it newer
-    .age_us = sceKernelGetProcessTimeLow() - __atomic_load_n(&battery_warning_us, __ATOMIC_RELAXED),
+    .age_us = age < UINT32_MAX ? (uint32_t)age : UINT32_MAX,
   };
   return latest;
 }
