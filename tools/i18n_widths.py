@@ -193,7 +193,8 @@ def value_candidates(fn, t, language_names):
     return {
         "resolution_value": lambda: ["1920x1080"],
         "fps_value": lambda: ["60"],
-        "bitrate_value": lambda: [fill(t("UNIT_MBPS"), "12.5"), t("SET_VALUE_CUSTOM")],
+        "bitrate_value": lambda: [fill(t("UNIT_MBPS"), "12.5"), t("SET_VALUE_CUSTOM"),
+                                  fill(t("SET_BITRATE_AUTO"), fill(t("UNIT_MBPS"), "20"))],
         "custom_bitrate_value": lambda: [fill(t("UNIT_KBPS"), "100000")],
         "packet_size_value": lambda: [fill(t("UNIT_BYTES"), "1392")],
         "stats_overlay_value": lambda: [t("STATS_OFF"), t("STATS_FPS"), t("STATS_FULL")],

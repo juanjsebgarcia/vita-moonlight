@@ -373,9 +373,6 @@ static int special_keys_menu() {
  * The Settings screen, listing the settings described in src/settings.c
  */
 
-#define BITRATE_CUSTOM_MIN_KBPS 500
-#define BITRATE_CUSTOM_MAX_KBPS 100000
-
 static int settings_back(void *context);
 
 // Returned by settings_loop to rebuild the rows, for example after another
@@ -450,8 +447,9 @@ static int run_action(const setting_def *setting) {
       // Rebuilt whatever happened: the values may have changed, and
       // auto-detect may have streamed, as a benchmark run does
       int bitrate = config.stream.bitrate;
+      bool bitrate_auto = config.bitrate_auto;
       ui_recommended_settings_menu();
-      if (config.stream.bitrate != bitrate) {
+      if (config.stream.bitrate != bitrate || config.bitrate_auto != bitrate_auto) {
         // A preset was applied: show it on its step rather than as Custom
         settings_sync_bitrate();
       }
@@ -464,12 +462,12 @@ static int run_action(const setting_def *setting) {
     }
     case SETTING_ACTION_CUSTOM_BITRATE:
       if (ask_number(tr(STR_SET_BITRATE_PROMPT), config.stream.bitrate, &number)) {
-        if (number >= BITRATE_CUSTOM_MIN_KBPS && number <= BITRATE_CUSTOM_MAX_KBPS) {
+        if (number >= BITRATE_MIN_KBPS && number <= BITRATE_MAX_KBPS) {
           config.stream.bitrate = number;
         } else {
           char low[16], high[16], message[256];
-          snprintf(low, sizeof(low), "%d", BITRATE_CUSTOM_MIN_KBPS);
-          snprintf(high, sizeof(high), "%d", BITRATE_CUSTOM_MAX_KBPS);
+          snprintf(low, sizeof(low), "%d", BITRATE_MIN_KBPS);
+          snprintf(high, sizeof(high), "%d", BITRATE_MAX_KBPS);
           TR_FMT(message, sizeof(message), STR_SET_BITRATE_RANGE, low, high);
           display_error("%s", message);
         }
@@ -698,7 +696,7 @@ void ui_settings_save_config() {
   vita_debug_log("  stream.width = %d", config.stream.width);
   vita_debug_log("  stream.height = %d", config.stream.height);
   vita_debug_log("  stream.fps = %d", config.stream.fps);
-  vita_debug_log("  stream.bitrate = %d", config.stream.bitrate);
+  vita_debug_log("  stream.bitrate = %d%s", config.stream.bitrate, config.bitrate_auto ? " (auto)" : "");
   vita_debug_log("  save_debug_log = %d", config.save_debug_log);
   vita_debug_log("  disable_powersave = %d", config.disable_powersave);
   vita_debug_log("  boost_clocks = %d", config.boost_clocks);

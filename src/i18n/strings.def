@@ -35,7 +35,7 @@ S(SET_RESOLUTION_HELP, "The picture size your PC sends. The Vita's screen is 960
 S(SET_FPS, "FPS", "Settings row")
 S(SET_FPS_HELP, "Frames per second your PC sends. 60 is the smoothest. Try 30 if the stream stutters or your Wi-Fi is weak: it needs about half the data. 24 suits films.", "Help for the row above")
 S(SET_BITRATE, "Bitrate", "Settings row")
-S(SET_BITRATE_HELP, "How much video is sent each second. Higher looks sharper but needs a stronger signal and adds a little delay; on the Vita's screen the picture stops improving at about 15 to 20 Mbps. 10 suits weaker Wi-Fi, 20 a strong signal. Lower it if the picture goes blocky or stutters. Custom lets you type any value below.", "Help for the row above")
+S(SET_BITRATE_HELP, "How much video is sent each second. Higher looks sharper but needs a stronger signal and adds a little delay; on the Vita's screen the picture stops improving at about 15 to 20 Mbps. 10 suits weaker Wi-Fi, 20 a strong signal. Lower it if the picture goes blocky or stutters. Auto picks one for the resolution and frame rate, and follows them when they change; any other choice stays put. Custom lets you type any value below.", "Help for the row above")
 S(SET_BITRATE_CUSTOM, "Custom bitrate", "Settings row")
 S(SET_BITRATE_CUSTOM_HELP, "Any bitrate, in kilobits per second (10000 = 10 Mbps), from 500 to 100000. Choose Custom on the Bitrate row above to use it.", "Help for the row above")
 S(SET_SOPS, "Change graphical game settings for performance", "Settings row")
@@ -114,6 +114,7 @@ S(SET_NO_HELP, "No help for this setting yet.", "")
 
 /* Settings values */
 S(SET_VALUE_CUSTOM, "Custom", "Bitrate value when it is not one of the steps")
+S(SET_BITRATE_AUTO, "Auto ({0})", "Bitrate value when it follows the resolution and frame rate; {0} = the bitrate, e.g. 10 Mbps")
 S(STATS_OFF, "off", "Stats overlay value")
 S(STATS_FPS, "fps", "Stats overlay value: frame rate only")
 S(STATS_FULL, "full", "Stats overlay value: everything")

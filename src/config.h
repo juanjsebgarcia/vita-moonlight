@@ -26,6 +26,10 @@
 
 #define MAX_INPUTS 6
 
+// The bitrates a player can choose, in kbps
+#define BITRATE_MIN_KBPS 500
+#define BITRATE_MAX_KBPS 100000
+
 struct input_config {
   char* path;
   char* mapping;
@@ -43,6 +47,9 @@ struct special_keys {
 typedef struct _CONFIGURATION {
   // static configuration, value will be saved to config file
   STREAM_CONFIGURATION stream;
+  // The bitrate follows the resolution and frame rate (config_auto_bitrate),
+  // saved as no bitrate at all; false once the player picks one
+  bool bitrate_auto;
   char* app;
   char* action;
   char* address;
@@ -127,3 +134,9 @@ bool config_file_parse(char* filename, PCONFIGURATION config);
 void config_parse(int argc, char* argv[], PCONFIGURATION config);
 void config_save(const char* filename, PCONFIGURATION config);
 void update_layout();
+
+// The automatic bitrate in kbps for a stream of this height and frame rate
+int config_auto_bitrate(int height, int fps);
+// Sets the bitrate to the automatic one if it's on Automatic, after the
+// resolution or frame rate changed
+void config_follow_auto_bitrate(PCONFIGURATION config);
