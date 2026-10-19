@@ -292,7 +292,8 @@ int ui_connected_menu() {
   // it so a menu without them never uses the last menu's rows
   pos[0] = pos[1] = 0;
   if (server.paired) {
-    ret = gs_applist(&server, &server_applist);
+    // The last menu has closed, so its list can be freed
+    ret = session_refresh_applist();
     if (ret != GS_OK) {
       char code[16], message[512];
       snprintf(code, sizeof(code), "%d", ret);
