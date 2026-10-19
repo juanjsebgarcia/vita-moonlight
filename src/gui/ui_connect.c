@@ -695,16 +695,29 @@ void ui_connect_paired_device(device_info_t *info) {
   while (ui_connected_menu() == QUIT_RELOAD);
 }
 
+// Whether a title in the connected host's list is the app the host
+// remembers: by its full title's hash, as the saved name is shortened
+static bool is_remembered_app(const device_info_t *info, const char *name) {
+  if (info->last_app_hash != 0) {
+    return host_app_name_hash(name) == info->last_app_hash;
+  }
+  return strcmp(name, info->last_app_name) == 0;
+}
+
 // The id of the app the host remembers, looked up in the connected host's
-// list: the same id under the same name, or the name under a new id. 0 if
+// list: the same id under the same title, or the title under a new id. 0 if
 // it's gone, rather than whatever app now has its old id.
 static int remembered_app_id(const device_info_t *info) {
   const char *name = app_name_of(info->last_app_id);
-  if (name != NULL && strcmp(name, info->last_app_name) == 0) {
+  if (name != NULL && is_remembered_app(info, name)) {
     return info->last_app_id;
   }
-  int id = get_app_id(server_applist, (char *)info->last_app_name);
-  return id > 0 ? id : 0;
+  for (PAPP_LIST app = server_applist; app != NULL; app = app->next) {
+    if (app->id > 0 && is_remembered_app(info, app->name)) {
+      return app->id;
+    }
+  }
+  return 0;
 }
 
 void ui_connect_continue(device_info_t *info) {

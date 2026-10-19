@@ -45,6 +45,10 @@ void host_set_address(device_info_t *info, const char *address);
 // name itself as the label clears it.
 void host_set_label(device_info_t *info, const char *label);
 
+// A hash of an app's full title, never 0, so a remembered app is found
+// again by its exact title
+unsigned int host_app_name_hash(const char *app_name);
+
 // Remembers app as the last one streamed from the host, for the host list's
 // Continue row, and saves it
 void host_remember_app(device_info_t *info, int app_id, const char *app_name);

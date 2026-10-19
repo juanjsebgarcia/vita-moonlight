@@ -18,9 +18,12 @@ struct device_info {
   // The app last streamed from this PC through its menu, for the host
   // list's Continue row: its id and name, and when, as a count that grows
   // with each stream across all PCs (0: none yet). The Vita's clock can be
-  // reset, so it isn't a time.
+  // reset, so it isn't a time. The name is for display, shortened and on
+  // one line; the hash of the PC's full title is what finds the app again
+  // (0: saved before there was one, so the name is used).
   int last_app_id;
   char last_app_name[256];
+  unsigned int last_app_hash;
   unsigned int last_played;
 };
 

@@ -127,6 +127,8 @@ static int device_ini_handle(void *out, const char *section, const char *name,
   } else if (strcmp(name, "last_app_name") == 0) {
     strncpy(info->last_app_name, value, sizeof(info->last_app_name) - 1);
     info->last_app_name[sizeof(info->last_app_name) - 1] = '\0';
+  } else if (strcmp(name, "last_app_hash") == 0) {
+    info->last_app_hash = (unsigned int)strtoul(value, NULL, 10);
   } else if (strcmp(name, "last_played") == 0) {
     info->last_played = (unsigned int)strtoul(value, NULL, 10);
   }
@@ -176,6 +178,7 @@ device_info_t* append_device(device_info_t *info) {
   p->last_app_id = info->last_app_id;
   strncpy(p->last_app_name, info->last_app_name, sizeof(p->last_app_name) - 1);
   p->last_app_name[sizeof(p->last_app_name) - 1] = '\0';
+  p->last_app_hash = info->last_app_hash;
   p->last_played = info->last_played;
   vita_debug_log("append_device: device %s is added to the list\n", p->name);
 
@@ -292,6 +295,7 @@ void save_device_info(const device_info_t *info) {
   if (info->last_played != 0 && info->last_app_name[0] != '\0') {
     write_int(fd, "last_app_id", info->last_app_id);
     write_string(fd, "last_app_name", info->last_app_name);
+    fprintf(fd, "last_app_hash = %u\n", info->last_app_hash);
     fprintf(fd, "last_played = %u\n", info->last_played);
   }
 
