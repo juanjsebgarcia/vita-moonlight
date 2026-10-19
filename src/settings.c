@@ -7,6 +7,7 @@
 #include "video/vita.h"
 #include "input/touchabsolute.h"
 #include "input/swap_shoulder_buttons.h"
+#include "input/stick.h"
 #include "session.h"
 
 #include <stdio.h>
@@ -299,6 +300,42 @@ static bool mouse_accel_change(int step) {
   return true;
 }
 
+// The stick dead zone's steps, in percent. A value from the config file
+// between them is kept, and steps to its neighbour.
+static const int STICK_DEADZONE_STEPS[] = {0, 5, 10, 15, 20};
+#define STICK_DEADZONE_STEP_COUNT ((int)(sizeof(STICK_DEADZONE_STEPS) / sizeof(STICK_DEADZONE_STEPS[0])))
+
+static void stick_deadzone_value(char *out, size_t size) {
+  char number[16];
+  if (config.stick_deadzone == 0) {
+    snprintf(out, size, "%s", tr(STR_STICK_DEADZONE_OFF));
+    return;
+  }
+  snprintf(number, sizeof(number), "%d", config.stick_deadzone);
+  TR_FMT(out, size, STR_UNIT_PERCENT, number);
+}
+
+static bool stick_deadzone_change(int step) {
+  int value = config.stick_deadzone;
+  for (int i = 0; i < STICK_DEADZONE_STEP_COUNT; i++) {
+    int next = STICK_DEADZONE_STEPS[step > 0 ? i : STICK_DEADZONE_STEP_COUNT - 1 - i];
+    if (step > 0 ? next > value : next < value) {
+      config.stick_deadzone = next;
+      return true;
+    }
+  }
+  return false;
+}
+
+static void stick_curve_value(char *out, size_t size) {
+  snprintf(out, size, "%s", tr(config.stick_curve == STICK_CURVE_PRECISE ? STR_STICK_CURVE_PRECISE : STR_STICK_CURVE_LINEAR));
+}
+
+static bool stick_curve_change(int step) {
+  config.stick_curve = (config.stick_curve + STICK_CURVE_COUNT + step) % STICK_CURVE_COUNT;
+  return true;
+}
+
 static const str_id TOUCH_MODE_NAMES[] = {STR_TOUCH_OFF, STR_TOUCH_DS4, STR_TOUCH_MOUSE_ABSOLUTE, STR_TOUCH_TABLET};
 #define TOUCH_MODE_COUNT 4
 
@@ -568,6 +605,12 @@ const setting_def SETTINGS[] = {
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_CHOICE, .flags = SETTING_HELD_REPEATS,
    .label = STR_SET_MOUSE_ACCEL, .value = mouse_accel_value, .change = mouse_accel_change,
    .help = STR_SET_MOUSE_ACCEL_HELP},
+  {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_CHOICE,
+   .label = STR_SET_STICK_DEADZONE, .value = stick_deadzone_value, .change = stick_deadzone_change,
+   .help = STR_SET_STICK_DEADZONE_HELP},
+  {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_CHOICE, .flags = SETTING_CONFIRM_STEPS,
+   .label = STR_SET_STICK_CURVE, .value = stick_curve_value, .change = stick_curve_change,
+   .help = STR_SET_STICK_CURVE_HELP},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,
    .label = STR_SET_ENABLE_MAPPING, .is_on = mapping_on, .change = mapping_flip, .help_with = mapping_help},
   {.tab = SETTINGS_TAB_CONTROLS, .kind = SETTING_TOGGLE,

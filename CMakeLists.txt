@@ -86,6 +86,7 @@ add_executable(${PROJECT_NAME}.elf
 	src/input/shortcuts.c
 	src/power/vita.c
 	src/input/motion.c
+	src/input/stick.c
 	src/graphics.c
 	src/font.c
 	src/gui/guilib.c

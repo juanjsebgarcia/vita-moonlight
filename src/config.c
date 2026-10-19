@@ -27,6 +27,7 @@
 #include <getopt.h>
 #include <ini.h>
 #include "input/vita.h"
+#include "input/stick.h"
 #include "debug.h"
 #include "stats.h"
 #include "bench.h"
@@ -169,6 +170,10 @@ static int ini_handle(void *out, const char *section, const char *name,
       config->mapping = STR(value);
     } else if (strcmp(name, "mouse_acceleration") == 0) {
       config->mouse_acceleration = INT(value);
+    } else if (strcmp(name, "stick_deadzone") == 0) {
+      config->stick_deadzone = INT(value);
+    } else if (strcmp(name, "stick_curve") == 0) {
+      config->stick_curve = INT(value);
     } else if (strcmp(name, "enable_ref_frame_invalidation") == 0) {
       config->enable_ref_frame_invalidation = BOOL(value);
     } else if (strcmp(name, "enable_remote_stream_optimization") == 0) {
@@ -266,6 +271,8 @@ void config_save(const char* filename, PCONFIGURATION config) {
   write_config_bool(fd, "enable_front_touchzones", config->enable_front_touchzones);
 
   write_config_int(fd, "mouse_acceleration", config->mouse_acceleration);
+  write_config_int(fd, "stick_deadzone", config->stick_deadzone);
+  write_config_int(fd, "stick_curve", config->stick_curve);
   write_config_bool(fd, "enable_ref_frame_invalidation", config->enable_ref_frame_invalidation);
   write_config_int(fd, "enable_remote_stream_optimization", config->stream.streamingRemotely);
   write_config_bool(fd, "enable_vita_vblank_wait", config->enable_vita_vblank_wait);
@@ -370,6 +377,8 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
   config->special_keys.size = 150;
 
   config->mouse_acceleration = 150;
+  config->stick_deadzone = STICK_DEADZONE_DEFAULT;
+  config->stick_curve = STICK_CURVE_LINEAR;
   config->enable_ref_frame_invalidation = false;
   config->enable_vita_vblank_wait = false;
   config->enable_psbutton_capture = true;
@@ -440,6 +449,14 @@ void config_parse(int argc, char* argv[], PCONFIGURATION config) {
 
   if (config->app_list_style < 0 || config->app_list_style >= APP_LIST_STYLE_COUNT) {
     config->app_list_style = APP_LIST_BOXART;
+  }
+
+  if (config->stick_deadzone < 0 || config->stick_deadzone > STICK_DEADZONE_MAX) {
+    config->stick_deadzone = STICK_DEADZONE_DEFAULT;
+  }
+
+  if (config->stick_curve < 0 || config->stick_curve >= STICK_CURVE_COUNT) {
+    config->stick_curve = STICK_CURVE_LINEAR;
   }
 
   // Larger packets would be IP-fragmented on a standard 1500-byte MTU

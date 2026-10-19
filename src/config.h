@@ -90,6 +90,8 @@ typedef struct _CONFIGURATION {
   struct input_config inputs[MAX_INPUTS];
   int inputsCount;
   int mouse_acceleration;
+  int stick_deadzone; // the sticks' round dead zone, in percent of full travel
+  int stick_curve;    // STICK_CURVE_* from input/stick.h
   bool enable_ref_frame_invalidation;
   bool enable_vita_vblank_wait;
   bool enable_motion_controls; //Metalface

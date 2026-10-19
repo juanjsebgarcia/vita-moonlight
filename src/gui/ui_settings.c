@@ -384,7 +384,7 @@ static int settings_back(void *context);
 
 static int settings_tab = SETTINGS_TAB_STREAM;
 
-// Must hold the most rows any tab lists (about 18 today). Each is about 1 KB
+// Must hold the most rows any tab lists (about 20 today). Each is about 1 KB
 // of the main thread stack, so don't oversize it.
 #define SETTINGS_MAX_ROWS 32
 
