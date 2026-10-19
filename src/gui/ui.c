@@ -337,6 +337,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
   // menu_entry *menu = (menu_entry*)context; // Variable no usada
   extern volatile int g_host_status_changed;
   extern volatile int g_host_scan_thread_status;
+  external_lookup_poll();
   // L and R together switch to the new theme, until the app is closed. It
   // takes over between frames, when the menu is rebuilt.
   if (theme_offers_new() && ui_pressed(input, UI_INTENT_TAB_PREV | UI_INTENT_TAB_NEXT) && ui_shoulders_held()) {
