@@ -31,6 +31,7 @@ METRICS = [
     ("Mbps", ("bitrate_mbps",)),
     ("wire Mbps", ("packets", "payload_mbps")),
     ("packet loss %", ("packets", "loss_percent")),
+    ("audio pkt/s", ("audio", "per_second")),
     ("RTT ms", ("rtt_ms", "avg")),
     ("RTT var ms", ("rtt_ms", "variance_avg")),
     ("battery mA", ("battery", "drain_ma")),
