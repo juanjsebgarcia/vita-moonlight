@@ -93,8 +93,8 @@ static void devshot_log_overlay(const char *what) {
 
 // The stream overlays over black with made-up numbers, for the states a
 // stream is needed for: "overlay full" (every stats line and the hint) or
-// "overlay poor" (weak Wi-Fi, the poor network and sprint badges, and the
-// hint fading out)
+// "overlay poor" (weak Wi-Fi, the poor network advice and badges, sprint,
+// and the hint fading out)
 static void devshot_sample_overlay(const char *variant) {
   static const char sample[][80] = {
     "Latency ~38 ms (max 52)",
@@ -123,12 +123,16 @@ static void devshot_sample_overlay(const char *variant) {
     .version = 1,
   };
   stream_overlay_view overlay = {.hint = tr(STR_STREAM_HINT), .hint_opacity = 1.0f};
+  char advice[160];
+  TR_FMT(advice, sizeof(advice), STR_STREAM_POOR_BITRATE, "10");
   for (int i = 0; i < DEVSHOT_HOLD_FRAMES; i++) {
     if (poor) {
       // The hint shows for 5 s and fades over the last one, as in a stream
       overlay.hint_opacity = i < 240 ? 1.0f : i < 300 ? (300 - i) / 60.0f : 0.0f;
       overlay.hint = i < 300 ? tr(STR_STREAM_HINT) : NULL;
       overlay.poor_network = true;
+      overlay.network_advice = advice;
+      overlay.network_advice_opacity = 1.0f;
       overlay.poor_network_alpha = (uint8_t)(i * 4 % 512 < 256 ? i * 4 % 256 : 255 - i * 4 % 256);
       overlay.sprinting = true;
     }
