@@ -14,3 +14,7 @@ void ui_connect_paired_device(device_info_t *info);
 // settings, which the host applies on resume, then waits while it streams.
 // For applying settings that only take effect on a new stream.
 void ui_connect_restart_stream(void);
+
+// Waits while the stream runs, until it pauses or ends, then saves the
+// config if the stats overlay shortcut changed it meanwhile
+void ui_connect_wait_stream(void);

@@ -23,7 +23,6 @@
 #include "../hosts.h"
 #include "../ui_ops.h"
 #include "../devshot.h"
-#include "../stats.h"
 
 #include <stdarg.h>
 #include <psp2/kernel/processmgr.h>
@@ -626,13 +625,7 @@ int global_loop(int cursor, void *ctx, const input_data *input) {
       sceKernelDelayThread(500 * 1000);
       connection_resume();
 
-      while (connection_is_connected()) {
-        sceKernelDelayThread(500 * 1000);
-      }
-      // The stats overlay mode, if the shortcut changed it mid-stream
-      if (vitastats_take_mode_change()) {
-        ui_settings_save_config();
-      }
+      ui_connect_wait_stream();
     }
   }
   return 0;
