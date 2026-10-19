@@ -50,12 +50,13 @@ void hb_draw_stats(const stats_view *view) {
 void hb_draw_stream_overlay(const stream_overlay_view *view) {
   bool hint = view->hint != NULL;
   if (view->network_advice != NULL) {
-    // At the bottom like the hint, above it while that shows, in the weak Wi-Fi's yellow
+    // At the bottom like the hint, above it while that shows, in the weak Wi-Fi's
+    // yellow. At the aside fonts' own size, which vita2d caches each letter at.
     static char measured[160];
     static int text_width;
     if (strcmp(view->network_advice, measured) != 0) {
       snprintf(measured, sizeof(measured), "%s", view->network_advice);
-      text_width = hb_rich_text_width_aside(HINT_FONT_SIZE, view->network_advice);
+      text_width = hb_rich_text_width_aside(HB_FONT_SIZE, view->network_advice);
     }
     float opacity = view->network_advice_opacity;
     int box_width = text_width + 32;
@@ -63,8 +64,8 @@ void hb_draw_stream_overlay(const stream_overlay_view *view) {
     int box_x = (WIDTH - box_width) / 2;
     int box_y = HEIGHT - box_height - 24 - (hint ? box_height + 8 : 0);
     vita2d_draw_rectangle(box_x, box_y, box_width, box_height, RGBA8(0, 0, 0, (uint8_t)(0xB0 * opacity)));
-    hb_draw_rich_text_aside(box_x + 16, box_y + 25, RGBA8(0xFF, 0xD0, 0x00, (uint8_t)(0xFF * opacity)),
-                            HINT_FONT_SIZE, view->network_advice);
+    hb_draw_rich_text_aside(box_x + 16, box_y + 24, RGBA8(0xFF, 0xD0, 0x00, (uint8_t)(0xFF * opacity)),
+                            HB_FONT_SIZE, view->network_advice);
   }
 
   if (hint) {

@@ -139,6 +139,10 @@ static uint64_t stream_hint_start_us = 0;
 // When the poor spell began and when advice last showed, or 0; video thread only
 static uint64_t poor_since_us = 0;
 static uint64_t network_advice_start_us = 0;
+// Counts the poor spells, from the status callback, so a recovery between two
+// drawn frames (such as while paused) still restarts the delay
+static volatile unsigned int poor_spells = 0;
+static unsigned int poor_spell_seen = 0;
 static char network_advice[160];
 
 uint32_t frame_count = 0;
@@ -703,11 +707,13 @@ void draw_indicators() {
   }
 
   // Advice once the connection has stayed poor for a while
+  unsigned int spell = poor_spells;
   if (!poor_net_indicator.activated) {
     poor_since_us = 0;
-  } else if (poor_since_us == 0) {
+  } else if (poor_since_us == 0 || spell != poor_spell_seen) {
     poor_since_us = now;
   }
+  poor_spell_seen = spell;
   bool advised = network_advice_start_us != 0;
   if (poor_since_us != 0 && now - poor_since_us >= NETWORK_ADVICE_AFTER_US &&
       (!advised || now - network_advice_start_us >= NETWORK_ADVICE_INTERVAL_US)) {
@@ -752,6 +758,9 @@ void vitavideo_stop() {
 }
 
 void vitavideo_show_poor_net_indicator() {
+  if (!poor_net_indicator.activated) {
+    poor_spells++;
+  }
   poor_net_indicator.activated = true;
 }
 
