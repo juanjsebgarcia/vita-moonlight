@@ -66,6 +66,15 @@ enum {
 // square-button hint
 static int host_manage_cursor;
 
+// What the scanner last found for a known PC. It checks the first MAX_HOSTS;
+// any after those read as offline.
+static struct host_status host_status_of(int idx) {
+  if (idx < 0 || idx >= MAX_HOSTS) {
+    return (struct host_status){0};
+  }
+  return g_host_status[idx];
+}
+
 // Sends the magic packet to the host's subnet. Returns false, after saying
 // why, when it can't.
 static bool send_wake_packet(const device_info_t *info) {
@@ -280,7 +289,7 @@ void ui_host_manage_menu(device_info_t *info) {
   // The same, as meaning, for themes that show it as a mark
   menu_status status = MENU_STATUS_NONE;
   if (host_idx >= 0) {
-    struct host_status st = g_host_status[host_idx];
+    struct host_status st = host_status_of(host_idx);
     if (pending_ip_update_idx == host_idx && pending_ip_update[0] != '\0') {
       snprintf(status_text, sizeof(status_text), "%s", tr(STR_HOST_STATUS_IP_CHANGED));
       status = MENU_STATUS_CHANGED;
@@ -358,7 +367,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
     // Si hay IP cambiada, no forzar refresco/reinicio del menú
     int ip_changed = 0;
     for (int i = 0; i < known_devices.count; i++) {
-      struct host_status st = g_host_status[i];
+      struct host_status st = host_status_of(i);
       if (st.status == HOST_IP_CHANGED && strcmp(known_devices.devices[i].internal, st.current_ip) != 0) {
         ip_changed = 1;
         break;
@@ -400,7 +409,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
     device_info_t *info = &known_devices.devices[cursor - MAIN_MENU_CONNECT_PAIRED];
     int host_idx = cursor - MAIN_MENU_CONNECT_PAIRED;
     struct host_status st;
-    st = g_host_status[host_idx];
+    st = host_status_of(host_idx);
     vita_debug_log("[UI] (LOOP) host_idx=%d, hilo_estado=%d, st.status=%d, st.current_ip=%s", host_idx, g_host_scan_thread_status, st.status, st.current_ip);
 
     if (st.status == HOST_IP_CHANGED && strcmp(info->internal, st.current_ip) != 0) {
@@ -509,7 +518,13 @@ int ui_main_menu() {
     stop_host_scan(); // Detener escaneo si por alguna razón sigue activo
   }
 
-  menu_entry menu[16];
+  // On the heap, with a row for every paired PC: a row is about 1 KB. The
+  // rest is the title, the headings and the actions, 8 at most.
+  menu_entry *menu = calloc(known_devices.count + 8, sizeof(*menu));
+  if (menu == NULL) {
+    display_error("%s", tr(STR_CONNECT_NO_MEMORY));
+    return 0;
+  }
   int idx = 0;
 
 #define MENU_TITLE(NAME) \
@@ -570,7 +585,7 @@ int ui_main_menu() {
           continue;
         }
         struct host_status st;
-        st = g_host_status[i];
+        st = host_status_of(i);
 
         MENU_ENTRY(MAIN_MENU_CONNECT_PAIRED + i, (char *)device_label(cur), false);
         menu_entry *row = &menu[idx - 1];
@@ -613,7 +628,9 @@ int ui_main_menu() {
     .update = main_menu_update,
     .main = &main,
   };
-  return display_menu(menu, idx, &screen, &ui_main_menu_loop, &ui_main_menu_back, NULL);
+  int ret = display_menu(menu, idx, &screen, &ui_main_menu_loop, &ui_main_menu_back, NULL);
+  free(menu);
+  return ret;
 }
 
 int global_loop(int cursor, void *ctx, const input_data *input) {
