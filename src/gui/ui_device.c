@@ -231,6 +231,7 @@ void external_lookup_poll() {
   if (external_lookup_status != EXTERNAL_LOOKUP_DONE) {
     return;
   }
+  __sync_synchronize(); // pairs with the thread's, so the address is complete
   // The device list belongs to the main thread, so look the PC up again here
   device_info_t *info = find_device(external_lookup_name);
   vita_debug_log("[STUN] %s: external address %s\n", external_lookup_name,
