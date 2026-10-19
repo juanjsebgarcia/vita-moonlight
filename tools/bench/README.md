@@ -153,7 +153,7 @@ For each run, the script:
 
 Every run turns the stats overlay and debug log off, since both cost time themselves, unless the variant sets `stats_overlay` or `save_debug_log`.
 
-Variants run in turn, round after round, so changing Wi-Fi conditions affect them all alike. At the end, `compare.py` prints a table (also saved as `summary.md`) with the mean for each variant and the min-max spread across rounds. **Your original `moonlight.conf` is backed up first and restored at the end, even if a run fails.**
+Variants run in turn, round after round, so changing Wi-Fi conditions affect them all alike. At the end, `compare.py` prints a table (also saved as `summary.md`) with the mean for each variant and the min-max spread across rounds. **Your original `moonlight.conf` is backed up first and restored at the end, even if a run fails.** Then Moonlight is reopened on its host list, which keeps the Vita awake and its Wi-Fi up; left closed, the Vita sleeps a few minutes later and drops off the network. Pass `--leave-closed` to skip that.
 
 It needs `tools/vita.sh` and the Vita setup in `docs/DEVELOPMENT.md`, with the computer awake and Sunshine running.
 
