@@ -287,10 +287,13 @@ typedef struct stats_view {
   int version;               // changes whenever the lines do, for caching measurements
 } stats_view;
 
-// draw_indicators(): the start hint, and the poor network and sprint icons
+// draw_indicators(): the start hint, the poor network advice, and the poor
+// network and sprint icons
 typedef struct stream_overlay_view {
   const char *hint;           // the start-of-stream hint, rich text
   float hint_opacity;         // 1 while shown, fading to 0; 0 when it's gone
+  const char *network_advice; // what to try while the connection is poor, plain text, or NULL
+  float network_advice_opacity; // as hint_opacity
   bool poor_network;
   uint8_t poor_network_alpha; // its pulse, 0 to 255
   bool sprinting;

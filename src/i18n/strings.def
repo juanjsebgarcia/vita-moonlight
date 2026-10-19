@@ -362,4 +362,8 @@ S(REC_HELP_GOOD, "For a strong signal, such as in the same room as your router, 
 S(REC_HELP_WEAK, "For a weaker signal, such as further from your router or through walls. Applies the settings for what matters most to you; with Balanced that's 960x540 at 10 Mbps, which looks the same on the Vita's screen and needs half the bandwidth. Also turns the frame pacer and V-Sync off.", "Help shown with triangle")
 
 /* While streaming */
+S(STREAM_POOR_BITRATE, "Connection is struggling: try {0} Mbps in Settings", "Shown for a few seconds over the stream; {0} = a number")
+S(STREAM_POOR_WEAK_WIFI, "Connection is struggling: try moving closer to the router", "Shown for a few seconds over the stream when the Wi-Fi signal is weak")
+S(STREAM_POOR_BLUETOOTH, "Connection is struggling: Bluetooth can disturb Wi-Fi", "Shown for a few seconds over the stream when Bluetooth is on")
+S(STREAM_POOR_NETWORK, "Connection is struggling: is something else using the network?", "Shown for a few seconds over the stream")
 S(STREAM_HINT, "Press {start} + {l} + {r} for the menu and to quit", "Shown at the start of a stream; {start}, {l}, {r} are drawn as the buttons")

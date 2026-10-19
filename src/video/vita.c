@@ -128,6 +128,19 @@ static bool decode_yuv = false;
 // When the first frame of this stream was drawn, or 0 before that
 static uint64_t stream_hint_start_us = 0;
 
+// Advice when the connection stays poor: once it has been poor for a few
+// seconds, at most once every few minutes, gone as soon as it recovers
+#define NETWORK_ADVICE_AFTER_US 3000000
+#define NETWORK_ADVICE_DURATION_US 8000000
+#define NETWORK_ADVICE_FADE_US 1000000
+#define NETWORK_ADVICE_INTERVAL_US (5 * 60 * 1000000ULL)
+// Below this Wi-Fi signal, moving closer is the advice (as stats.c's weak line)
+#define NETWORK_ADVICE_WEAK_WIFI_PERCENT 60
+// When the poor spell began and when advice last showed, or 0; video thread only
+static uint64_t poor_since_us = 0;
+static uint64_t network_advice_start_us = 0;
+static char network_advice[160];
+
 uint32_t frame_count = 0;
 uint32_t need_drop = 0;
 uint32_t curr_fps[2] = {0, 0};
@@ -327,6 +340,11 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
   printf("vita video setup\n");
   decode_thread_logged = false;
   stream_hint_start_us = 0;
+  // A new connection starts okay and reports only changes, so drop any poor
+  // state the last stream ended in
+  memset(&poor_net_indicator, 0, sizeof(indicator_status));
+  poor_since_us = 0;
+  network_advice_start_us = 0;
   vitastats_reset();
   decode_yuv = config.decode_yuv;
   printf("video output: %s\n", decode_yuv ? "YUV420 (NV21), converted by the GPU" : "RGBA8888 from the decoder");
@@ -642,6 +660,33 @@ void draw_fps() {
   vitastats_draw();
 }
 
+// One suggestion for a poor connection, from what the Vita knows: a bitrate
+// above 10 Mbps, a weak Wi-Fi signal, Bluetooth sharing the Wi-Fi radio, then
+// a bitrate above 5 Mbps. Both are steps of the Bitrate setting.
+static void choose_network_advice(char *out, size_t size) {
+  int kbps = config.stream.bitrate;
+  bool wifi = vita_network_type() == VITA_NETWORK_WIFI;
+  int percent = wifi ? vita_wifi_percent() : -1;
+  int suggest_mbps = 0;
+  if (kbps > 10000) {
+    suggest_mbps = 10;
+  } else if (percent >= 0 && percent < NETWORK_ADVICE_WEAK_WIFI_PERCENT) {
+    snprintf(out, size, "%s", tr(STR_STREAM_POOR_WEAK_WIFI));
+  } else if (wifi && vita_bluetooth_enabled()) {
+    snprintf(out, size, "%s", tr(STR_STREAM_POOR_BLUETOOTH));
+  } else if (kbps > 5000) {
+    suggest_mbps = 5;
+  } else {
+    snprintf(out, size, "%s", tr(STR_STREAM_POOR_NETWORK));
+  }
+  if (suggest_mbps > 0) {
+    char mbps[8];
+    snprintf(mbps, sizeof(mbps), "%d", suggest_mbps);
+    TR_FMT(out, size, STR_STREAM_POOR_BITRATE, mbps);
+  }
+  vita_debug_log("Poor connection advice (%d kbps, Wi-Fi %d%%): %s\n", kbps, percent, out);
+}
+
 void draw_indicators() {
   stream_overlay_view overlay = {0};
 
@@ -655,6 +700,26 @@ void draw_indicators() {
     uint64_t remaining = STREAM_HINT_DURATION_US - shown_for;
     overlay.hint = tr(STR_STREAM_HINT);
     overlay.hint_opacity = remaining < STREAM_HINT_FADE_US ? (float)remaining / STREAM_HINT_FADE_US : 1.0f;
+  }
+
+  // Advice once the connection has stayed poor for a while
+  if (!poor_net_indicator.activated) {
+    poor_since_us = 0;
+  } else if (poor_since_us == 0) {
+    poor_since_us = now;
+  }
+  bool advised = network_advice_start_us != 0;
+  if (poor_since_us != 0 && now - poor_since_us >= NETWORK_ADVICE_AFTER_US &&
+      (!advised || now - network_advice_start_us >= NETWORK_ADVICE_INTERVAL_US)) {
+    choose_network_advice(network_advice, sizeof(network_advice));
+    network_advice_start_us = now;
+  }
+  uint64_t advice_for = now - network_advice_start_us;
+  if (network_advice_start_us != 0 && poor_since_us != 0 && advice_for < NETWORK_ADVICE_DURATION_US) {
+    uint64_t remaining = NETWORK_ADVICE_DURATION_US - advice_for;
+    overlay.network_advice = network_advice;
+    overlay.network_advice_opacity =
+        remaining < NETWORK_ADVICE_FADE_US ? (float)remaining / NETWORK_ADVICE_FADE_US : 1.0f;
   }
 
   overlay.poor_network = poor_net_indicator.activated;

@@ -1,5 +1,8 @@
 #include "homebrew.h"
 
+#include <stdio.h>
+#include <string.h>
+
 // The stats overlay
 #define STATS_FONT_SIZE 16
 #define STATS_LINE_HEIGHT 18
@@ -45,7 +48,26 @@ void hb_draw_stats(const stats_view *view) {
 }
 
 void hb_draw_stream_overlay(const stream_overlay_view *view) {
-  if (view->hint != NULL) {
+  bool hint = view->hint != NULL;
+  if (view->network_advice != NULL) {
+    // At the bottom like the hint, above it while that shows, in the weak Wi-Fi's yellow
+    static char measured[160];
+    static int text_width;
+    if (strcmp(view->network_advice, measured) != 0) {
+      snprintf(measured, sizeof(measured), "%s", view->network_advice);
+      text_width = hb_rich_text_width_aside(HINT_FONT_SIZE, view->network_advice);
+    }
+    float opacity = view->network_advice_opacity;
+    int box_width = text_width + 32;
+    int box_height = 36;
+    int box_x = (WIDTH - box_width) / 2;
+    int box_y = HEIGHT - box_height - 24 - (hint ? box_height + 8 : 0);
+    vita2d_draw_rectangle(box_x, box_y, box_width, box_height, RGBA8(0, 0, 0, (uint8_t)(0xB0 * opacity)));
+    hb_draw_rich_text_aside(box_x + 16, box_y + 25, RGBA8(0xFF, 0xD0, 0x00, (uint8_t)(0xFF * opacity)),
+                            HINT_FONT_SIZE, view->network_advice);
+  }
+
+  if (hint) {
     float opacity = view->hint_opacity;
     int text_width = hb_rich_text_width(HINT_FONT_SIZE, view->hint);
     int box_width = text_width + 32;
