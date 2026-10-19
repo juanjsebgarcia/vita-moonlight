@@ -275,10 +275,11 @@ typedef struct help_view {
 
 // vitastats_draw(): the stats overlay. lines[i] starts at lines + i * line_stride.
 typedef struct stats_view {
-  bool full;                 // every line; otherwise only the frame rate and Wi-Fi
+  bool full;                 // every line; otherwise only the frame rate and the network
   float fps;
   int target_fps;
-  int wifi_percent;          // -1 when unknown
+  int wifi_percent;          // -1 when unknown, or not on Wi-Fi
+  const char *link_name;     // "Ethernet" or "Mobile data", shown in fps mode; NULL on Wi-Fi
   bool wifi_weak;            // weak enough to cost frames: show the Wi-Fi in a warning colour
   const char *lines;
   int line_stride;
