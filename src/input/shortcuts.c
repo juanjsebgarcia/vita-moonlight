@@ -76,7 +76,7 @@ void process_stats_shortcut(SceCtrlData* pad) {
 
     // The keyboard and the pause menu have the buttons to themselves, and
     // START + L1 + R1 (pause) wins over this pair
-    bool pause_chord = (buttons & SCE_CTRL_L1) && (buttons & SCE_CTRL_R1);
+    bool pause_chord = (buttons & SCE_CTRL_START) && (buttons & SCE_CTRL_L1) && (buttons & SCE_CTRL_R1);
     if (keyboardsystem_is_open() || pause_overlay_is_open() || pause_chord) {
         held_back = false;
         return;
