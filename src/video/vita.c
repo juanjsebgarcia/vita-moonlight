@@ -139,10 +139,12 @@ static uint64_t stream_hint_start_us = 0;
 // When the poor spell began and when advice last showed, or 0; video thread only
 static uint64_t poor_since_us = 0;
 static uint64_t network_advice_start_us = 0;
-// Counts the poor spells, from the status callback, so a recovery between two
-// drawn frames (such as while paused) still restarts the delay
-static volatile unsigned int poor_spells = 0;
-static unsigned int poor_spell_seen = 0;
+// The connection status, from the status callback, in one word so the video
+// thread reads it whole: bit 0 is set while poor, and the bits above count
+// the poor spells, so a recovery between two drawn frames (such as while
+// paused) still restarts the delay
+static uint32_t poor_state = 0;
+static uint32_t poor_spell_seen = 0;
 static char network_advice[160];
 
 uint32_t frame_count = 0;
@@ -346,6 +348,8 @@ static int vita_setup(int videoFormat, int width, int height, int redrawRate, vo
   stream_hint_start_us = 0;
   // A new connection starts okay and reports only changes, so drop any poor
   // state the last stream ended in
+  __atomic_store_n(&poor_state, 0, __ATOMIC_RELEASE);
+  poor_spell_seen = 0;
   memset(&poor_net_indicator, 0, sizeof(indicator_status));
   poor_since_us = 0;
   network_advice_start_us = 0;
@@ -706,13 +710,16 @@ void draw_indicators() {
     overlay.hint_opacity = remaining < STREAM_HINT_FADE_US ? (float)remaining / STREAM_HINT_FADE_US : 1.0f;
   }
 
-  // Advice once the connection has stayed poor for a while
-  unsigned int spell = poor_spells;
-  if (!poor_net_indicator.activated) {
-    poor_since_us = 0;
-  } else if (poor_since_us == 0 || spell != poor_spell_seen) {
-    poor_since_us = now;
+  // The poor network state. The icon's pulse is the video thread's own, and
+  // restarts with each spell, as does the advice's delay.
+  uint32_t state = __atomic_load_n(&poor_state, __ATOMIC_ACQUIRE);
+  uint32_t spell = state >> 1;
+  bool poor = state & 1;
+  if (!poor || spell != poor_spell_seen) {
+    memset(&poor_net_indicator, 0, sizeof(indicator_status));
+    poor_since_us = poor ? now : 0;
   }
+  poor_net_indicator.activated = poor;
   poor_spell_seen = spell;
   bool advised = network_advice_start_us != 0;
   if (poor_since_us != 0 && now - poor_since_us >= NETWORK_ADVICE_AFTER_US &&
@@ -758,15 +765,14 @@ void vitavideo_stop() {
 }
 
 void vitavideo_show_poor_net_indicator() {
-  if (!poor_net_indicator.activated) {
-    poor_spells++;
+  uint32_t state = __atomic_load_n(&poor_state, __ATOMIC_RELAXED);
+  if (!(state & 1)) {
+    __atomic_store_n(&poor_state, (((state >> 1) + 1) << 1) | 1, __ATOMIC_RELEASE);
   }
-  poor_net_indicator.activated = true;
 }
 
 void vitavideo_hide_poor_net_indicator() {
-  //poor_net_indicator.activated = false;
-  memset(&poor_net_indicator, 0, sizeof(indicator_status));
+  __atomic_and_fetch(&poor_state, ~(uint32_t)1, __ATOMIC_RELEASE);
 }
 
 int vitavideo_initialized() {
