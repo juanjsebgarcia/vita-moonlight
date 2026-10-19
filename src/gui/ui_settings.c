@@ -531,6 +531,16 @@ static void settings_update(menu_view *view) {
   view->tabs = &tab_bar;
   view->hint = (ui_hint){BUTTON_GLYPH_TRIANGLE, tr(STR_HINT_HELP)};
 
+  // A stream resumed from here (the corner touch) can change the stats
+  // overlay with its shortcut: show the new value on return
+  static int shown_stats_overlay = -1;
+  if (config.stats_overlay != shown_stats_overlay) {
+    if (shown_stats_overlay >= 0) {
+      refresh_rows();
+    }
+    shown_stats_overlay = config.stats_overlay;
+  }
+
   // Written again only when the selection moves to another setting, or the
   // language changes
   static char help[1024];
