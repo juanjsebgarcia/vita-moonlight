@@ -74,6 +74,7 @@ add_executable(${PROJECT_NAME}.elf
 	src/i18n/i18n.c
 	src/session.c
 	src/hosts.c
+	src/host_address.c
 	src/ui_ops.c
 	src/devshot.c
 	src/util.c

@@ -10,6 +10,7 @@
 //#include "../debug.h"
 #include "../input/vita.h"
 #include "ui_connect.h"
+#include "../host_address.h"
 #include "debug.h"
 #include "udp_sniffer_vita.h"
 
@@ -272,10 +273,12 @@ int ui_search_device_loop() {
     }
     // Mostrar MAC en el sufijo si está disponible
     char suffix[64] = {0};
+    char address[48];
+    host_address_format(devices[i].internal, devices[i].port, address, sizeof(address));
     if (devices[i].mac[0]) {
-      snprintf(suffix, sizeof(suffix), "%s [%s]", devices[i].internal, devices[i].mac);
+      snprintf(suffix, sizeof(suffix), "%s [%s]", address, devices[i].mac);
     } else {
-      snprintf(suffix, sizeof(suffix), "%s", devices[i].internal);
+      snprintf(suffix, sizeof(suffix), "%s", address);
     }
     MENU_ENTRY(DEVICE_ITEM + i, DEVICE_VIEW_ITEM + i, devices[i].name, suffix);
   }

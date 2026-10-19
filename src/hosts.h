@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "device.h"
 
@@ -37,8 +38,9 @@ host_wait_result host_wake_and_wait(device_info_t *info, char *new_address, size
 // Forgets the host and its pairing keys. Returns false if it couldn't.
 bool host_forget(device_info_t *info);
 
-// Uses address for the host from now on, and saves it
-void host_set_address(device_info_t *info, const char *address);
+// Uses address and port (the HTTP port, normally HOST_DEFAULT_PORT) for the
+// host from now on, and saves them
+void host_set_address(device_info_t *info, const char *address, uint16_t port);
 
 // Shows the host as label from now on, and saves it. Its name, which finds
 // it on the network and holds its pairing keys, stays the same; giving the
