@@ -28,6 +28,7 @@
 #include "sps.h"
 #include "../stats.h"
 #include "../bench.h"
+#include "../power/vita.h"
 
 #include <Limelight.h>
 
@@ -127,6 +128,14 @@ static bool decode_yuv = false;
 #define STREAM_HINT_FADE_US 1000000
 // When the first frame of this stream was drawn, or 0 before that
 static uint64_t stream_hint_start_us = 0;
+
+// The low battery warning, shown for a few seconds from when the power
+// thread gave it
+#define BATTERY_NOTICE_DURATION_US 6000000
+#define BATTERY_NOTICE_FADE_US 1000000
+static unsigned int battery_notice_count = 0;
+static uint64_t battery_notice_start_us = 0;
+static char battery_notice[128];
 
 uint32_t frame_count = 0;
 uint32_t need_drop = 0;
@@ -655,6 +664,28 @@ void draw_indicators() {
     uint64_t remaining = STREAM_HINT_DURATION_US - shown_for;
     overlay.hint = tr(STR_STREAM_HINT);
     overlay.hint_opacity = remaining < STREAM_HINT_FADE_US ? (float)remaining / STREAM_HINT_FADE_US : 1.0f;
+  }
+
+  // A new low battery warning: word it once, here, then show it for a while
+  vitapower_battery_warning battery = vitapower_battery_warning_latest();
+  if (battery.count != battery_notice_count) {
+    battery_notice_count = battery.count;
+    // Shown for what's left of its time, so one given while paused (the
+    // video thread isn't drawing) has gone by when the stream resumes
+    battery_notice_start_us = battery.age_us < BATTERY_NOTICE_DURATION_US ? now - battery.age_us : 0;
+    char percent[12], minutes[12];
+    snprintf(percent, sizeof(percent), "%d", battery.percent);
+    if (battery.minutes > 0) {
+      snprintf(minutes, sizeof(minutes), "%d", battery.minutes);
+      TR_FMT(battery_notice, sizeof(battery_notice), STR_STREAM_BATTERY_LOW_TIME, percent, minutes);
+    } else {
+      TR_FMT(battery_notice, sizeof(battery_notice), STR_STREAM_BATTERY_LOW, percent);
+    }
+  }
+  if (battery_notice_start_us != 0 && now - battery_notice_start_us < BATTERY_NOTICE_DURATION_US) {
+    uint64_t remaining = BATTERY_NOTICE_DURATION_US - (now - battery_notice_start_us);
+    overlay.battery = battery_notice;
+    overlay.battery_opacity = remaining < BATTERY_NOTICE_FADE_US ? (float)remaining / BATTERY_NOTICE_FADE_US : 1.0f;
   }
 
   overlay.poor_network = poor_net_indicator.activated;

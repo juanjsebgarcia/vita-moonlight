@@ -1,5 +1,5 @@
 // Morpheus stream overlays (DESIGN.md S12): the stats card, the start hint,
-// and the poor network and sprint badges.
+// the low battery notice, and the poor network and sprint badges.
 //
 // These run on the video thread on every decoded frame, over the game, so
 // they stay as cheap as Homebrew's: flat shapes with a 1 px fringe at most,
@@ -105,13 +105,25 @@ static float hint_width(const char *hint) {
   return width;
 }
 
+// The low battery notice's width, measured again only when its text changes
+static float battery_width(const char *battery) {
+  static char measured[128];
+  static float width;
+  if (strcmp(battery, measured) != 0) {
+    snprintf(measured, sizeof(measured), "%s", battery);
+    width = (float)mph_text_w(MPH_T_BODY_B, battery);
+  }
+  return width;
+}
+
 static void badge(float x, float alpha) {
   mph_rrect_fill(mph_rect_make(x, BADGE_Y, BADGE, BADGE), MPH_R_OVERLAY, mph_alpha(MPH_C_OVERLAY_BG, alpha));
 }
 
 void mph_screen_stream_overlay_draw(const stream_overlay_view *view) {
   bool hint = view->hint != NULL && view->hint_opacity > 0.0f;
-  if (!hint && !view->poor_network && !view->sprinting) {
+  bool battery = view->battery != NULL && view->battery_opacity > 0.0f;
+  if (!hint && !battery && !view->poor_network && !view->sprinting) {
     return;
   }
   mph_frame_begin();
@@ -124,6 +136,13 @@ void mph_screen_stream_overlay_draw(const stream_overlay_view *view) {
     float w = roundf(hint_width(view->hint)) + 2 * HINT_PAD;
     pill = mph_rect_make(roundf(480 - w / 2), HINT_TOP, w, HINT_H);
     mph_pill(pill, mph_alpha(MPH_C_OVERLAY_BG, view->hint_opacity));
+  }
+  // The low battery notice: a pill like the hint's, above it while that shows
+  mph_rect battery_pill = {0};
+  if (battery) {
+    float w = roundf(battery_width(view->battery)) + 2 * HINT_PAD;
+    battery_pill = mph_rect_make(roundf(480 - w / 2), hint ? HINT_TOP - HINT_H - 8 : HINT_TOP, w, HINT_H);
+    mph_pill(battery_pill, mph_alpha(MPH_C_OVERLAY_BG, view->battery_opacity));
   }
   if (view->poor_network) {
     badge(BADGE_RIGHT_X, poor_alpha);
@@ -142,6 +161,11 @@ void mph_screen_stream_overlay_draw(const stream_overlay_view *view) {
   }
   if (view->sprinting) {
     mph_icon(MPH_ICON_SPRINT_22, sprint_x + (BADGE - 22) / 2, BADGE_Y + (BADGE - 22) / 2, mph_alpha(MPH_C_FG, 0.85f));
+  }
+
+  if (battery) {
+    mph_text(MPH_T_BODY_B, battery_pill.x + HINT_PAD, mph_baseline(MPH_T_BODY_B, battery_pill.y, battery_pill.h),
+             mph_alpha(MPH_C_LIVE, view->battery_opacity), view->battery);
   }
 
   // The hint's text: its keycaps and every alpha follow the fade

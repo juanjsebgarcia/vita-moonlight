@@ -139,7 +139,7 @@ language's rules and asks your measure function for widths.
 | S11 dialog kind, captions, PIN | `alert_view.kind`, `.captions`, `.glyphs`, `.pin` |
 | S11 help title, lines, offset | `help_view`; wrap in `help_prepare` |
 | S12 stats lines, version, weak Wi-Fi line, fps | `stats_view` |
-| S12 hint opacity, poor network alpha, sprint | `stream_overlay_view` (`hint` is NULL once it has faded) |
+| S12 hint opacity, low battery notice, poor network alpha, sprint | `stream_overlay_view` (`hint` is NULL once it has faded; `battery` is NULL unless a notice shows) |
 | S13 IME backdrop | `draw_ime_backdrop` |
 
 ## Checking a theme on the Vita
