@@ -111,9 +111,10 @@ bool host_forget(device_info_t *info) {
   return remove_device(info->name);
 }
 
-void host_set_address(device_info_t *info, const char *address) {
+void host_set_address(device_info_t *info, const char *address, uint16_t port) {
   snprintf(info->internal, sizeof(info->internal), "%s", address);
   snprintf(info->external, sizeof(info->external), "%s", address);
+  info->port = port;
   info->prefer_external = false;
   save_device_info(info);
 }

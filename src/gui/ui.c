@@ -21,6 +21,7 @@
 #include "../debug.h"
 #include "../bench.h"
 #include "../hosts.h"
+#include "../host_address.h"
 #include "../ui_ops.h"
 #include "../devshot.h"
 
@@ -218,11 +219,15 @@ static int ui_host_manage_menu_loop(int cursor, void *context, const input_data 
     }
     case HOST_MANAGE_CHANGE_IP: {
       vita_debug_log("[UI] Menú gestión: cambiar IP %s", info->name);
-      char new_ip[256] = "";
-      if (ime_dialog_string(new_ip, tr(STR_HOST_ENTER_IP), info->internal) == 0 && strlen(new_ip) > 0) {
-        host_set_address(info, new_ip);
-        char updated[320];
-        TR_FMT(updated, sizeof(updated), STR_HOST_IP_SET, device_label(info), new_ip);
+      // The port shows only when it isn't the default; leaving it out means the default
+      char current[272], new_ip[256] = "";
+      uint16_t new_port = HOST_DEFAULT_PORT;
+      host_address_format(info->internal, info->port, current, sizeof(current));
+      if (ui_ask_address(tr(STR_HOST_ENTER_IP), current, new_ip, sizeof(new_ip), &new_port) == 0) {
+        host_set_address(info, new_ip, new_port);
+        char shown[272], updated[320];
+        host_address_format(info->internal, info->port, shown, sizeof(shown));
+        TR_FMT(updated, sizeof(updated), STR_HOST_IP_SET, device_label(info), shown);
         flash_message("%s", updated);
       } else {
         flash_message("%s", tr(STR_HOST_IP_CANCELLED));

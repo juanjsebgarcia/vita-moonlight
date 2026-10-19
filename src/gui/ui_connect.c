@@ -16,6 +16,7 @@
 #include "../device.h"
 #include "../debug.h"
 #include "../netcount.h"
+#include "../host_address.h"
 
 #include "client.h"
 #include "errors.h"
@@ -445,8 +446,11 @@ int ui_connected_menu() {
 }
 
 device_info_t* ui_connect_and_pairing(device_info_t *info) {
+  // The address as the player typed it, with the port if it isn't the default
+  char address[272];
+  host_address_format(info->internal, info->port, address, sizeof(address));
   char testing[512];
-  TR_FMT(testing, sizeof(testing), STR_CONNECT_TESTING, device_label(info), info->internal);
+  TR_FMT(testing, sizeof(testing), STR_CONNECT_TESTING, device_label(info), address);
   flash_message("%s", testing);
   vita_debug_log("[CONNECT] Intentando conectar: name=%s, ip=%s, port=%d", info->name, info->internal, info->port);
   char key_dir[4096];
@@ -461,7 +465,7 @@ device_info_t* ui_connect_and_pairing(device_info_t *info) {
   } else if (ret == GS_INVALID) {
     {
       char message[512];
-      TR_FMT(message, sizeof(message), STR_CONNECT_INVALID_DATA, device_label(info), info->internal, gs_error ? gs_error : "");
+      TR_FMT(message, sizeof(message), STR_CONNECT_INVALID_DATA, device_label(info), address, gs_error ? gs_error : "");
       display_error("%s", message);
     }
     return NULL;
@@ -483,7 +487,7 @@ device_info_t* ui_connect_and_pairing(device_info_t *info) {
     return NULL;
   } else if (ret != GS_OK) {
     char message[512];
-    TR_FMT(message, sizeof(message), STR_CONNECT_CANT_REACH, device_label(info), info->internal);
+    TR_FMT(message, sizeof(message), STR_CONNECT_CANT_REACH, device_label(info), address);
     display_error("%s", message);
     return NULL;
   }
@@ -579,15 +583,38 @@ void ui_connect_resume() {
   while (ui_connected_menu() == QUIT_RELOAD);
 }
 
+int ui_ask_address(const char *title, const char *def, char *host, size_t host_size, uint16_t *port) {
+  char text[256];
+  snprintf(text, sizeof(text), "%s", def);
+  while (true) {
+    char typed[256] = "";
+    if (ime_dialog_string(typed, title, text) != 0) {
+      return -1;
+    }
+    snprintf(text, sizeof(text), "%s", typed);
+    host_address_result result = host_address_parse(typed, host, host_size, port);
+    if (result == HOST_ADDRESS_OK) {
+      return 0;
+    }
+    // Say what's wrong, then ask again with what they typed
+    char message[512];
+    if (result == HOST_ADDRESS_BAD_PORT) {
+      TR_FMT(message, sizeof(message), STR_ADDRESS_BAD_PORT, typed);
+    } else {
+      snprintf(message, sizeof(message), "%s", tr(result == HOST_ADDRESS_IPV6 ? STR_ADDRESS_IPV6 : STR_ADDRESS_NO_HOST));
+    }
+    display_error("%s", message);
+  }
+}
+
 void ui_connect_manual() {
   device_info_t info = {0};
   if (ime_dialog_string(info.name, tr(STR_ADD_ENTER_NAME), "") != 0) {
     return;
   }
-  if (ime_dialog_string(info.internal, tr(STR_ADD_ENTER_ADDRESS), "") != 0) {
+  if (ui_ask_address(tr(STR_ADD_ENTER_ADDRESS), "", info.internal, sizeof(info.internal), &info.port) != 0) {
     return;
   }
-  info.port = 47989;
   ui_connect_and_pairing(&info);
 }
 
