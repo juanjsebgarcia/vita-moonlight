@@ -58,7 +58,10 @@ enum {
 
 int search_thread_status = SEARCH_THREAD_IDLE;
 
-static device_info_t devices[64];
+// The menu holds every PC found plus 4 fixed rows (hint, heading, separator,
+// back), in menu_entry menu[64]
+#define SEARCH_MAX_DEVICES 60
+static device_info_t devices[SEARCH_MAX_DEVICES];
 static int DEVICE_ENTRY_IDX[64];
 static int found_device = 0;
 
@@ -95,6 +98,10 @@ static void moonlight_found_callback(int idx, const char* host, const char* pcna
             vita_debug_log("[mDNS] Dispositivo duplicado ignorado: %s (%s)\n", pcname, ip);
             return;
         }
+    }
+    if (found_device >= SEARCH_MAX_DEVICES) {
+        vita_debug_log("[mDNS] Lista llena, ignorado: %s (%s)\n", pcname, ip);
+        return;
     }
     // Si el nombre es igual pero la IP es diferente, sí se agrega
     memset(&devices[found_device], 0, sizeof(device_info_t));
@@ -233,7 +240,9 @@ static int ui_search_device_back(void *context) {
 
 int ui_search_device_loop() {
   int idx = 0;
-  menu_entry menu[64];
+  menu_entry menu[SEARCH_MAX_DEVICES + 4];
+  // A row keeps a pointer to its suffix, so each needs its own until the menu is drawn
+  char suffixes[SEARCH_MAX_DEVICES][64];
   memset(DEVICE_ENTRY_IDX, 0, sizeof(DEVICE_ENTRY_IDX));
 
 #define MENU_CATEGORY(NAME) \
@@ -272,13 +281,13 @@ int ui_search_device_loop() {
       continue;
     }
     // Mostrar MAC en el sufijo si está disponible
-    char suffix[64] = {0};
+    char *suffix = suffixes[i];
     char address[48];
     host_address_format(devices[i].internal, devices[i].port, address, sizeof(address));
     if (devices[i].mac[0]) {
-      snprintf(suffix, sizeof(suffix), "%s [%s]", address, devices[i].mac);
+      snprintf(suffix, sizeof(suffixes[i]), "%s [%s]", address, devices[i].mac);
     } else {
-      snprintf(suffix, sizeof(suffix), "%s", address);
+      snprintf(suffix, sizeof(suffixes[i]), "%s", address);
     }
     MENU_ENTRY(DEVICE_ITEM + i, DEVICE_VIEW_ITEM + i, devices[i].name, suffix);
   }
