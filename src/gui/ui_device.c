@@ -180,6 +180,76 @@ int end_search_thread(SceUID thid) {
   return 0;
 }
 
+// The PC's address from the internet, for streaming away from home: the
+// public address of this network, which the PC shares while the Vita is on
+// its LAN. Looked up once after pairing a PC found by search, on a thread, so
+// the menu doesn't wait for the STUN server (up to a few seconds). The main
+// thread stores the result in external_lookup_poll().
+enum {
+  EXTERNAL_LOOKUP_IDLE,
+  EXTERNAL_LOOKUP_RUNNING,
+  EXTERNAL_LOOKUP_DONE,
+};
+
+static volatile int external_lookup_status = EXTERNAL_LOOKUP_IDLE;
+static char external_lookup_name[256];
+// The PC's external address when the lookup began; a change since (Change IP)
+// wins over the lookup
+static char external_lookup_before[256];
+static char external_lookup_address[16];
+
+static int external_lookup_main(SceSize args, void *argp) {
+  unsigned int extern_addr = 0;
+  external_lookup_address[0] = '\0';
+  if (LiFindExternalAddressIP4("stun.moonlight-stream.org", 3478, &extern_addr) == 0) {
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = extern_addr;
+    ipv4_address_to_string(&addr, external_lookup_address, sizeof(external_lookup_address));
+  }
+  __sync_synchronize(); // the address is written before the status says so
+  external_lookup_status = EXTERNAL_LOOKUP_DONE;
+  return sceKernelExitDeleteThread(0);
+}
+
+static void external_lookup_start(const device_info_t *info) {
+  const char *name = info->name;
+  // One at a time; a PC paired meanwhile keeps the address it has
+  if (external_lookup_status != EXTERNAL_LOOKUP_IDLE) {
+    vita_debug_log("[STUN] Lookup already running, skipped for %s\n", name);
+    return;
+  }
+  snprintf(external_lookup_name, sizeof(external_lookup_name), "%s", name);
+  // As the device list has it, which is what external_lookup_poll() compares
+  const device_info_t *known = find_device(name);
+  snprintf(external_lookup_before, sizeof(external_lookup_before), "%s", (known ? known : info)->external);
+  external_lookup_status = EXTERNAL_LOOKUP_RUNNING;
+  SceUID thid = sceKernelCreateThread("stun", external_lookup_main, 0x10000100, 0x10000, 0, 0, NULL);
+  if (thid < 0 || sceKernelStartThread(thid, 0, NULL) < 0) {
+    vita_debug_log("[STUN] Cannot start the lookup thread\n");
+    if (thid >= 0) {
+      sceKernelDeleteThread(thid);
+    }
+    external_lookup_status = EXTERNAL_LOOKUP_IDLE;
+  }
+}
+
+void external_lookup_poll() {
+  if (external_lookup_status != EXTERNAL_LOOKUP_DONE) {
+    return;
+  }
+  __sync_synchronize(); // pairs with the thread's, so the address is complete
+  // The device list belongs to the main thread, so look the PC up again here
+  device_info_t *info = find_device(external_lookup_name);
+  vita_debug_log("[STUN] %s: external address %s\n", external_lookup_name,
+                 external_lookup_address[0] ? external_lookup_address : "not found");
+  if (info != NULL && external_lookup_address[0] && strcmp(info->external, external_lookup_before) == 0) {
+    snprintf(info->external, sizeof(info->external), "%s", external_lookup_address);
+    save_device_info(info);
+  }
+  external_lookup_status = EXTERNAL_LOOKUP_IDLE;
+}
+
 static int ui_search_device_callback(int id, void *context, const input_data *input) {
   if (ui_pressed(input, UI_INTENT_HELP)) {
     vita_debug_log("[mDNS] TRIÁNGULO presionado: refrescando búsqueda\n");
@@ -210,15 +280,13 @@ static int ui_search_device_callback(int id, void *context, const input_data *in
       return 0;
     }
 
-    unsigned int extern_addr = 0;
-    if (LiFindExternalAddressIP4("stun.stunprotocol.org", 3478, &extern_addr) == 0) {
-      struct sockaddr_in addr;
-      addr.sin_family = AF_INET;
-      addr.sin_addr.s_addr = extern_addr;
-      ipv4_address_to_string(&addr, info->external, 16);
-    }
-
     save_device_info(info);
+    // A retried pairing returns the search's copy, with the new pairing state;
+    // bring the known PC up to date, as the lookup saves that one later
+    if (find_device(info->name) != info) {
+      update_device(info);
+    }
+    external_lookup_start(info);
 
     return 1;
   }
