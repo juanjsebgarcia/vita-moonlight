@@ -275,6 +275,25 @@ inline uint8_t read_frontscreen() {
   return 0;
 }
 
+// A PS TV pad's L2 and R2 are analog (INPUT_TYPE_ANALOG): they count as
+// pressed past a small threshold, so they work wherever a button is expected,
+// e.g. sending L1 and R1 when the shoulder buttons are swapped
+#define TRIGGER_PRESSED_THRESHOLD 0x20
+
+static inline bool is_analog(uint32_t defined) {
+  return (defined & INPUT_TYPE_MASK) == INPUT_TYPE_ANALOG;
+}
+
+static inline uint32_t trigger_pressed(const SceCtrlData *data, uint32_t dev_val) {
+  switch (dev_val) {
+    case LEFT_TRIGGER:
+      return data->lt > TRIGGER_PRESSED_THRESHOLD;
+    case RIGHT_TRIGGER:
+      return data->rt > TRIGGER_PRESSED_THRESHOLD;
+  }
+  return 0;
+}
+
 inline uint32_t is_pressed(uint32_t defined) {
   uint32_t dev_type = defined & INPUT_TYPE_MASK;
   uint32_t dev_val  = defined & INPUT_VALUE_MASK;
@@ -284,6 +303,8 @@ inline uint32_t is_pressed(uint32_t defined) {
       return pad.buttons & dev_val;
     case INPUT_TYPE_TOUCHSCREEN:
       return touch.button & dev_val;
+    case INPUT_TYPE_ANALOG:
+      return trigger_pressed(&pad, dev_val);
   }
   return 0;
 }
@@ -297,6 +318,8 @@ inline uint32_t is_old_pressed(uint32_t defined) {
       return pad_old.buttons & dev_val;
     case INPUT_TYPE_TOUCHSCREEN:
       return touch_old.button & dev_val;
+    case INPUT_TYPE_ANALOG:
+      return trigger_pressed(&pad_old, dev_val);
   }
   return 0;
 }
@@ -678,7 +701,9 @@ void process_triggers() {
     if (is_pressed(map.btn_thumbl)) {
       curr.button |= LB_FLAG;
     }
-    if (is_pressed(map.btn_tl)) {
+    // An analog trigger (a PS TV pad's L2) already sent its own pressure
+    // from read_analog(), which full pressure mustn't overwrite
+    if (!is_analog(map.btn_tl) && is_pressed(map.btn_tl)) {
       curr.lt = 0xff;
       // No modificar curr.button aquí
     }
@@ -686,7 +711,7 @@ void process_triggers() {
     if (is_pressed(map.btn_thumbr)) {
       curr.button |= RB_FLAG;
     }
-    if (is_pressed(map.btn_tr)) {
+    if (!is_analog(map.btn_tr) && is_pressed(map.btn_tr)) {
       curr.rt = 0xff;
       // No modificar curr.button aquí
     }
