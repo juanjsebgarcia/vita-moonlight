@@ -696,9 +696,11 @@ void ui_connect_paired_device(device_info_t *info) {
 }
 
 // The id of the app the host remembers, looked up in the connected host's
-// list: by id, or by name if the PC has given it a new id. 0 if it's gone.
+// list: the same id under the same name, or the name under a new id. 0 if
+// it's gone, rather than whatever app now has its old id.
 static int remembered_app_id(const device_info_t *info) {
-  if (app_name_of(info->last_app_id) != NULL) {
+  const char *name = app_name_of(info->last_app_id);
+  if (name != NULL && strcmp(name, info->last_app_name) == 0) {
     return info->last_app_id;
   }
   int id = get_app_id(server_applist, (char *)info->last_app_name);
