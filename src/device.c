@@ -160,8 +160,10 @@ device_info_t* append_device(device_info_t *info) {
   p->paired = info->paired;
   strncpy(p->internal, info->internal, 255);
   strncpy(p->external, info->external, 255);
-  strncpy(p->mac, info->mac, 17);
-  p->mac[17] = '\0';
+  if (info->mac[0]) {
+    strncpy(p->mac, info->mac, 17);
+    p->mac[17] = '\0';
+  }
   p->port = info->port;
   p->prefer_external = info->prefer_external;
   strncpy(p->display_name, info->display_name, sizeof(p->display_name) - 1);
@@ -182,6 +184,10 @@ bool update_device(device_info_t *info) {
   p->paired = info->paired;
   strncpy(p->internal, info->internal, 255);
   strncpy(p->external, info->external, 255);
+  if (info->mac[0]) {
+    strncpy(p->mac, info->mac, 17);
+    p->mac[17] = '\0';
+  }
   p->port = info->port;
   p->prefer_external = info->prefer_external;
   return true;

@@ -281,6 +281,11 @@ static int ui_search_device_callback(int id, void *context, const input_data *in
     }
 
     save_device_info(info);
+    // A retried pairing returns the search's copy, with the new pairing state;
+    // bring the known PC up to date, as the lookup saves that one later
+    if (find_device(info->name) != info) {
+      update_device(info);
+    }
     external_lookup_start(info);
 
     return 1;
