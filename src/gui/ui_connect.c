@@ -312,7 +312,16 @@ int ui_connected_menu() {
   }
 
   // current menu = 11 + app_count. but little more alloc ;)
-  struct menu_entry menu[app_count + 16];
+  // On the heap: a row is about 1 KB, so a few hundred apps would overflow
+  // the main thread's stack
+  struct menu_entry *menu = calloc(app_count + 16, sizeof(*menu));
+  if (menu == NULL) {
+    char count[16], message[256];
+    snprintf(count, sizeof(count), "%d", app_count);
+    TR_FMT(message, sizeof(message), STR_CONNECT_APPS_NO_MEMORY, count);
+    display_error("%s", message);
+    return 0;
+  }
 
   int idx = 0;
 
@@ -434,13 +443,14 @@ int ui_connected_menu() {
   };
 
   if (!boxart) {
-    return display_menu(menu, idx, &screen, &ui_connect_loop, NULL, &menu);
+    ret = display_menu(menu, idx, &screen, &ui_connect_loop, NULL, menu);
+  } else {
+    ui_boxart_open(&server, session_server_name(), server_applist, server.currentGame);
+    ret = display_menu(menu, idx, &screen, &ui_connect_loop, NULL, menu);
+    // display_menu has finished its last frame, so the textures can be freed
+    ui_boxart_close();
   }
-
-  ui_boxart_open(&server, session_server_name(), server_applist, server.currentGame);
-  ret = display_menu(menu, idx, &screen, &ui_connect_loop, NULL, &menu);
-  // display_menu has finished its last frame, so the textures can be freed
-  ui_boxart_close();
+  free(menu);
   return ret;
 }
 

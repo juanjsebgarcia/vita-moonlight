@@ -272,6 +272,7 @@ S(CONNECT_CONNECTING, "Connecting to {0}\n({1}:{2})...", "{0} = PC name, {1} = a
 S(CONNECT_TESTING, "Test connecting to {0}\n({1})...", "{0} = PC name, {1} = address")
 S(CONNECT_CHECKING, "Checking {0}\n({1}:{2})...", "{0} = PC name, {1} = address, {2} = port")
 S(CONNECT_NO_MEMORY, "Not enough memory", "")
+S(CONNECT_APPS_NO_MEMORY, "Not enough memory to list this PC's {0} apps", "{0} = the number of apps on the PC")
 S(CONNECT_INVALID_DATA, "Invalid data received from {0} ({1}): {2}", "{0} = PC name, {1} = address, {2} = an error in English")
 S(CONNECT_UNSUPPORTED_VERSION, "Unsupported version: {0}", "{0} = an error in English")
 S(CONNECT_GAMESTREAM_ERROR, "Gamestream error: {0}", "{0} = an error in English; GameStream is a protocol name")
