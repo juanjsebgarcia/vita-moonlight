@@ -28,11 +28,15 @@
 #   -a, --app NAME   Sunshine app showing bench.html (default: Moonlight Bench;
 #                    any app with "bench" in its name is also found)
 #   -o, --out DIR    where to save reports (default build/bench/<time>)
+#   --leave-closed   don't reopen Moonlight at the end
 #
 # Needs VITA_IP and a Vita set up as in docs/DEVELOPMENT.md (vitacompanion,
 # with Moonlight installed), the host awake with Sunshine running, and the
 # benchmark app set up as in tools/bench/README.md. Your moonlight.conf is
-# backed up first and restored at the end, even if a run fails.
+# backed up first and restored at the end, even if a run fails. Moonlight is
+# then reopened on its host list which, with developer mode on, keeps the
+# Vita awake and its Wi-Fi up (with it closed, the Vita sleeps and drops off
+# the network).
 
 set -euo pipefail
 
@@ -52,6 +56,7 @@ host=""
 app="Moonlight Bench"
 out=""
 variants=()
+leave_closed=false
 
 die() {
   echo "error: $*" >&2
@@ -70,6 +75,7 @@ while [ $# -gt 0 ]; do
     -H|--host) host="$2"; shift 2 ;;
     -a|--app) app="$2"; shift 2 ;;
     -o|--out) out="$2"; shift 2 ;;
+    --leave-closed) leave_closed=true; shift ;;
     -h|--help) usage ;;
     -*) die "unknown option $1" ;;
     *) variants+=("$1"); shift ;;
@@ -129,6 +135,20 @@ restore() {
     echo "restored the original moonlight.conf"
   else
     echo "warning: couldn't restore moonlight.conf; the backup is $original" >&2
+    # Reopening now would load a variant's settings, perhaps with autorun on
+    return 0
+  fi
+  # On its menus, Moonlight keeps the Vita awake only in developer mode (the
+  # screenshot poll in src/devshot.c); a stream keeps it awake on its own
+  if ! $leave_closed; then
+    if ! grep -Eq '^developer_mode *= *true' "$original"; then
+      echo "warning: developer mode is off in moonlight.conf, so the Vita may still go to sleep on the host list" >&2
+    fi
+    if "$VITA_SH" launch >/dev/null 2>&1; then
+      echo "reopened Moonlight on its host list"
+    else
+      echo "warning: couldn't reopen Moonlight; the Vita may go to sleep" >&2
+    fi
   fi
 }
 trap restore EXIT
