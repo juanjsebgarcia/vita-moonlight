@@ -709,7 +709,10 @@ void ui_settings_save_config() {
   vita_debug_log("  enable_ref_frame_invalidation = %d", config.enable_ref_frame_invalidation);
   vita_debug_log("  stream.streamingRemotely = %d", config.stream.streamingRemotely);
   vita_debug_log("  enable_vita_vblank_wait = %d", config.enable_vita_vblank_wait);
-  config_save(config_path, &config);
+  if (!config_save(config_path, &config)) {
+    display_error("%s", tr(STR_SET_SAVE_FAILED));
+    return;
+  }
   vita_debug_log("[DEBUG] Configuración guardada en %s", config_path);
 }
 
