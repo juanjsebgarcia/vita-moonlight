@@ -133,6 +133,7 @@ S(SET_SPRINT_PROMPT, "Enter Sprint Step Time in Milliseconds", "Title of the num
 S(SET_SPRINT_BAD, "Incorrect step time entered: {0}", "{0} = what was typed")
 S(SET_DEVELOPER_SHOWN, "Developer options are now shown, in the Developer tab.", "")
 S(SET_DEVELOPER_HIDDEN, "Developer options are hidden.", "")
+S(SET_SAVE_FAILED, "Couldn't save the settings. Is the memory card full? They apply until Moonlight closes.", "Error message")
 
 /* Rear touch dead zone screen */
 S(DEADZONE_TOP, "Top:", "Edge of the rear touch area; its size in pixels is shown on the right")
