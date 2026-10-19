@@ -126,6 +126,11 @@ function reset() {
   frame = 0;
   tick = 0;
   markerUntilMs = 0;
+  // Audio restarts from its beginning too, so it lines up with the picture
+  if (audio) {
+    setAudio(false);
+    setAudio(true);
+  }
 }
 
 function onInput() {
@@ -445,8 +450,9 @@ window.addEventListener("keydown", (event) => {
   if (key === "r") {
     reset();
   } else if (key === "m") {
-    // Shift+M only turns it on, so automation can't toggle it off by mistake
-    setAudio(event.shiftKey || !audio);
+    // Shift+M only turns it on and Ctrl+M only off, so automation never
+    // depends on what the last run left; plain M toggles
+    setAudio(event.ctrlKey ? false : event.shiftKey || !audio);
   } else if (key === "h") {
     showHud = !showHud;
   } else if (key === "f") {

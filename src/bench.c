@@ -1070,14 +1070,13 @@ int vitabench_run(bool automated) {
                PAGE_TIMEOUT_US / 1000000, app_name);
       goto done;
     }
-    // Shift+M only ever turns the page's audio on, never off. Only here: the
-    // cursor and none modes may not be showing the page (cursor mode is meant
-    // for a dark Desktop), where the key would type into whatever has focus.
-    if (config.bench_audio) {
-      send_key_with(VK_M, MODIFIER_SHIFT);
-      link.page_audio = true;
-    }
-    // Restart the page's animation, so every run shows the same pictures
+    // Shift+M turns the page's audio on and Ctrl+M off, whatever an earlier
+    // run left (with bench_quit_app = false the page carries over). Only here:
+    // the cursor and none modes may not be showing the page (cursor mode is
+    // meant for a dark Desktop), where the key would type into whatever has focus.
+    send_key_with(VK_M, config.bench_audio ? MODIFIER_SHIFT : MODIFIER_CTRL);
+    link.page_audio = config.bench_audio;
+    // Restart the page's animation (and its audio), so every run is the same
     send_key(VK_R);
     sceKernelDelayThread(RESET_SETTLE_US);
   }

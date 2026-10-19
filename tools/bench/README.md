@@ -21,10 +21,10 @@ It's one self-contained HTML file with no dependencies, so it works the same on 
 
 | Input | Effect |
 |---|---|
-| R | Reset: time and the tick counter go back to zero |
+| R | Reset: time and the tick counter go back to zero, and the test audio (if on) restarts from its beginning |
 | H | Show or hide the HUD |
 | F | Toggle browser fullscreen |
-| M | Test audio on or off (Shift+M only turns it on) |
+| M | Test audio on or off (Shift+M only turns it on, Ctrl+M only off) |
 | Any other key, a gamepad button, a click or a touch | Lights the input marker for 100 ms |
 
 ## URL parameters
@@ -130,7 +130,7 @@ The Vita side lives behind a hidden **developer mode**, so it stays out of norma
    **Benchmark duration** sets how long it measures (30, 60, 120 or 300 s).
 4. Press ✕ on **Run benchmark**. The Vita:
    1. starts the app and waits up to 45 s for the page to appear (it checks the reference blocks)
-   2. presses R to reset the page (with `bench_audio = true`, Shift+M first, to turn the test audio on)
+   2. presses Shift+M (with `bench_audio = true`) or Ctrl+M, so the test audio is on or off whatever an earlier run left, then R to reset the page
    3. measures for the set duration, pressing Space about once a second to time input lag
    4. ends the stream, quits the app on the computer, and shows a summary
 
@@ -210,4 +210,4 @@ These live in `moonlight.conf`, and the menu sets the first two:
 | `bench_autorun` | `false` | Run once at launch and exit; cleared before the run starts |
 | `bench_quit_app` | `true` | Quit the app on the computer when the run ends |
 | `bench_input` | `key` | What the timed presses send: `key`, `mouse`, `gamepad` or `cursor` |
-| `bench_audio` | `false` | Turn the page's test audio on (Shift+M) before the run, so audio is part of what's measured. Ignored with `bench_input = cursor` or `none`, which may not be showing the page; `settings.page_audio` in the report says whether it was turned on |
+| `bench_audio` | `false` | Turn the page's test audio on (Shift+M; Ctrl+M when false) before the run, so audio is part of what's measured. Ignored with `bench_input = cursor` or `none`, which may not be showing the page; `settings.page_audio` in the report says whether it was turned on |
