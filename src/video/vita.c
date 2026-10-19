@@ -714,8 +714,11 @@ void draw_indicators() {
     choose_network_advice(network_advice, sizeof(network_advice));
     network_advice_start_us = now;
   }
+  // Only advice given during this poor spell: a relapse soon after recovering
+  // waits for its own delay, and the cooldown
   uint64_t advice_for = now - network_advice_start_us;
-  if (network_advice_start_us != 0 && poor_since_us != 0 && advice_for < NETWORK_ADVICE_DURATION_US) {
+  if (network_advice_start_us != 0 && poor_since_us != 0 && network_advice_start_us >= poor_since_us &&
+      advice_for < NETWORK_ADVICE_DURATION_US) {
     uint64_t remaining = NETWORK_ADVICE_DURATION_US - advice_for;
     overlay.network_advice = network_advice;
     overlay.network_advice_opacity =
