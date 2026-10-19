@@ -280,7 +280,8 @@ void ui_host_manage_menu(device_info_t *info) {
   // The same, as meaning, for themes that show it as a mark
   menu_status status = MENU_STATUS_NONE;
   if (host_idx >= 0) {
-    struct host_status st = g_host_status[host_idx];
+    // Only the first MAX_HOSTS are scanned
+    struct host_status st = host_idx < MAX_HOSTS ? g_host_status[host_idx] : (struct host_status){.status = HOST_OFFLINE};
     if (pending_ip_update_idx == host_idx && pending_ip_update[0] != '\0') {
       snprintf(status_text, sizeof(status_text), "%s", tr(STR_HOST_STATUS_IP_CHANGED));
       status = MENU_STATUS_CHANGED;
@@ -357,7 +358,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
   if (first_scan_pending && g_host_status_changed && g_host_scan_thread_status != 1) {
     // Si hay IP cambiada, no forzar refresco/reinicio del menú
     int ip_changed = 0;
-    for (int i = 0; i < known_devices.count; i++) {
+    for (int i = 0; i < known_devices.count && i < MAX_HOSTS; i++) {
       struct host_status st = g_host_status[i];
       if (st.status == HOST_IP_CHANGED && strcmp(known_devices.devices[i].internal, st.current_ip) != 0) {
         ip_changed = 1;
@@ -408,7 +409,7 @@ int ui_main_menu_loop(int cursor, void *context, const input_data *input) {
     device_info_t *info = &known_devices.devices[cursor - MAIN_MENU_CONNECT_PAIRED];
     int host_idx = cursor - MAIN_MENU_CONNECT_PAIRED;
     struct host_status st;
-    st = g_host_status[host_idx];
+    st = host_idx < MAX_HOSTS ? g_host_status[host_idx] : (struct host_status){.status = HOST_OFFLINE};
     vita_debug_log("[UI] (LOOP) host_idx=%d, hilo_estado=%d, st.status=%d, st.current_ip=%s", host_idx, g_host_scan_thread_status, st.status, st.current_ip);
 
     if (st.status == HOST_IP_CHANGED && strcmp(info->internal, st.current_ip) != 0) {

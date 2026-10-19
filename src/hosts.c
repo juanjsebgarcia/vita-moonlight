@@ -140,6 +140,13 @@ void host_remember_app(device_info_t *info, int app_id, const char *app_name) {
   }
   info->last_app_id = app_id;
   snprintf(info->last_app_name, sizeof(info->last_app_name), "%s", app_name);
+  // It's saved as one line of device.ini: a line break in the name would
+  // start a setting of its own there
+  for (char *c = info->last_app_name; *c; c++) {
+    if ((unsigned char)*c < 0x20) {
+      *c = ' ';
+    }
+  }
   vita_debug_log("[HOSTS] last app on %s: %s (%d)", info->name, app_name, app_id);
   save_device_info(info);
 }
