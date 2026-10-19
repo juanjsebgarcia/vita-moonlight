@@ -193,6 +193,9 @@ enum {
 
 static volatile int external_lookup_status = EXTERNAL_LOOKUP_IDLE;
 static char external_lookup_name[256];
+// The PC's external address when the lookup began; a change since (Change IP)
+// wins over the lookup
+static char external_lookup_before[256];
 static char external_lookup_address[16];
 
 static int external_lookup_main(SceSize args, void *argp) {
@@ -209,13 +212,17 @@ static int external_lookup_main(SceSize args, void *argp) {
   return sceKernelExitDeleteThread(0);
 }
 
-static void external_lookup_start(const char *name) {
+static void external_lookup_start(const device_info_t *info) {
+  const char *name = info->name;
   // One at a time; a PC paired meanwhile keeps the address it has
   if (external_lookup_status != EXTERNAL_LOOKUP_IDLE) {
     vita_debug_log("[STUN] Lookup already running, skipped for %s\n", name);
     return;
   }
   snprintf(external_lookup_name, sizeof(external_lookup_name), "%s", name);
+  // As the device list has it, which is what external_lookup_poll() compares
+  const device_info_t *known = find_device(name);
+  snprintf(external_lookup_before, sizeof(external_lookup_before), "%s", (known ? known : info)->external);
   external_lookup_status = EXTERNAL_LOOKUP_RUNNING;
   SceUID thid = sceKernelCreateThread("stun", external_lookup_main, 0x10000100, 0x10000, 0, 0, NULL);
   if (thid < 0 || sceKernelStartThread(thid, 0, NULL) < 0) {
@@ -236,7 +243,7 @@ void external_lookup_poll() {
   device_info_t *info = find_device(external_lookup_name);
   vita_debug_log("[STUN] %s: external address %s\n", external_lookup_name,
                  external_lookup_address[0] ? external_lookup_address : "not found");
-  if (info != NULL && external_lookup_address[0]) {
+  if (info != NULL && external_lookup_address[0] && strcmp(info->external, external_lookup_before) == 0) {
     snprintf(info->external, sizeof(info->external), "%s", external_lookup_address);
     save_device_info(info);
   }
@@ -274,7 +281,7 @@ static int ui_search_device_callback(int id, void *context, const input_data *in
     }
 
     save_device_info(info);
-    external_lookup_start(info->name);
+    external_lookup_start(info);
 
     return 1;
   }
